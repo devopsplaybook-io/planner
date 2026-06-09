@@ -1,0 +1,138 @@
+<template>
+  <div class="login-container">
+    <article class="login-card">
+      <header>
+        <hgroup>
+          <h1>Planner</h1>
+          <p v-if="!isRegistering">Sign in to your account</p>
+          <p v-else>Create your account</p>
+        </hgroup>
+      </header>
+
+      <form @submit.prevent="handleSubmit">
+        <div v-if="error" class="error-message">{{ error }}</div>
+
+        <label>
+          Username
+          <input
+            v-model="name"
+            type="text"
+            placeholder="Your username"
+            required
+            autocomplete="username"
+          />
+        </label>
+
+        <label>
+          Password
+          <input
+            v-model="password"
+            type="password"
+            placeholder="Your password"
+            required
+            autocomplete="current-password"
+          />
+        </label>
+
+        <label v-if="isRegistering">
+          Confirm Password
+          <input
+            v-model="passwordConfirm"
+            type="password"
+            placeholder="Confirm password"
+            required
+            autocomplete="new-password"
+          />
+        </label>
+
+        <footer>
+          <button type="submit" :aria-busy="loading">
+            {{ isRegistering ? "Register" : "Login" }}
+          </button>
+          <a
+            href="#"
+            @click.prevent="
+              isRegistering = !isRegistering;
+              error = '';
+            "
+          >
+            {{
+              isRegistering
+                ? "Already have an account? Login"
+                : "No account? Register"
+            }}
+          </a>
+        </footer>
+      </form>
+    </article>
+  </div>
+</template>
+
+<script setup>
+const authStore = useAuthStore();
+const router = useRouter();
+
+const name = ref("");
+const password = ref("");
+const passwordConfirm = ref("");
+const isRegistering = ref(false);
+const loading = ref(false);
+const error = ref("");
+
+onMounted(async () => {
+  await authStore.init();
+  if (authStore.isAuthenticated) {
+    router.push("/");
+  }
+});
+
+async function handleSubmit() {
+  error.value = "";
+  loading.value = true;
+  try {
+    if (isRegistering.value) {
+      if (password.value !== passwordConfirm.value) {
+        error.value = "Passwords do not match";
+        loading.value = false;
+        return;
+      }
+      await authStore.register(name.value, password.value);
+    }
+    await authStore.login(name.value, password.value);
+    router.push("/");
+  } catch (e) {
+    error.value = e.response?.data?.error || "An error occurred";
+  } finally {
+    loading.value = false;
+  }
+}
+</script>
+
+<style scoped>
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80vh;
+}
+
+.login-card {
+  max-width: 400px;
+  width: 100%;
+}
+
+.error-message {
+  color: var(--pico-del-color);
+  margin-bottom: 0.5em;
+  padding: 0.5em;
+  border: 1px solid var(--pico-del-color);
+  border-radius: 0.3em;
+}
+
+footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  align-items: center;
+}
+</style>
