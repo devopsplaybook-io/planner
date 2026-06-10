@@ -6,7 +6,7 @@
     </hgroup>
 
     <div v-if="!authStore.isAdmin" class="access-denied">
-      <i class="bi bi-shield-lock"></i>
+      <i class="bi bi-shield-lock"/>
       <p>Access denied. Admin privileges required.</p>
     </div>
 
@@ -15,11 +15,11 @@
         <header class="section-header">
           <h2>Users</h2>
           <button @click="showCreateDialog = true">
-            <i class="bi bi-plus-lg"></i> Add User
+            <i class="bi bi-plus-lg"/> Add User
           </button>
         </header>
 
-        <div v-if="loading" class="loading-indicator"></div>
+        <div v-if="loading" class="loading-indicator"/>
 
         <table v-else>
           <thead>
@@ -50,7 +50,7 @@
                   class="small contrast"
                   @click="confirmDeleteUser(user)"
                 >
-                  <i class="bi bi-trash"></i>
+                  <i class="bi bi-trash"/>
                 </button>
               </td>
             </tr>
@@ -68,7 +68,7 @@
             class="close-btn"
             aria-label="Close"
             @click="showCreateDialog = false"
-          ></button>
+          />
         </header>
         <form @submit.prevent="createUser">
           <label>
@@ -78,7 +78,7 @@
               type="text"
               required
               placeholder="Username"
-            />
+            >
           </label>
           <label>
             Password
@@ -87,7 +87,7 @@
               type="password"
               required
               placeholder="Password"
-            />
+            >
           </label>
           <label>
             Role
@@ -119,7 +119,7 @@
         <p>Are you sure you want to delete user "{{ deleteTarget?.name }}"?</p>
         <footer>
           <button class="secondary" @click="deleteTarget = null">Cancel</button>
-          <button class="contrast" @click="deleteUser" :aria-busy="deleting">
+          <button class="contrast" :aria-busy="deleting" @click="deleteUser">
             Delete
           </button>
         </footer>
@@ -129,6 +129,8 @@
 </template>
 
 <script setup>
+import api from "../utils/api";
+
 const authStore = useAuthStore();
 const router = useRouter();
 
@@ -200,8 +202,6 @@ async function deleteUser() {
     deleting.value = false;
   }
 }
-
-import api from "../utils/api";
 
 onMounted(async () => {
   if (authStore.isAdmin) {

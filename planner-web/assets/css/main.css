@@ -1,5 +1,85 @@
+/* ============================================
+   Design Language — CSS Custom Properties
+   ============================================ */
+
+/* Spacing scale */
+:root {
+  --space-xs: 0.25em;
+  --space-sm: 0.5em;
+  --space-md: 1em;
+  --space-lg: 1.5em;
+  --space-xl: 2em;
+  --radius-sm: 0.25em;
+  --radius-md: 0.4em;
+  --radius-lg: 0.6em;
+  --transition-fast: 150ms ease;
+  --transition-normal: 300ms ease;
+}
+
+/* Reset */
 html,
 body {
   margin: 0;
   padding: 0;
+}
+
+/* Standard card component */
+.card {
+  background: var(--pico-card-background-color, var(--pico-background-color));
+  border: var(--pico-border-width, 1px) solid
+    var(--pico-card-border-color, var(--pico-muted-border-color));
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.card header {
+  font-weight: 600;
+  margin-bottom: var(--space-sm);
+}
+
+/* Standard section header */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+/* Standard action buttons row */
+.actions {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+/* Inline icon spacing */
+i.bi + span,
+span + i.bi {
+  margin-left: var(--space-xs);
+}
+
+/* Truncated text */
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Small muted text */
+.text-muted {
+  color: var(--pico-muted-color);
+  font-size: 0.85em;
+}
+
+/* Dialog backdrop fix for PicoCSS */
+dialog[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+dialog article {
+  max-width: 90vw;
+  min-width: 320px;
 }

@@ -17,14 +17,6 @@ import {
 
 export class UsersRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
-    // ==================== INITIALIZATION CHECK ====================
-    fastify.get("/status/initialization", async (req, res) => {
-      if ((await UsersDataList()).length === 0) {
-        return res.status(200).send({ initialized: false });
-      }
-      return res.status(200).send({ initialized: true });
-    });
-
     // ==================== SESSION (Login) ====================
     interface PostSession extends RequestGenericInterface {
       Body: { name: string; password: string };

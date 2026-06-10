@@ -11,12 +11,43 @@
 </template>
 
 <script setup>
+// Theme management
+const theme = ref(localStorage.getItem("theme") || "system");
+
+function getEffectiveTheme() {
+  if (theme.value === "system") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+  return theme.value;
+}
+
+function applyTheme() {
+  document.documentElement.setAttribute("data-theme", getEffectiveTheme());
+}
+
+function toggleTheme() {
+  const current = getEffectiveTheme();
+  theme.value = current === "dark" ? "light" : "dark";
+}
+
+watch(theme, (val) => {
+  localStorage.setItem("theme", val);
+  applyTheme();
+});
+
+// Layout height
 function updateAppHeight() {
   const height = window.visualViewport?.height ?? window.innerHeight;
   document.documentElement.style.setProperty("--app-height", `${height}px`);
 }
 
 onMounted(() => {
+  applyTheme();
+  window
+    .matchMedia("(prefers-color-scheme: dark)")
+    .addEventListener("change", applyTheme);
   updateAppHeight();
   window.addEventListener("resize", updateAppHeight);
   window.visualViewport?.addEventListener("resize", updateAppHeight);
@@ -25,7 +56,14 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener("resize", updateAppHeight);
   window.visualViewport?.removeEventListener("resize", updateAppHeight);
+  window
+    .matchMedia("(prefers-color-scheme: dark)")
+    .removeEventListener("change", applyTheme);
 });
+
+// Provide theme to child components
+provide("theme", theme);
+provide("toggleTheme", toggleTheme);
 </script>
 
 <style>

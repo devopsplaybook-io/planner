@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { acceptHMRUpdate, defineStore } from "pinia";
 import api from "../utils/api";
 
@@ -31,7 +30,12 @@ export interface Task {
   checklist: ChecklistItem[];
   assignees: TaskAssignee[];
   comments: TaskComment[];
-  attachments: unknown[];
+  attachments: {
+    id: string;
+    fileName: string;
+    filePath: string;
+    dateCreated: string;
+  }[];
   labels: string[];
   dateCreated: string;
   dateUpdated: string;
@@ -48,6 +52,11 @@ export const useTasksStore = defineStore("tasks", {
       const params = projectId ? { projectId } : {};
       const res = await api.get("/tasks", { params });
       this.tasks = res.data;
+    },
+
+    async fetchNextView() {
+      const res = await api.get("/views/next");
+      return res.data;
     },
 
     async fetchById(id: string) {
@@ -126,6 +135,37 @@ export const useTasksStore = defineStore("tasks", {
 
     async setLabels(taskId: string, labels: string[]) {
       await api.post(`/tasks/${taskId}/labels`, { labels });
+    },
+
+    async uploadAttachment(taskId: string, file: File) {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await api.post(`/tasks/${taskId}/attachments`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const task = this.tasks.find((t) => t.id === taskId);
+      if (task) {
+        task.attachments.push(res.data);
+      }
+      if (this.currentTask?.id === taskId) {
+        this.currentTask.attachments.push(res.data);
+      }
+      return res.data;
+    },
+
+    async deleteAttachment(taskId: string, attachmentId: string) {
+      await api.delete(`/tasks/${taskId}/attachments/${attachmentId}`);
+      const task = this.tasks.find((t) => t.id === taskId);
+      if (task) {
+        task.attachments = task.attachments.filter(
+          (a) => a.id !== attachmentId,
+        );
+      }
+      if (this.currentTask?.id === taskId) {
+        this.currentTask.attachments = this.currentTask.attachments.filter(
+          (a) => a.id !== attachmentId,
+        );
+      }
     },
   },
 });

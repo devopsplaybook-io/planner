@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS tasks (
-    id VARCHAR(50) NOT NULL,
+    id VARCHAR(50) PRIMARY KEY,
     projectId VARCHAR(50) NOT NULL,
     title VARCHAR(500) NOT NULL,
     description TEXT NOT NULL DEFAULT '',

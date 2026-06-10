@@ -2,11 +2,26 @@
 
 ## Specifications
 
-The specifications are defined in [docs/specs/](docs/specs/). Always consult them first before implementing any feature.
+### Spec files are the source of truth
 
-Once specifications are implemented, document the implementation in [docs/specs/implemented/](docs/specs/implemented/) by creating or updating a markdown file describing what was built and any deviations from the original spec.
+Specifications are defined in [docs/specs/](docs/specs/). Each spec file embeds its own implementation status using inline markers:
 
-When new development is requested, compare the difference between the specs and the implemented files to determine what needs to be done.
+- `[x]` = Implemented
+- `[~]` = Partially implemented
+- `[ ]` = Not yet implemented
+
+When starting any development task, read all spec files first. Items marked `[ ]` are what needs to be built. Items marked `[x]` are already done.
+
+### How to update status when implementing
+
+When you implement a spec item:
+
+1. Change `[ ]` to `[x]` (or `[~]` for partial)
+2. Update the "Last spec review" date in the footer to the current date
+
+### How the user signals spec changes
+
+When the user edits a spec file (adds, removes, or modifies requirements), they leave new or changed items as `[ ]`. The agents see these markers and implement them automatically.
 
 ## Project Structure
 
@@ -20,7 +35,7 @@ planner/
   docs/
     dev/               # Development scripts
     deployments/       # Deployment examples
-    specs/             # Application specifications
+    specs/             # Application specifications (with inline [x]/[ ] status markers)
 ```
 
 ## Coding Conventions
@@ -59,27 +74,20 @@ planner/
 - Single container serves both API and static web files
 - Entrypoint replaces placeholder `APPLICATION_TITLE` in PWA manifest at startup
 
-## Implementation Order (Recommended)
-
-1. **Database layer** - Models and SQL schema (Projects, Tasks, Notes, Users)
-2. **Authentication** - User registration, login, JWT middleware
-3. **Projects API** - CRUD routes for projects
-4. **Tasks API** - CRUD routes for tasks with all features
-5. **Notes API** - CRUD routes for notes
-6. **Web pages** - Corresponding Nuxt pages and components
-7. **Views** - Next view, Calendar view, Kanban board
-
 ## CI/CD
 
-GitHub Actions workflows are defined in `.github/workflows/`:
+GitHub Actions workflows are defined in `.github/workflows/`, reusing shared workflows from `devopsplaybook-io/common-utils`:
 
-- **`ci.yml`**: Runs on push/PR to `main`. Builds, lints, and tests the server; builds the web frontend.
-- **`docker.yml`**: Runs on push to `main` or `v*` tags. Builds and pushes the multi-stage Docker image to `devopsplaybookio/planner` on Docker Hub.
+- **`main-build.yml`**: On push to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server`, then builds & pushes multi-arch Docker image to Docker Hub.
+- **`pr-check.yml`**: On PR to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server`, then builds & pushes a `beta` Docker image.
+- **`npm-upgrade.yml`**: Weekly schedule (Mon 6:00). Runs `npx npm-check-updates -u` on all npm services and creates an upgrade PR.
 
 Secrets required in GitHub repository:
 
-- `DOCKER_USERNAME` - Docker Hub username
-- `DOCKER_PASSWORD` - Docker Hub password or access token
+- `DOCKER_HUB_USERNAME` - Docker Hub username
+- `DOCKER_HUB_ACCESS_TOKEN` - Docker Hub access token
+- `QUALITY_DASHBOARD_URL` - Quality Dashboard URL (optional)
+- `QUALITY_DASHBOARD_TOKEN` - Quality Dashboard token (optional)
 
 ## Post-Change Validation
 
@@ -89,4 +97,4 @@ After any implementation, always:
    - **Server update**: Run `npm run test`, `npm run build`, and `npm run lint` in `planner-server/`. Also update unit tests: remove unused tests and add new coverage for new code.
    - **Web update**: Run `npm run build` (or `npm run generate`) in `planner-web/`
 2. Verify the implementation against the relevant spec file
-3. Update the corresponding file in `docs/specs/implemented/`
+3. Update the status markers in the corresponding spec file (`[ ]` -> `[x]` or `[~]`) and bump the "Last spec review" date

@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { acceptHMRUpdate, defineStore } from "pinia";
 import api from "../utils/api";
 
@@ -16,7 +15,12 @@ export interface Note {
   title: string;
   description: string;
   comments: NoteComment[];
-  attachments: unknown[];
+  attachments: {
+    id: string;
+    fileName: string;
+    filePath: string;
+    dateCreated: string;
+  }[];
   labels: string[];
   dateCreated: string;
   dateUpdated: string;
@@ -99,6 +103,37 @@ export const useNotesStore = defineStore("notes", {
 
     async setLabels(noteId: string, labels: string[]) {
       await api.post(`/notes/${noteId}/labels`, { labels });
+    },
+
+    async uploadAttachment(noteId: string, file: File) {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await api.post(`/notes/${noteId}/attachments`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const note = this.notes.find((n) => n.id === noteId);
+      if (note) {
+        note.attachments.push(res.data);
+      }
+      if (this.currentNote?.id === noteId) {
+        this.currentNote.attachments.push(res.data);
+      }
+      return res.data;
+    },
+
+    async deleteAttachment(noteId: string, attachmentId: string) {
+      await api.delete(`/notes/${noteId}/attachments/${attachmentId}`);
+      const note = this.notes.find((n) => n.id === noteId);
+      if (note) {
+        note.attachments = note.attachments.filter(
+          (a) => a.id !== attachmentId,
+        );
+      }
+      if (this.currentNote?.id === noteId) {
+        this.currentNote.attachments = this.currentNote.attachments.filter(
+          (a) => a.id !== attachmentId,
+        );
+      }
     },
   },
 });

@@ -1,12 +1,12 @@
 <template>
   <div class="project-detail">
-    <div v-if="loading" class="loading-indicator"></div>
+    <div v-if="loading" class="loading-indicator"/>
 
     <template v-else-if="project">
       <header class="detail-header">
         <div>
           <NuxtLink to="/projects" class="back-link"
-            ><i class="bi bi-arrow-left"></i> Projects</NuxtLink
+            ><i class="bi bi-arrow-left"/> Projects</NuxtLink
           >
           <hgroup>
             <h1>{{ project.name }}</h1>
@@ -19,7 +19,7 @@
             class="secondary"
             @click="showDeleteConfirm = true"
           >
-            <i class="bi bi-trash"></i>
+            <i class="bi bi-trash"/>
           </button>
         </div>
       </header>
@@ -50,7 +50,7 @@
           >
             <header>
               <span :class="'priority-' + task.priority">
-                <i class="bi bi-flag"></i>
+                <i class="bi bi-flag"/>
               </span>
               <span>{{ task.title }}</span>
               <small>{{ task.status }}</small>
@@ -74,7 +74,7 @@
           <button class="secondary" @click="showDeleteConfirm = false">
             Cancel
           </button>
-          <button class="contrast" @click="deleteProject" :aria-busy="deleting">
+          <button class="contrast" :aria-busy="deleting" @click="deleteProject">
             Delete
           </button>
         </footer>

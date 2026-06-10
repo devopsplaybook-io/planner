@@ -6,11 +6,11 @@
         <p>Free-form notes</p>
       </hgroup>
       <button class="fab-button" @click="showCreateDialog = true">
-        <i class="bi bi-plus-lg"></i>
+        <i class="bi bi-plus-lg"/>
       </button>
     </header>
 
-    <div v-if="loading" class="loading-indicator"></div>
+    <div v-if="loading" class="loading-indicator"/>
 
     <div v-else class="note-list">
       <article
@@ -31,7 +31,7 @@
             l
           }}</span>
           <small v-if="note.comments.length">
-            <i class="bi bi-chat"></i> {{ note.comments.length }}
+            <i class="bi bi-chat"/> {{ note.comments.length }}
           </small>
         </footer>
       </article>
@@ -46,7 +46,7 @@
             class="close-btn"
             aria-label="Close"
             @click="showCreateDialog = false"
-          ></button>
+          />
         </header>
         <form @submit.prevent="createNote">
           <label>
@@ -68,7 +68,7 @@
               type="text"
               required
               placeholder="Note title"
-            />
+            >
           </label>
           <label>
             Description
@@ -76,7 +76,7 @@
               v-model="newNote.description"
               placeholder="Note content"
               rows="5"
-            ></textarea>
+            />
           </label>
           <footer>
             <button type="submit" :aria-busy="creating">Create</button>

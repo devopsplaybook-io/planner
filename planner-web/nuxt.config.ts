@@ -14,13 +14,14 @@ export default defineNuxtConfig({
         { name: "description", content: "planner" },
         { name: "theme-color", content: "#212121" },
       ],
-      link: [
-        { rel: "icon", href: "/images/logo.png" },
-        { rel: "stylesheet", href: "/styles.css" },
-      ],
+      link: [{ rel: "icon", href: "/images/logo.png" }],
     },
   },
-  css: ["~/assets/css/main.css"],
+  css: [
+    "@picocss/pico",
+    "bootstrap-icons/font/bootstrap-icons.css",
+    "~/assets/css/main.css",
+  ],
   modules: ["@pinia/nuxt", "@vite-pwa/nuxt"],
   imports: {
     dirs: ["./stores"],

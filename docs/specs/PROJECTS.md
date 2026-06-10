@@ -1,18 +1,21 @@
 # Projects
 
-Projects are the top-level organizational unit. There is one default project,
-but multiple projects can be added.
+Projects are the top-level organizational unit.
+
+- [x] There is one default project, but multiple projects can be added.
 
 ## Visibility
 
-Projects are visible to all users or restricted to specific users.
+- [ ] Projects are visible to all users or restricted to specific users.
 
 ## Statuses
 
 Each project can define its own set of statuses. By default:
 
-- To Do
-- In Progress
-- Done
+- [x] To Do
+- [x] In Progress
+- [x] Done
 
-Projects can define custom statuses except "Done", which is mandatory for all projects.
+- [x] Projects can define custom statuses except "Done", which is mandatory for all projects.
+
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-06-10_

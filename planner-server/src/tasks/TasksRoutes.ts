@@ -14,7 +14,12 @@ import {
   deleteComment,
   clearLabels,
   addLabel,
+  addTaskAttachment,
+  deleteTaskAttachment,
+  getTaskAttachment,
 } from "./TasksData";
+import * as fs from "fs-extra";
+import * as path from "path";
 
 export class TasksRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
@@ -212,5 +217,101 @@ export class TasksRoutes {
       }
       return res.status(201).send({});
     });
+
+    // ==================== ATTACHMENTS ====================
+    fastify.post<{ Params: { id: string } }>(
+      "/:id/attachments",
+      async (req, res) => {
+        try {
+          await AuthMustBeAuthenticated(req, res);
+        } catch {
+          return;
+        }
+        const task = await TasksDataGet(req.params.id);
+        if (!task) {
+          return res.status(404).send({ error: "Task Not Found" });
+        }
+
+        const data = await req.file();
+        if (!data) {
+          return res.status(400).send({ error: "No file uploaded" });
+        }
+
+        const uploadDir = process.env.TMP_DIR || "/tmp";
+        const attachmentDir = path.join(uploadDir, "attachments", "tasks");
+        await fs.ensureDir(attachmentDir);
+
+        const attachmentId = uuidv4();
+        const ext = path.extname(data.filename);
+        const savedFileName = attachmentId + ext;
+        const filePath = path.join(attachmentDir, savedFileName);
+
+        const writeStream = fs.createWriteStream(filePath);
+        await new Promise<void>((resolve, reject) => {
+          data.file.pipe(writeStream);
+          writeStream.on("finish", () => resolve());
+          writeStream.on("error", reject);
+        });
+
+        await addTaskAttachment(req.params.id, data.filename, filePath);
+
+        return res.status(201).send({
+          id: attachmentId,
+          fileName: data.filename,
+          filePath: filePath,
+          dateCreated: new Date().toISOString(),
+        });
+      },
+    );
+
+    fastify.get<{ Params: { id: string; attachmentId: string } }>(
+      "/:id/attachments/:attachmentId",
+      async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
+        if (!userSession.isAuthenticated) {
+          return res.status(403).send({ error: "Access Denied" });
+        }
+        const attachment = await getTaskAttachment(req.params.attachmentId);
+        if (!attachment) {
+          return res.status(404).send({ error: "Attachment Not Found" });
+        }
+        if (attachment.taskId !== req.params.id) {
+          return res.status(404).send({ error: "Attachment Not Found" });
+        }
+        if (!(await fs.pathExists(attachment.filePath))) {
+          return res.status(404).send({ error: "File Not Found" });
+        }
+        const stream = fs.createReadStream(attachment.filePath);
+        res.type("application/octet-stream");
+        res.header(
+          "Content-Disposition",
+          `attachment; filename="${attachment.fileName}"`,
+        );
+        return res.send(stream);
+      },
+    );
+
+    fastify.delete<{ Params: { id: string; attachmentId: string } }>(
+      "/:id/attachments/:attachmentId",
+      async (req, res) => {
+        try {
+          await AuthMustBeAuthenticated(req, res);
+        } catch {
+          return;
+        }
+        const attachment = await getTaskAttachment(req.params.attachmentId);
+        if (!attachment) {
+          return res.status(404).send({ error: "Attachment Not Found" });
+        }
+        if (attachment.taskId !== req.params.id) {
+          return res.status(404).send({ error: "Attachment Not Found" });
+        }
+        if (await fs.pathExists(attachment.filePath)) {
+          await fs.remove(attachment.filePath);
+        }
+        await deleteTaskAttachment(req.params.attachmentId);
+        return res.status(201).send({});
+      },
+    );
   }
 }

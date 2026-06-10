@@ -1,12 +1,12 @@
 <template>
   <div class="task-detail">
-    <div v-if="loading" class="loading-indicator"></div>
+    <div v-if="loading" class="loading-indicator"/>
 
     <template v-else-if="task">
       <header class="detail-header">
         <div>
           <NuxtLink to="/tasks" class="back-link"
-            ><i class="bi bi-arrow-left"></i> Tasks</NuxtLink
+            ><i class="bi bi-arrow-left"/> Tasks</NuxtLink
           >
           <hgroup>
             <h1>{{ task.title }}</h1>
@@ -15,7 +15,7 @@
         </div>
         <div class="header-actions">
           <span :class="'priority-' + task.priority">
-            <i class="bi bi-flag"></i> {{ task.priority }}
+            <i class="bi bi-flag"/> {{ task.priority }}
           </span>
           <span class="status-badge">{{ task.status }}</span>
         </div>
@@ -54,10 +54,49 @@
               type="checkbox"
               :checked="item.done"
               @change="toggleChecklist(idx)"
-            />
+            >
             <span :class="{ done: item.done }">{{ item.text }}</span>
           </label>
         </div>
+      </section>
+
+      <!-- Attachments -->
+      <section v-if="task.attachments.length">
+        <h2>Attachments ({{ task.attachments.length }})</h2>
+        <div class="attachments">
+          <div
+            v-for="att in task.attachments"
+            :key="att.id"
+            class="attachment-item"
+          >
+            <a
+              :href="`/api/tasks/${task.id}/attachments/${att.id}`"
+              target="_blank"
+              class="attachment-link"
+            >
+              <i class="bi bi-paperclip"/> {{ att.fileName }}
+            </a>
+            <button
+              class="secondary small-btn"
+              :aria-busy="deletingAttachmentId === att.id"
+              @click="deleteAttachment(att.id)"
+            >
+              <i class="bi bi-x"/>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Add Attachment</h2>
+        <form class="add-attachment" @submit.prevent="uploadAttachment">
+          <input
+            ref="fileInput"
+            type="file"
+            class="file-input"
+          >
+          <button type="submit" :aria-busy="uploading">Upload</button>
+        </form>
       </section>
 
       <!-- Comments -->
@@ -85,7 +124,7 @@
             type="text"
             placeholder="Add a comment..."
             required
-          />
+          >
           <button type="submit" :aria-busy="submitting">Send</button>
         </form>
       </section>
@@ -93,7 +132,7 @@
       <!-- Delete -->
       <section>
         <button class="contrast" @click="showDeleteConfirm = true">
-          <i class="bi bi-trash"></i> Delete Task
+          <i class="bi bi-trash"/> Delete Task
         </button>
       </section>
     </template>
@@ -109,7 +148,7 @@
           <button class="secondary" @click="showDeleteConfirm = false">
             Cancel
           </button>
-          <button class="contrast" @click="deleteTask" :aria-busy="deleting">
+          <button class="contrast" :aria-busy="deleting" @click="deleteTask">
             Delete
           </button>
         </footer>
@@ -129,6 +168,9 @@ const newComment = ref("");
 const submitting = ref(false);
 const showDeleteConfirm = ref(false);
 const deleting = ref(false);
+const uploading = ref(false);
+const deletingAttachmentId = ref("");
+const fileInput = ref(null);
 
 onMounted(async () => {
   try {
@@ -178,6 +220,31 @@ async function deleteTask() {
   } finally {
     deleting.value = false;
     showDeleteConfirm.value = false;
+  }
+}
+
+async function uploadAttachment() {
+  const input = fileInput.value;
+  if (!input || !input.files || !input.files[0]) return;
+  uploading.value = true;
+  try {
+    await tasksStore.uploadAttachment(route.params.id, input.files[0]);
+    input.value = "";
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to upload file");
+  } finally {
+    uploading.value = false;
+  }
+}
+
+async function deleteAttachment(attachmentId) {
+  deletingAttachmentId.value = attachmentId;
+  try {
+    await tasksStore.deleteAttachment(route.params.id, attachmentId);
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to delete attachment");
+  } finally {
+    deletingAttachmentId.value = "";
   }
 }
 </script>
@@ -305,6 +372,47 @@ section {
   padding: 1em;
   color: var(--pico-muted-color);
   font-size: 0.9em;
+}
+
+.attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.3em 0.5em;
+  background: var(--pico-card-background-color);
+  border-radius: 0.3em;
+}
+
+.attachment-link {
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+.attachment-link:hover {
+  text-decoration: underline;
+}
+
+.small-btn {
+  padding: 0.1em 0.4em;
+  font-size: 0.85em;
+}
+
+.add-attachment {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+}
+
+.file-input {
+  flex: 1;
 }
 
 dialog article footer {

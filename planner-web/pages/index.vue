@@ -5,12 +5,12 @@
       <p>Tasks that need your attention</p>
     </hgroup>
 
-    <div v-if="loading" class="loading-indicator"></div>
+    <div v-if="loading" class="loading-indicator" />
 
     <template v-else>
       <!-- Overdue Tasks -->
       <section v-if="overdueTasks.length > 0">
-        <h2><i class="bi bi-exclamation-triangle"></i> Overdue</h2>
+        <h2><i class="bi bi-exclamation-triangle" /> Overdue</h2>
         <div class="task-list">
           <article
             v-for="task in overdueTasks"
@@ -30,7 +30,7 @@
 
       <!-- Upcoming Tasks (due within 3 days) -->
       <section v-if="upcomingTasks.length > 0">
-        <h2><i class="bi bi-clock"></i> Upcoming</h2>
+        <h2><i class="bi bi-clock" /> Upcoming</h2>
         <div class="task-list">
           <article
             v-for="task in upcomingTasks"
@@ -50,7 +50,7 @@
 
       <!-- High Priority Tasks -->
       <section v-if="highPriorityTasks.length > 0">
-        <h2><i class="bi bi-flag"></i> High Priority</h2>
+        <h2><i class="bi bi-flag" /> High Priority</h2>
         <div class="task-list">
           <article
             v-for="task in highPriorityTasks"
@@ -76,7 +76,7 @@
         "
         class="empty-state"
       >
-        <i class="bi bi-check-circle"></i>
+        <i class="bi bi-check-circle" />
         <p>All caught up! No tasks need immediate attention.</p>
       </div>
     </template>
@@ -87,30 +87,11 @@
 const tasksStore = useTasksStore();
 
 const loading = ref(true);
+const viewData = ref({ overdue: [], upcoming: [], highPriority: [] });
 
-const overdueTasks = computed(() =>
-  tasksStore.tasks.filter(
-    (t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "Done",
-  ),
-);
-
-const upcomingTasks = computed(() => {
-  const now = new Date();
-  const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-  return tasksStore.tasks.filter(
-    (t) =>
-      t.dueDate &&
-      new Date(t.dueDate) >= now &&
-      new Date(t.dueDate) <= in3Days &&
-      t.status !== "Done",
-  );
-});
-
-const highPriorityTasks = computed(() =>
-  tasksStore.tasks.filter(
-    (t) => t.priority === "high" && t.status !== "Done" && !t.dueDate,
-  ),
-);
+const overdueTasks = computed(() => viewData.value.overdue);
+const upcomingTasks = computed(() => viewData.value.upcoming);
+const highPriorityTasks = computed(() => viewData.value.highPriority);
 
 function truncate(text, max) {
   if (!text) return "";
@@ -119,7 +100,7 @@ function truncate(text, max) {
 
 onMounted(async () => {
   try {
-    await tasksStore.fetchAll();
+    viewData.value = await tasksStore.fetchNextView();
   } catch {
     // Handle error silently
   } finally {

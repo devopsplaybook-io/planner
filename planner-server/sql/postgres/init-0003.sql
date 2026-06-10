@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS tasks (
-    "id" UUID NOT NULL,
+    "id" UUID PRIMARY KEY,
     "projectId" UUID NOT NULL,
     "title" VARCHAR(500) NOT NULL,
     "description" TEXT NOT NULL DEFAULT '',

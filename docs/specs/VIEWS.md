@@ -7,20 +7,21 @@ Each view provides a different perspective on the same task data.
 
 ### Next View
 
-Shows tasks that need immediate attention, including:
-
-- Overdue tasks
-- Upcoming tasks (due soon)
-- High-priority tasks
-- Tasks ordered by priority and due date
+- [x] Shows tasks that need immediate attention, including:
+  - [x] Overdue tasks
+  - [x] Upcoming tasks (due soon)
+  - [x] High-priority tasks
+  - [x] Tasks ordered by priority and due date
 
 ### Calendar View
 
-Displays tasks on a calendar based on their due dates.
-Allows drag-and-drop to reschedule tasks.
+- [x] Displays tasks on a calendar based on their due dates.
+- [x] Allows drag-and-drop to reschedule tasks.
 
 ### Kanban View
 
-Organizes tasks into columns based on their status.
-Allows drag-and-drop to move tasks between statuses.
-Columns correspond to the project's defined statuses.
+- [x] Organizes tasks into columns based on their status.
+- [x] Allows drag-and-drop to move tasks between statuses.
+- [x] Columns correspond to the project's defined statuses.
+
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-06-10_

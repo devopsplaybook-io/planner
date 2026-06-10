@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS projects (
-    "id" UUID NOT NULL,
+    "id" UUID PRIMARY KEY,
     "name" VARCHAR(200) NOT NULL,
     "description" TEXT NOT NULL DEFAULT '',
     "isDefault" INTEGER NOT NULL DEFAULT 0,

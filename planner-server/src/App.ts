@@ -12,11 +12,16 @@ import {
 } from "./utils/DbUtils";
 import { AuthInit } from "./users/Auth";
 import { UsersRoutes } from "./users/UsersRoutes";
+import { UsersDataList } from "./users/UsersData";
 import { ProjectsRoutes } from "./projects/ProjectsRoutes";
+import { ProjectsDataAdd, ProjectsDataList } from "./projects/ProjectsData";
+import { Project } from "./model/Project";
 import { TasksRoutes } from "./tasks/TasksRoutes";
 import { NotesRoutes } from "./notes/NotesRoutes";
+import { ViewsRoutes } from "./views/ViewsRoutes";
 
 import fastifyCompress from "@fastify/compress";
+import fastifyMultipart from "@fastify/multipart";
 
 const logger = console;
 
@@ -82,6 +87,16 @@ Promise.resolve().then(async () => {
   await AuthInit(config);
   await runMigrations();
 
+  // Ensure a default project exists
+  const existingProjects = await ProjectsDataList();
+  if (existingProjects.length === 0) {
+    const defaultProject = new Project();
+    defaultProject.name = "General";
+    defaultProject.isDefault = true;
+    await ProjectsDataAdd(defaultProject);
+    logger.info("Created default project: General");
+  }
+
   // APIs
 
   const fastify = Fastify({
@@ -101,10 +116,23 @@ Promise.resolve().then(async () => {
       origin: config.CORS_POLICY_ORIGIN,
       methods: "GET,PUT,POST,DELETE",
     });
+
+    await fastify.register(fastifyMultipart, {
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10 MB
+      },
+    });
   }
 
   fastify.get("/api/status", async () => {
     return { started: true };
+  });
+
+  fastify.get("/api/status/initialization", async (req, res) => {
+    if ((await UsersDataList()).length === 0) {
+      return res.status(200).send({ initialized: false });
+    }
+    return res.status(200).send({ initialized: true });
   });
 
   // Register API routes
@@ -134,6 +162,13 @@ Promise.resolve().then(async () => {
       await new NotesRoutes().getRoutes(instance);
     },
     { prefix: "/api/notes" },
+  );
+
+  await fastify.register(
+    async (instance) => {
+      await new ViewsRoutes().getRoutes(instance);
+    },
+    { prefix: "/api/views" },
   );
 
   fastify.register(fastifyStatic, {

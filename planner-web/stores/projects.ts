@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { acceptHMRUpdate, defineStore } from "pinia";
 import api from "../utils/api";
 

@@ -13,12 +13,12 @@
           </option>
         </select>
         <button class="fab-button" @click="showCreateDialog = true">
-          <i class="bi bi-plus-lg"></i>
+          <i class="bi bi-plus-lg"/>
         </button>
       </div>
     </header>
 
-    <div v-if="loading" class="loading-indicator"></div>
+    <div v-if="loading" class="loading-indicator"/>
 
     <div v-else class="kanban-board">
       <div v-for="status in statuses" :key="status" class="kanban-column">
@@ -36,14 +36,14 @@
           >
             <header>
               <span :class="'priority-' + task.priority">
-                <i class="bi bi-flag"></i>
+                <i class="bi bi-flag"/>
               </span>
               <span class="task-title">{{ task.title }}</span>
             </header>
             <footer>
               <small v-if="task.dueDate">{{ task.dueDate }}</small>
               <small v-if="task.assignees.length">
-                <i class="bi bi-people"></i> {{ task.assignees.length }}
+                <i class="bi bi-people"/> {{ task.assignees.length }}
               </small>
             </footer>
           </article>
@@ -60,7 +60,7 @@
             class="close-btn"
             aria-label="Close"
             @click="showCreateDialog = false"
-          ></button>
+          />
         </header>
         <form @submit.prevent="createTask">
           <label>
@@ -82,14 +82,14 @@
               type="text"
               required
               placeholder="Task title"
-            />
+            >
           </label>
           <label>
             Description
             <textarea
               v-model="newTask.description"
               placeholder="Optional description"
-            ></textarea>
+            />
           </label>
           <label>
             Priority
@@ -101,7 +101,7 @@
           </label>
           <label>
             Due date
-            <input v-model="newTask.dueDate" type="date" />
+            <input v-model="newTask.dueDate" type="date" >
           </label>
           <footer>
             <button type="submit" :aria-busy="creating">Create</button>

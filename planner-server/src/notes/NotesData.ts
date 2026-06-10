@@ -105,6 +105,56 @@ export async function clearNoteLabels(noteId: string): Promise<void> {
   ]);
 }
 
+// ==================== ATTACHMENTS ====================
+
+export async function addNoteAttachment(
+  noteId: string,
+  fileName: string,
+  filePath: string,
+): Promise<string> {
+  const { v4: uuidv4 } = await import("uuid");
+  const id = uuidv4();
+  await DbUtilsExecSQL(SQL_QUERIES.INSERT_NOTE_ATTACHMENT[DbUtilsGetType()], [
+    id,
+    noteId,
+    fileName,
+    filePath,
+    new Date().toISOString(),
+  ]);
+  return id;
+}
+
+export async function deleteNoteAttachment(
+  attachmentId: string,
+): Promise<void> {
+  await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE_ATTACHMENT[DbUtilsGetType()], [
+    attachmentId,
+  ]);
+}
+
+export async function getNoteAttachment(
+  attachmentId: string,
+): Promise<{
+  id: string;
+  noteId: string;
+  fileName: string;
+  filePath: string;
+  dateCreated: string;
+} | null> {
+  const rows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_NOTE_ATTACHMENT_BY_ID[DbUtilsGetType()],
+    [attachmentId],
+  );
+  if (rows.length === 0) return null;
+  return {
+    id: rows[0].id,
+    noteId: rows[0].noteId,
+    fileName: rows[0].fileName,
+    filePath: rows[0].filePath,
+    dateCreated: rows[0].dateCreated,
+  };
+}
+
 // ==================== HELPERS ====================
 
 async function enrichNote(row: Record<string, unknown>): Promise<Note> {
@@ -215,6 +265,20 @@ const SQL_QUERIES = {
   GET_NOTE_ATTACHMENTS: {
     postgres: 'SELECT * FROM note_attachments WHERE "noteId" = $1',
     sqlite: "SELECT * FROM note_attachments WHERE noteId = ?",
+  },
+  INSERT_NOTE_ATTACHMENT: {
+    postgres:
+      'INSERT INTO note_attachments ("id", "noteId", "fileName", "filePath", "dateCreated") VALUES ($1, $2, $3, $4, $5)',
+    sqlite:
+      "INSERT INTO note_attachments (id, noteId, fileName, filePath, dateCreated) VALUES (?, ?, ?, ?, ?)",
+  },
+  DELETE_NOTE_ATTACHMENT: {
+    postgres: 'DELETE FROM note_attachments WHERE "id" = $1',
+    sqlite: "DELETE FROM note_attachments WHERE id = ?",
+  },
+  GET_NOTE_ATTACHMENT_BY_ID: {
+    postgres: 'SELECT * FROM note_attachments WHERE "id" = $1',
+    sqlite: "SELECT * FROM note_attachments WHERE id = ?",
   },
   INSERT_NOTE_LABEL: {
     postgres:

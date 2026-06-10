@@ -41,7 +41,7 @@ function createHead(options = {}) {
 
 const NUXT_RUNTIME_PAYLOAD_EXTRACTION = false;
 
-const appHead = {"meta":[{"name":"viewport","content":"width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"},{"charset":"utf-16"},{"name":"description","content":"planner"},{"name":"theme-color","content":"#212121"}],"link":[{"rel":"icon","href":"/images/logo.png"},{"rel":"stylesheet","href":"/styles.css"}],"style":[],"script":[],"noscript":[],"charset":"utf-16","viewport":"width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":"Planner"};
+const appHead = {"meta":[{"name":"viewport","content":"width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"},{"charset":"utf-16"},{"name":"description","content":"planner"},{"name":"theme-color","content":"#212121"}],"link":[{"rel":"icon","href":"/images/logo.png"}],"style":[],"script":[],"noscript":[],"charset":"utf-16","viewport":"width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":"Planner"};
 
 const appRootTag = "div";
 

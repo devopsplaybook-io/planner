@@ -141,6 +141,56 @@ export async function clearLabels(taskId: string): Promise<void> {
   ]);
 }
 
+// ==================== ATTACHMENTS ====================
+
+export async function addTaskAttachment(
+  taskId: string,
+  fileName: string,
+  filePath: string,
+): Promise<string> {
+  const { v4: uuidv4 } = await import("uuid");
+  const id = uuidv4();
+  await DbUtilsExecSQL(SQL_QUERIES.INSERT_ATTACHMENT[DbUtilsGetType()], [
+    id,
+    taskId,
+    fileName,
+    filePath,
+    new Date().toISOString(),
+  ]);
+  return id;
+}
+
+export async function deleteTaskAttachment(
+  attachmentId: string,
+): Promise<void> {
+  await DbUtilsExecSQL(SQL_QUERIES.DELETE_ATTACHMENT[DbUtilsGetType()], [
+    attachmentId,
+  ]);
+}
+
+export async function getTaskAttachment(
+  attachmentId: string,
+): Promise<{
+  id: string;
+  taskId: string;
+  fileName: string;
+  filePath: string;
+  dateCreated: string;
+} | null> {
+  const rows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_ATTACHMENT_BY_ID[DbUtilsGetType()],
+    [attachmentId],
+  );
+  if (rows.length === 0) return null;
+  return {
+    id: rows[0].id,
+    taskId: rows[0].taskId,
+    fileName: rows[0].fileName,
+    filePath: rows[0].filePath,
+    dateCreated: rows[0].dateCreated,
+  };
+}
+
 // ==================== HELPERS ====================
 
 async function enrichTask(row: Record<string, unknown>): Promise<Task> {
@@ -282,6 +332,20 @@ const SQL_QUERIES = {
   GET_ATTACHMENTS: {
     postgres: 'SELECT * FROM task_attachments WHERE "taskId" = $1',
     sqlite: "SELECT * FROM task_attachments WHERE taskId = ?",
+  },
+  INSERT_ATTACHMENT: {
+    postgres:
+      'INSERT INTO task_attachments ("id", "taskId", "fileName", "filePath", "dateCreated") VALUES ($1, $2, $3, $4, $5)',
+    sqlite:
+      "INSERT INTO task_attachments (id, taskId, fileName, filePath, dateCreated) VALUES (?, ?, ?, ?, ?)",
+  },
+  DELETE_ATTACHMENT: {
+    postgres: 'DELETE FROM task_attachments WHERE "id" = $1',
+    sqlite: "DELETE FROM task_attachments WHERE id = ?",
+  },
+  GET_ATTACHMENT_BY_ID: {
+    postgres: 'SELECT * FROM task_attachments WHERE "id" = $1',
+    sqlite: "SELECT * FROM task_attachments WHERE id = ?",
   },
   INSERT_LABEL: {
     postgres:

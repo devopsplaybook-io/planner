@@ -2,30 +2,30 @@
   <nav :class="{ collapsed: isCollapsed }">
     <button
       class="menu-toggle"
-      @click="isCollapsed = !isCollapsed"
       aria-label="Toggle menu"
+      @click="isCollapsed = !isCollapsed"
     >
-      <i :class="isCollapsed ? 'bi bi-list' : 'bi bi-x'"></i>
+      <i :class="isCollapsed ? 'bi bi-list' : 'bi bi-x'" />
     </button>
     <div class="menu-items" :class="{ show: !isCollapsed }">
       <NuxtLink to="/" class="menu-item" @click="closeOnMobile">
-        <i class="bi bi-speedometer2"></i>
+        <i class="bi bi-speedometer2" />
         <span>Dashboard</span>
       </NuxtLink>
       <NuxtLink to="/projects" class="menu-item" @click="closeOnMobile">
-        <i class="bi bi-folder"></i>
+        <i class="bi bi-folder" />
         <span>Projects</span>
       </NuxtLink>
       <NuxtLink to="/tasks" class="menu-item" @click="closeOnMobile">
-        <i class="bi bi-check2-square"></i>
+        <i class="bi bi-check2-square" />
         <span>Tasks</span>
       </NuxtLink>
       <NuxtLink to="/notes" class="menu-item" @click="closeOnMobile">
-        <i class="bi bi-journal-text"></i>
+        <i class="bi bi-journal-text" />
         <span>Notes</span>
       </NuxtLink>
       <NuxtLink to="/calendar" class="menu-item" @click="closeOnMobile">
-        <i class="bi bi-calendar"></i>
+        <i class="bi bi-calendar" />
         <span>Calendar</span>
       </NuxtLink>
       <hr class="menu-divider" />
@@ -35,7 +35,7 @@
         class="menu-item"
         @click="closeOnMobile"
       >
-        <i class="bi bi-gear"></i>
+        <i class="bi bi-gear" />
         <span>Admin</span>
       </NuxtLink>
       <button
@@ -43,8 +43,19 @@
         class="menu-item logout-btn"
         @click="handleLogout"
       >
-        <i class="bi bi-box-arrow-right"></i>
+        <i class="bi bi-box-arrow-right" />
         <span>Logout</span>
+      </button>
+      <button
+        class="menu-item theme-btn"
+        :title="
+          getThemeIcon().includes('moon')
+            ? 'Switch to light mode'
+            : 'Switch to dark mode'
+        "
+        @click="toggleTheme()"
+      >
+        <i :class="getThemeIcon()" />
       </button>
     </div>
   </nav>
@@ -54,6 +65,18 @@
 const authStore = useAuthStore();
 const route = useRoute();
 const isCollapsed = ref(true);
+const toggleTheme = inject("toggleTheme");
+const theme = inject("theme");
+
+function getThemeIcon() {
+  const current = theme?.value;
+  if (current === "system") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "bi bi-moon"
+      : "bi bi-sun";
+  }
+  return current === "dark" ? "bi bi-moon" : "bi bi-sun";
+}
 
 function closeOnMobile() {
   if (window.innerWidth < 768) {

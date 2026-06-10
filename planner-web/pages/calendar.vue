@@ -5,13 +5,13 @@
       <p>Tasks by due date</p>
     </hgroup>
 
-    <div v-if="loading" class="loading-indicator"></div>
+    <div v-if="loading" class="loading-indicator" />
 
     <template v-else>
       <div class="month-nav">
-        <button @click="prevMonth"><i class="bi bi-chevron-left"></i></button>
+        <button @click="prevMonth"><i class="bi bi-chevron-left" /></button>
         <h2>{{ currentMonthName }} {{ currentYear }}</h2>
-        <button @click="nextMonth"><i class="bi bi-chevron-right"></i></button>
+        <button @click="nextMonth"><i class="bi bi-chevron-right" /></button>
       </div>
 
       <div class="calendar-grid">
@@ -25,7 +25,14 @@
             v-for="(day, idx) in calendarDays"
             :key="idx"
             class="calendar-day"
-            :class="{ 'other-month': !day.isCurrentMonth, today: day.isToday }"
+            :class="{
+              'other-month': !day.isCurrentMonth,
+              today: day.isToday,
+              'drag-over': dragOverDate === day.dateStr,
+            }"
+            @dragover.prevent="onDragOver(day.dateStr)"
+            @dragleave="onDragLeave(day.dateStr)"
+            @drop="onDrop(day.dateStr)"
           >
             <span class="day-number">{{ day.day }}</span>
             <div class="day-tasks">
@@ -33,8 +40,13 @@
                 v-for="task in day.tasks"
                 :key="task.id"
                 class="day-task"
-                :class="'priority-' + task.priority"
+                :class="[
+                  'priority-' + task.priority,
+                  { dragging: draggingTask?.id === task.id },
+                ]"
                 :title="task.title"
+                draggable="true"
+                @dragstart="onDragStart($event, task)"
                 @click="router.push(`/tasks/${task.id}`)"
               >
                 {{ task.title }}
@@ -53,6 +65,8 @@ const router = useRouter();
 
 const loading = ref(true);
 const currentDate = ref(new Date());
+const draggingTask = ref(null);
+const dragOverDate = ref(null);
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const monthNames = [
@@ -98,6 +112,7 @@ const calendarDays = computed(() => {
     days.push({
       day,
       date,
+      dateStr: date.toISOString().split("T")[0],
       isCurrentMonth: false,
       isToday: date.getTime() === today.getTime(),
       tasks: getTasksForDate(date),
@@ -110,6 +125,7 @@ const calendarDays = computed(() => {
     days.push({
       day,
       date,
+      dateStr: date.toISOString().split("T")[0],
       isCurrentMonth: true,
       isToday: date.getTime() === today.getTime(),
       tasks: getTasksForDate(date),
@@ -124,6 +140,7 @@ const calendarDays = computed(() => {
       days.push({
         day,
         date,
+        dateStr: date.toISOString().split("T")[0],
         isCurrentMonth: false,
         isToday: date.getTime() === today.getTime(),
         tasks: getTasksForDate(date),
@@ -166,6 +183,35 @@ onMounted(async () => {
     loading.value = false;
   }
 });
+
+function onDragStart(event, task) {
+  draggingTask.value = task;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", task.id);
+}
+
+function onDragOver(dateStr) {
+  dragOverDate.value = dateStr;
+}
+
+function onDragLeave(dateStr) {
+  if (dragOverDate.value === dateStr) {
+    dragOverDate.value = null;
+  }
+}
+
+async function onDrop(dateStr) {
+  dragOverDate.value = null;
+  if (!draggingTask.value) return;
+  const task = draggingTask.value;
+  draggingTask.value = null;
+  if (task.dueDate && task.dueDate.startsWith(dateStr)) return;
+  try {
+    await tasksStore.update(task.id, { dueDate: dateStr });
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to reschedule task");
+  }
+}
 </script>
 
 <style scoped>
@@ -235,6 +281,11 @@ onMounted(async () => {
   opacity: 0.3;
 }
 
+.calendar-day.drag-over {
+  background: var(--pico-primary-background);
+  opacity: 0.8;
+}
+
 .calendar-day.today .day-number {
   background: var(--pico-primary-background);
   color: var(--pico-primary-inverse);
@@ -266,6 +317,10 @@ onMounted(async () => {
   white-space: nowrap;
   font-size: 0.85em;
   background: var(--pico-card-background-color);
+}
+
+.day-task.dragging {
+  opacity: 0.5;
 }
 
 .day-task:hover {

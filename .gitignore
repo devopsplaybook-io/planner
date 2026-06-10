@@ -10,3 +10,4 @@ coverage
 .vscode
 /env-dev.js
 /*/tmp
+planner-proxy/bin/

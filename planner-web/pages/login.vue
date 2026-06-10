@@ -4,8 +4,8 @@
       <header>
         <hgroup>
           <h1>Planner</h1>
-          <p v-if="!isRegistering">Sign in to your account</p>
-          <p v-else>Create your account</p>
+          <p v-if="isSetup">Create your admin account to get started</p>
+          <p v-else>Sign in to your account</p>
         </hgroup>
       </header>
 
@@ -34,7 +34,7 @@
           />
         </label>
 
-        <label v-if="isRegistering">
+        <label v-if="isSetup">
           Confirm Password
           <input
             v-model="passwordConfirm"
@@ -47,21 +47,8 @@
 
         <footer>
           <button type="submit" :aria-busy="loading">
-            {{ isRegistering ? "Register" : "Login" }}
+            {{ isSetup ? "Create Admin Account" : "Login" }}
           </button>
-          <a
-            href="#"
-            @click.prevent="
-              isRegistering = !isRegistering;
-              error = '';
-            "
-          >
-            {{
-              isRegistering
-                ? "Already have an account? Login"
-                : "No account? Register"
-            }}
-          </a>
         </footer>
       </form>
     </article>
@@ -69,34 +56,45 @@
 </template>
 
 <script setup>
+import api from "../utils/api";
 const authStore = useAuthStore();
 const router = useRouter();
 
 const name = ref("");
 const password = ref("");
 const passwordConfirm = ref("");
-const isRegistering = ref(false);
 const loading = ref(false);
 const error = ref("");
+const isSetup = ref(false);
+const checkingInit = ref(true);
 
 onMounted(async () => {
   await authStore.init();
   if (authStore.isAuthenticated) {
     router.push("/");
+    return;
   }
+  // Check if any users exist (first-time setup)
+  try {
+    const res = await api.get("/status/initialization");
+    isSetup.value = !res.data.initialized;
+  } catch {
+    isSetup.value = false;
+  }
+  checkingInit.value = false;
 });
 
 async function handleSubmit() {
   error.value = "";
   loading.value = true;
   try {
-    if (isRegistering.value) {
+    if (isSetup.value) {
       if (password.value !== passwordConfirm.value) {
         error.value = "Passwords do not match";
         loading.value = false;
         return;
       }
-      await authStore.register(name.value, password.value);
+      await api.post("/users", { name: name.value, password: password.value });
     }
     await authStore.login(name.value, password.value);
     router.push("/");

@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { jwtDecode } from "jwt-decode";
 import api from "../utils/api";

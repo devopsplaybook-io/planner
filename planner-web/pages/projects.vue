@@ -6,11 +6,11 @@
         <p>Manage your projects</p>
       </hgroup>
       <button class="fab-button" @click="showCreateDialog = true">
-        <i class="bi bi-plus-lg"></i>
+        <i class="bi bi-plus-lg"/>
       </button>
     </header>
 
-    <div v-if="loading" class="loading-indicator"></div>
+    <div v-if="loading" class="loading-indicator"/>
 
     <div v-else class="project-grid">
       <article
@@ -39,7 +39,7 @@
             class="close-btn"
             aria-label="Close"
             @click="showCreateDialog = false"
-          ></button>
+          />
         </header>
         <form @submit.prevent="createProject">
           <label>
@@ -49,14 +49,14 @@
               type="text"
               required
               placeholder="Project name"
-            />
+            >
           </label>
           <label>
             Description
             <textarea
               v-model="newProject.description"
               placeholder="Optional description"
-            ></textarea>
+            />
           </label>
           <footer>
             <button type="submit" :aria-busy="creating">Create</button>
