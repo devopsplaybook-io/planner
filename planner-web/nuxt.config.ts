@@ -31,8 +31,8 @@ export default defineNuxtConfig({
   },
   pwa: {
     manifest: {
-      name: "APPLICATION_TITLE",
-      short_name: "APPLICATION_TITLE",
+      name: "Planner",
+      short_name: "Planner",
       lang: "en-US",
       start_url: "/",
       display: "standalone",
