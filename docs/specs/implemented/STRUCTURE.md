@@ -91,6 +91,11 @@
 - `pages/calendar.vue` - Calendar view showing tasks by due date
 - `pages/admin.vue` - Admin panel (user management, role changes)
 
+### GitHub Workflows
+
+- `.github/workflows/ci.yml` - CI on push/PR to main: server build+lint+test, web build
+- `.github/workflows/docker.yml` - Docker build & push on push to main or v\* tags
+
 ### Remaining (not yet implemented)
 
 - Task/Note attachments (file upload/download)

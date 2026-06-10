@@ -69,6 +69,18 @@ planner/
 6. **Web pages** - Corresponding Nuxt pages and components
 7. **Views** - Next view, Calendar view, Kanban board
 
+## CI/CD
+
+GitHub Actions workflows are defined in `.github/workflows/`:
+
+- **`ci.yml`**: Runs on push/PR to `main`. Builds, lints, and tests the server; builds the web frontend.
+- **`docker.yml`**: Runs on push to `main` or `v*` tags. Builds and pushes the multi-stage Docker image to `devopsplaybookio/planner` on Docker Hub.
+
+Secrets required in GitHub repository:
+
+- `DOCKER_USERNAME` - Docker Hub username
+- `DOCKER_PASSWORD` - Docker Hub password or access token
+
 ## Post-Change Validation
 
 After any implementation, always:
