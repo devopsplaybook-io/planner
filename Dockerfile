@@ -22,8 +22,6 @@ FROM node:26-alpine
 
 RUN apk add --no-cache gzip
 
-COPY entrypoint.sh /entrypoint.sh
-
 COPY --from=builder /opt/src/planner-server/node_modules /opt/app/planner/node_modules
 COPY --from=builder /opt/src/planner-server/dist /opt/app/planner/dist
 COPY --from=builder /opt/src/planner-web/.output/public /opt/app/planner/web
