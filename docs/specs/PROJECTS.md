@@ -6,7 +6,7 @@ Projects are the top-level organizational unit.
 
 ## Visibility
 
-- [ ] Projects are visible to all users or restricted to specific users.
+- [x] Projects are visible to all users or restricted to specific users.
 
 ## Statuses
 

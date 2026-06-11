@@ -68,6 +68,18 @@ export class UsersRoutes {
       return res.status(200).send(users.map((u) => u.toTransportJson()));
     });
 
+    // ==================== USER PICKER (Authenticated users) ====================
+    fastify.get("/picker", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(403).send({ error: "Access Denied" });
+      }
+      const users = await UsersDataList();
+      return res
+        .status(200)
+        .send(users.map((u) => ({ id: u.id, name: u.name })));
+    });
+
     // ==================== CREATE USER ====================
     interface PostUser extends RequestGenericInterface {
       Body: { name: string; password: string; role?: string };

@@ -59,6 +59,11 @@ export const useTasksStore = defineStore("tasks", {
       return res.data;
     },
 
+    async fetchDashboard(params?: { projectId?: string; labels?: string }) {
+      const res = await api.get("/views/dashboard", { params });
+      return res.data;
+    },
+
     async fetchById(id: string) {
       const res = await api.get(`/tasks/${id}`);
       this.currentTask = res.data;

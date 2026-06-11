@@ -14,6 +14,10 @@ export class Project {
     project.name = json.name as string;
     project.description = (json.description as string) || "";
     project.isDefault = json.isDefault === true || json.isDefault === 1;
+    project.visibility = (json.visibility as string) || "public";
+    if (json.userAccess) {
+      project.userAccess = json.userAccess as string[];
+    }
     if (json.statuses) {
       try {
         project.statuses =
@@ -31,6 +35,8 @@ export class Project {
   public name: string;
   public description: string;
   public isDefault: boolean;
+  public visibility: string;
+  public userAccess: string[];
   public statuses: string[];
   public dateCreated: string;
 
@@ -38,6 +44,8 @@ export class Project {
     this.id = uuidv4();
     this.description = "";
     this.isDefault = false;
+    this.visibility = "public";
+    this.userAccess = [];
     this.statuses = [...DEFAULT_STATUSES];
     this.dateCreated = new Date().toISOString();
   }
@@ -48,6 +56,7 @@ export class Project {
       name: this.name,
       description: this.description,
       isDefault: this.isDefault,
+      visibility: this.visibility,
       statuses: JSON.stringify(this.statuses),
       dateCreated: this.dateCreated,
     };
@@ -59,6 +68,8 @@ export class Project {
       name: this.name,
       description: this.description,
       isDefault: this.isDefault,
+      visibility: this.visibility,
+      userAccess: this.userAccess,
       statuses: this.statuses,
     };
   }

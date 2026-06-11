@@ -60,6 +60,7 @@ export class TasksRoutes {
         dueDate?: string;
         assignees?: string[];
         labels?: string[];
+        checklist?: { text: string; done: boolean }[];
       };
     }
     fastify.post<PostTask>("/", async (req, res) => {
@@ -83,6 +84,7 @@ export class TasksRoutes {
       if (req.body.assignees)
         task.assignees = req.body.assignees.map((u) => ({ userId: u }));
       if (req.body.labels) task.labels = req.body.labels;
+      if (req.body.checklist) task.checklist = req.body.checklist;
       await TasksDataAdd(task);
       return res.status(201).send(task.toTransportJson());
     });

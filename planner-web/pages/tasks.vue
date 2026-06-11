@@ -13,40 +13,29 @@
           </option>
         </select>
         <button class="fab-button" @click="showCreateDialog = true">
-          <i class="bi bi-plus-lg"/>
+          <i class="bi bi-plus-lg" />
         </button>
       </div>
     </header>
 
-    <div v-if="loading" class="loading-indicator"/>
+    <div v-if="loading" class="loading-indicator" />
 
     <div v-else class="kanban-board">
       <div v-for="status in statuses" :key="status" class="kanban-column">
         <h3 class="column-header">{{ status }}</h3>
-        <div class="column-tasks">
-          <article
+        <div
+          class="column-tasks"
+          @dragover.prevent
+          @drop="onDrop($event, status)"
+        >
+          <TaskCard
             v-for="task in getTasksByStatus(status)"
             :key="task.id"
-            class="kanban-card"
-            draggable="true"
+            :task="task"
+            :draggable="true"
             @dragstart="onDragStart($event, task)"
-            @dragover.prevent
-            @drop="onDrop($event, status)"
-            @click="router.push(`/tasks/${task.id}`)"
-          >
-            <header>
-              <span :class="'priority-' + task.priority">
-                <i class="bi bi-flag"/>
-              </span>
-              <span class="task-title">{{ task.title }}</span>
-            </header>
-            <footer>
-              <small v-if="task.dueDate">{{ task.dueDate }}</small>
-              <small v-if="task.assignees.length">
-                <i class="bi bi-people"/> {{ task.assignees.length }}
-              </small>
-            </footer>
-          </article>
+            @click="openTask(task)"
+          />
         </div>
       </div>
     </div>
@@ -82,7 +71,7 @@
               type="text"
               required
               placeholder="Task title"
-            >
+            />
           </label>
           <label>
             Description
@@ -101,8 +90,32 @@
           </label>
           <label>
             Due date
-            <input v-model="newTask.dueDate" type="date" >
+            <input v-model="newTask.dueDate" type="date" />
           </label>
+          <fieldset>
+            <legend>Checklist</legend>
+            <div
+              v-for="(item, idx) in newTask.checklist"
+              :key="idx"
+              class="checklist-input-row"
+            >
+              <input
+                v-model="newTask.checklist[idx].text"
+                type="text"
+                placeholder="Checklist item"
+              />
+              <button
+                type="button"
+                class="small secondary"
+                @click="removeChecklistItem(idx)"
+              >
+                <i class="bi bi-x" />
+              </button>
+            </div>
+            <button type="button" class="small" @click="addChecklistItem">
+              <i class="bi bi-plus" /> Add item
+            </button>
+          </fieldset>
           <footer>
             <button type="submit" :aria-busy="creating">Create</button>
             <button
@@ -116,19 +129,25 @@
         </form>
       </article>
     </dialog>
+
+    <TaskDetailDialog
+      :task-id="selectedTaskId"
+      @close="selectedTaskId = null"
+      @updated="fetchTasks"
+    />
   </div>
 </template>
 
 <script setup>
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
-const router = useRouter();
 
 const loading = ref(true);
 const selectedProjectId = ref("");
 const showCreateDialog = ref(false);
 const creating = ref(false);
 const dragTask = ref(null);
+const selectedTaskId = ref(null);
 
 const newTask = ref({
   projectId: "",
@@ -136,6 +155,7 @@ const newTask = ref({
   description: "",
   priority: "medium",
   dueDate: "",
+  checklist: [],
 });
 
 const statuses = computed(() => {
@@ -168,6 +188,10 @@ async function onDrop(event, newStatus) {
   dragTask.value = null;
 }
 
+function openTask(task) {
+  selectedTaskId.value = task.id;
+}
+
 async function fetchTasks() {
   loading.value = true;
   try {
@@ -179,11 +203,25 @@ async function fetchTasks() {
   }
 }
 
+function addChecklistItem() {
+  newTask.value.checklist.push({ text: "", done: false });
+}
+
+function removeChecklistItem(idx) {
+  newTask.value.checklist.splice(idx, 1);
+}
+
 async function createTask() {
   creating.value = true;
   try {
-    const data = { ...newTask.value };
-    if (!data.dueDate) delete data.dueDate;
+    const data = {
+      projectId: newTask.value.projectId,
+      title: newTask.value.title,
+      description: newTask.value.description,
+      priority: newTask.value.priority,
+      dueDate: newTask.value.dueDate || undefined,
+      checklist: newTask.value.checklist.filter((c) => c.text.trim()),
+    };
     await tasksStore.create(data);
     showCreateDialog.value = false;
     newTask.value = {
@@ -192,6 +230,7 @@ async function createTask() {
       description: "",
       priority: "medium",
       dueDate: "",
+      checklist: [],
     };
   } catch (e) {
     alert(e.response?.data?.error || "Failed to create task");
@@ -259,46 +298,25 @@ onMounted(async () => {
   gap: 0.3em;
 }
 
-.kanban-card {
-  cursor: pointer;
-  padding: 0.5em;
-  font-size: 0.9em;
-}
-
-.kanban-card header {
-  display: flex;
-  align-items: center;
-  gap: 0.3em;
-  padding: 0;
-  height: auto;
-}
-
-.kanban-card footer {
-  display: flex;
-  justify-content: space-between;
-  padding: 0;
-  margin-top: 0.3em;
-}
-
-.task-title {
-  font-weight: bold;
-}
-
-.priority-high {
-  color: var(--pico-del-color);
-}
-.priority-medium {
-  color: var(--pico-primary);
-}
-.priority-low {
-  color: var(--pico-muted-color);
-}
-
 .close-btn {
   background: none;
   border: none;
   font-size: 1.5em;
   cursor: pointer;
+}
+
+.checklist-input-row {
+  display: flex;
+  gap: 0.3em;
+  margin-bottom: 0.3em;
+}
+
+.checklist-input-row input {
+  flex: 1;
+}
+
+.checklist-input-row button {
+  padding: 0.2em 0.5em;
 }
 
 dialog article footer {

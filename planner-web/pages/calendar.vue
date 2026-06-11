@@ -47,7 +47,7 @@
                 :title="task.title"
                 draggable="true"
                 @dragstart="onDragStart($event, task)"
-                @click="router.push(`/tasks/${task.id}`)"
+                @click="openTask(task)"
               >
                 {{ task.title }}
               </div>
@@ -56,17 +56,23 @@
         </div>
       </div>
     </template>
+
+    <TaskDetailDialog
+      :task-id="selectedTaskId"
+      @close="selectedTaskId = null"
+    />
   </div>
 </template>
 
 <script setup>
 const tasksStore = useTasksStore();
-const router = useRouter();
+const projectsStore = useProjectsStore();
 
 const loading = ref(true);
 const currentDate = ref(new Date());
 const draggingTask = ref(null);
 const dragOverDate = ref(null);
+const selectedTaskId = ref(null);
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const monthNames = [
@@ -188,6 +194,10 @@ function onDragStart(event, task) {
   draggingTask.value = task;
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setData("text/plain", task.id);
+}
+
+function openTask(task) {
+  selectedTaskId.value = task.id;
 }
 
 function onDragOver(dateStr) {

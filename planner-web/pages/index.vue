@@ -1,78 +1,77 @@
 <template>
   <div class="dashboard">
-    <hgroup>
-      <h1>Dashboard</h1>
-      <p>Tasks that need your attention</p>
-    </hgroup>
+    <header class="page-header">
+      <hgroup>
+        <h1>Dashboard</h1>
+        <p>Tasks that need your attention</p>
+      </hgroup>
+      <div class="header-controls">
+        <select v-model="filterProjectId" @change="fetchDashboard">
+          <option value="">All projects</option>
+          <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
+            {{ p.name }}
+          </option>
+        </select>
+      </div>
+    </header>
 
     <div v-if="loading" class="loading-indicator" />
 
     <template v-else>
-      <!-- Overdue Tasks -->
-      <section v-if="overdueTasks.length > 0">
+      <section v-if="dashboardData.overdue.length > 0">
         <h2><i class="bi bi-exclamation-triangle" /> Overdue</h2>
         <div class="task-list">
-          <article
-            v-for="task in overdueTasks"
+          <TaskCard
+            v-for="task in dashboardData.overdue"
             :key="task.id"
-            class="task-card overdue"
-          >
-            <header>
-              <NuxtLink :to="`/tasks/${task.id}`">{{ task.title }}</NuxtLink>
-              <small>{{ task.dueDate }}</small>
-            </header>
-            <p v-if="task.description" class="task-desc">
-              {{ truncate(task.description, 100) }}
-            </p>
-          </article>
+            :task="task"
+            @click="openTask(task)"
+          />
         </div>
       </section>
 
-      <!-- Upcoming Tasks (due within 3 days) -->
-      <section v-if="upcomingTasks.length > 0">
+      <section v-if="dashboardData.upcoming.length > 0">
         <h2><i class="bi bi-clock" /> Upcoming</h2>
         <div class="task-list">
-          <article
-            v-for="task in upcomingTasks"
+          <TaskCard
+            v-for="task in dashboardData.upcoming"
             :key="task.id"
-            class="task-card"
-          >
-            <header>
-              <NuxtLink :to="`/tasks/${task.id}`">{{ task.title }}</NuxtLink>
-              <small>{{ task.dueDate }}</small>
-            </header>
-            <p v-if="task.description" class="task-desc">
-              {{ truncate(task.description, 100) }}
-            </p>
-          </article>
+            :task="task"
+            @click="openTask(task)"
+          />
         </div>
       </section>
 
-      <!-- High Priority Tasks -->
-      <section v-if="highPriorityTasks.length > 0">
-        <h2><i class="bi bi-flag" /> High Priority</h2>
+      <section v-if="dashboardData.noDate.length > 0">
+        <h2><i class="bi bi-inbox" /> No Due Date</h2>
         <div class="task-list">
-          <article
-            v-for="task in highPriorityTasks"
+          <TaskCard
+            v-for="task in dashboardData.noDate"
             :key="task.id"
-            class="task-card high-priority"
-          >
-            <header>
-              <NuxtLink :to="`/tasks/${task.id}`">{{ task.title }}</NuxtLink>
-              <small>{{ task.status }}</small>
-            </header>
-            <p v-if="task.description" class="task-desc">
-              {{ truncate(task.description, 100) }}
-            </p>
-          </article>
+            :task="task"
+            @click="openTask(task)"
+          />
+        </div>
+      </section>
+
+      <section v-if="dashboardData.recentlyDone.length > 0">
+        <h2><i class="bi bi-check-circle" /> Recently Done</h2>
+        <div class="task-list">
+          <TaskCard
+            v-for="task in dashboardData.recentlyDone"
+            :key="task.id"
+            :task="task"
+            @click="openTask(task)"
+          />
         </div>
       </section>
 
       <div
         v-if="
-          overdueTasks.length === 0 &&
-          upcomingTasks.length === 0 &&
-          highPriorityTasks.length === 0
+          dashboardData.overdue.length === 0 &&
+          dashboardData.upcoming.length === 0 &&
+          dashboardData.noDate.length === 0 &&
+          dashboardData.recentlyDone.length === 0
         "
         class="empty-state"
       >
@@ -80,36 +79,74 @@
         <p>All caught up! No tasks need immediate attention.</p>
       </div>
     </template>
+
+    <TaskDetailDialog
+      :task-id="selectedTaskId"
+      @close="selectedTaskId = null"
+      @updated="refreshDashboard"
+    />
   </div>
 </template>
 
 <script setup>
 const tasksStore = useTasksStore();
+const projectsStore = useProjectsStore();
 
 const loading = ref(true);
-const viewData = ref({ overdue: [], upcoming: [], highPriority: [] });
+const filterProjectId = ref("");
+const selectedTaskId = ref(null);
+const dashboardData = ref({
+  overdue: [],
+  upcoming: [],
+  noDate: [],
+  recentlyDone: [],
+});
 
-const overdueTasks = computed(() => viewData.value.overdue);
-const upcomingTasks = computed(() => viewData.value.upcoming);
-const highPriorityTasks = computed(() => viewData.value.highPriority);
-
-function truncate(text, max) {
-  if (!text) return "";
-  return text.length > max ? text.substring(0, max) + "..." : text;
-}
-
-onMounted(async () => {
+async function fetchDashboard() {
+  loading.value = true;
   try {
-    viewData.value = await tasksStore.fetchNextView();
+    const params = {};
+    if (filterProjectId.value) {
+      params.projectId = filterProjectId.value;
+    }
+    dashboardData.value = await tasksStore.fetchDashboard(params);
   } catch {
     // Handle error silently
   } finally {
     loading.value = false;
   }
+}
+
+function openTask(task) {
+  selectedTaskId.value = task.id;
+}
+
+async function refreshDashboard() {
+  await fetchDashboard();
+}
+
+onMounted(async () => {
+  await projectsStore.fetchAll();
+  await fetchDashboard();
 });
 </script>
 
 <style scoped>
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1em;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+
+.header-controls {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+}
+
 .dashboard {
   max-width: 800px;
   margin: 0 auto;
@@ -130,29 +167,7 @@ section h2 {
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
-}
-
-.task-card {
-  padding: 0.5em 0.8em;
-}
-
-.task-card header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0;
-  height: auto;
-}
-
-.task-card header a {
-  font-weight: bold;
-}
-
-.task-desc {
-  margin-top: 0.3em;
-  font-size: 0.9em;
-  color: var(--pico-muted-color);
+  gap: 0.3em;
 }
 
 .empty-state {

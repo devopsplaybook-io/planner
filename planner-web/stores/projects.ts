@@ -6,6 +6,8 @@ export interface Project {
   name: string;
   description: string;
   isDefault: boolean;
+  visibility: string;
+  userAccess: string[];
   statuses: string[];
 }
 
@@ -31,8 +33,20 @@ export const useProjectsStore = defineStore("projects", {
       return res.data;
     },
 
-    async create(name: string, description?: string, statuses?: string[]) {
-      const res = await api.post("/projects", { name, description, statuses });
+    async create(
+      name: string,
+      description?: string,
+      statuses?: string[],
+      visibility?: string,
+      userAccess?: string[],
+    ) {
+      const res = await api.post("/projects", {
+        name,
+        description,
+        statuses,
+        visibility,
+        userAccess,
+      });
       this.projects.push(res.data);
       return res.data;
     },

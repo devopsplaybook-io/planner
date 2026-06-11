@@ -6,11 +6,11 @@
         <p>Manage your projects</p>
       </hgroup>
       <button class="fab-button" @click="showCreateDialog = true">
-        <i class="bi bi-plus-lg"/>
+        <i class="bi bi-plus-lg" />
       </button>
     </header>
 
-    <div v-if="loading" class="loading-indicator"/>
+    <div v-if="loading" class="loading-indicator" />
 
     <div v-else class="project-grid">
       <article
@@ -21,7 +21,15 @@
       >
         <header>
           <h3>{{ project.name }}</h3>
-          <span v-if="project.isDefault" class="badge">Default</span>
+          <div class="badge-group">
+            <span v-if="project.isDefault" class="badge">Default</span>
+            <span
+              v-if="project.visibility === 'restricted'"
+              class="badge badge-restricted"
+            >
+              <i class="bi bi-lock" /> Restricted
+            </span>
+          </div>
         </header>
         <p v-if="project.description">{{ project.description }}</p>
         <footer>
@@ -49,7 +57,7 @@
               type="text"
               required
               placeholder="Project name"
-            >
+            />
           </label>
           <label>
             Description
@@ -156,6 +164,15 @@ async function createProject() {
   border-radius: 0.3em;
   background: var(--pico-primary-background);
   color: var(--pico-primary-inverse);
+}
+
+.badge-group {
+  display: flex;
+  gap: 0.3em;
+}
+
+.badge-restricted {
+  background: var(--pico-del-color);
 }
 
 .close-btn {

@@ -1,12 +1,12 @@
 <template>
   <div class="project-detail">
-    <div v-if="loading" class="loading-indicator"/>
+    <div v-if="loading" class="loading-indicator" />
 
     <template v-else-if="project">
       <header class="detail-header">
         <div>
           <NuxtLink to="/projects" class="back-link"
-            ><i class="bi bi-arrow-left"/> Projects</NuxtLink
+            ><i class="bi bi-arrow-left" /> Projects</NuxtLink
           >
           <hgroup>
             <h1>{{ project.name }}</h1>
@@ -19,10 +19,54 @@
             class="secondary"
             @click="showDeleteConfirm = true"
           >
-            <i class="bi bi-trash"/>
+            <i class="bi bi-trash" />
           </button>
         </div>
       </header>
+
+      <!-- Statuses -->
+      <!-- Visibility -->
+      <section>
+        <h2>Visibility</h2>
+        <div class="visibility-controls">
+          <label class="radio-label">
+            <input
+              v-model="editVisibility"
+              type="radio"
+              value="public"
+              @change="updateVisibility"
+            />
+            Public
+            <small>Visible to all users</small>
+          </label>
+          <label class="radio-label">
+            <input
+              v-model="editVisibility"
+              type="radio"
+              value="restricted"
+              @change="updateVisibility"
+            />
+            Restricted
+            <small>Only visible to selected users</small>
+          </label>
+        </div>
+        <div v-if="editVisibility === 'restricted'" class="user-access-list">
+          <div
+            v-for="user in availableUsers"
+            :key="user.id"
+            class="user-access-item"
+          >
+            <label>
+              <input
+                type="checkbox"
+                :checked="editUserAccess.includes(user.id)"
+                @change="toggleUserAccess(user.id)"
+              />
+              {{ user.name }}
+            </label>
+          </div>
+        </div>
+      </section>
 
       <!-- Statuses -->
       <section>
@@ -42,20 +86,12 @@
         <h2>Tasks ({{ tasks.length }})</h2>
         <div v-if="tasks.length === 0" class="empty-state">No tasks yet</div>
         <div v-else class="task-list">
-          <article
+          <TaskCard
             v-for="task in tasks"
             :key="task.id"
-            class="task-item"
-            @click="router.push(`/tasks/${task.id}`)"
-          >
-            <header>
-              <span :class="'priority-' + task.priority">
-                <i class="bi bi-flag"/>
-              </span>
-              <span>{{ task.title }}</span>
-              <small>{{ task.status }}</small>
-            </header>
-          </article>
+            :task="task"
+            @click="openTask(task)"
+          />
         </div>
       </section>
     </template>
@@ -80,13 +116,20 @@
         </footer>
       </article>
     </dialog>
+
+    <TaskDetailDialog
+      :task-id="selectedTaskId"
+      @close="selectedTaskId = null"
+      @updated="refreshTasks"
+    />
   </div>
 </template>
 
 <script setup>
+import api from "../../utils/api";
+
 const projectsStore = useProjectsStore();
 const tasksStore = useTasksStore();
-const router = useRouter();
 const route = useRoute();
 
 const project = computed(() => projectsStore.currentProject);
@@ -96,13 +139,61 @@ const tasks = computed(() =>
 const loading = ref(true);
 const showDeleteConfirm = ref(false);
 const deleting = ref(false);
+const selectedTaskId = ref(null);
+
+const editVisibility = ref("public");
+const editUserAccess = ref([]);
+const availableUsers = ref([]);
+
+async function fetchUsers() {
+  try {
+    const res = await api.get("/users/picker");
+    availableUsers.value = res.data;
+  } catch {
+    // Silently fail
+  }
+}
+
+async function updateVisibility() {
+  try {
+    await projectsStore.update(route.params.id, {
+      visibility: editVisibility.value,
+      userAccess: editUserAccess.value,
+    });
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to update visibility");
+  }
+}
+
+function toggleUserAccess(userId) {
+  const idx = editUserAccess.value.indexOf(userId);
+  if (idx >= 0) {
+    editUserAccess.value.splice(idx, 1);
+  } else {
+    editUserAccess.value.push(userId);
+  }
+  updateVisibility();
+}
+
+function openTask(task) {
+  selectedTaskId.value = task.id;
+}
+
+async function refreshTasks() {
+  await tasksStore.fetchAll(route.params.id);
+}
 
 onMounted(async () => {
   try {
     await projectsStore.fetchById(route.params.id);
     await tasksStore.fetchAll(route.params.id);
+    if (project.value) {
+      editVisibility.value = project.value.visibility || "public";
+      editUserAccess.value = [...(project.value.userAccess || [])];
+    }
+    await fetchUsers();
   } catch {
-    router.push("/projects");
+    // Error handled silently
   } finally {
     loading.value = false;
   }
@@ -167,31 +258,48 @@ section {
   gap: 0.3em;
 }
 
-.task-item {
-  cursor: pointer;
-  padding: 0.5em 0.8em;
+.visibility-controls {
+  display: flex;
+  gap: 1em;
+  flex-wrap: wrap;
+  margin-bottom: 0.5em;
 }
 
-.task-item header {
+.radio-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  cursor: pointer;
+  padding: 0.5em 1em;
+  border: 2px solid var(--pico-muted-border-color);
+  border-radius: 0.3em;
+}
+
+.radio-label:has(input:checked) {
+  border-color: var(--pico-primary);
+  background: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
+}
+
+.radio-label small {
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.user-access-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  padding: 0.5em;
+  background: var(--pico-card-background-color);
+  border-radius: 0.3em;
+}
+
+.user-access-item label {
   display: flex;
   align-items: center;
   gap: 0.5em;
-  padding: 0;
-  height: auto;
-}
-
-.task-item header small {
-  margin-left: auto;
-}
-
-.priority-high {
-  color: var(--pico-del-color);
-}
-.priority-medium {
-  color: var(--pico-primary);
-}
-.priority-low {
-  color: var(--pico-muted-color);
+  cursor: pointer;
 }
 
 .empty-state {

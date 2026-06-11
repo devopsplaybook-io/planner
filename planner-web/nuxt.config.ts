@@ -30,6 +30,30 @@ export default defineNuxtConfig({
     autoImports: ["defineStore", "acceptHMRUpdate"],
   },
   pwa: {
+    registerType: "autoUpdate",
+    includeAssets: ["images/logo.png"],
+    workbox: {
+      globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
+      runtimeCaching: [
+        {
+          urlPattern: "/api/**",
+          handler: "NetworkFirst",
+          options: {
+            cacheName: "api-cache",
+            expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        },
+        {
+          urlPattern: "/_nuxt/**",
+          handler: "CacheFirst",
+          options: {
+            cacheName: "nuxt-assets",
+            expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 30 },
+          },
+        },
+      ],
+    },
     manifest: {
       name: "Planner",
       short_name: "Planner",

@@ -7,6 +7,8 @@ import {
   ProjectsDataGet,
   ProjectsDataList,
   ProjectsDataUpdate,
+  clearProjectUsers,
+  addProjectUser,
 } from "./ProjectsData";
 
 export class ProjectsRoutes {
@@ -17,7 +19,7 @@ export class ProjectsRoutes {
       if (!userSession.isAuthenticated) {
         return res.status(403).send({ error: "Access Denied" });
       }
-      const projects = await ProjectsDataList();
+      const projects = await ProjectsDataList(userSession.userId);
       return res.status(200).send(projects.map((p) => p.toTransportJson()));
     });
 
@@ -36,7 +38,13 @@ export class ProjectsRoutes {
 
     // ==================== CREATE ====================
     interface PostProject extends RequestGenericInterface {
-      Body: { name: string; description?: string; statuses?: string[] };
+      Body: {
+        name: string;
+        description?: string;
+        statuses?: string[];
+        visibility?: string;
+        userAccess?: string[];
+      };
     }
     fastify.post<PostProject>("/", async (req, res) => {
       try {
@@ -50,6 +58,12 @@ export class ProjectsRoutes {
       const project = new Project();
       project.name = req.body.name;
       project.description = req.body.description || "";
+      if (req.body.visibility) {
+        project.visibility = req.body.visibility;
+      }
+      if (req.body.userAccess) {
+        project.userAccess = req.body.userAccess;
+      }
       if (req.body.statuses && req.body.statuses.length >= 2) {
         if (!req.body.statuses.includes("Done")) {
           return res.status(400).send({ error: '"Done" status is mandatory' });
@@ -63,7 +77,13 @@ export class ProjectsRoutes {
     // ==================== UPDATE ====================
     interface PutProject extends RequestGenericInterface {
       Params: { id: string };
-      Body: { name?: string; description?: string; statuses?: string[] };
+      Body: {
+        name?: string;
+        description?: string;
+        statuses?: string[];
+        visibility?: string;
+        userAccess?: string[];
+      };
     }
     fastify.put<PutProject>("/:id", async (req, res) => {
       try {
@@ -89,6 +109,16 @@ export class ProjectsRoutes {
           return res.status(400).send({ error: '"Done" status is mandatory' });
         }
         project.statuses = req.body.statuses;
+      }
+      if (req.body.visibility) {
+        project.visibility = req.body.visibility;
+      }
+      if (req.body.userAccess) {
+        await clearProjectUsers(project.id);
+        for (const userId of req.body.userAccess) {
+          await addProjectUser(project.id, userId);
+        }
+        project.userAccess = req.body.userAccess;
       }
       await ProjectsDataUpdate(project);
       return res.status(201).send(project.toTransportJson());

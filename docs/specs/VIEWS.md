@@ -5,13 +5,15 @@ Each view provides a different perspective on the same task data.
 
 ## Available Views
 
-### Next View
+### Dashboard View
 
-- [x] Shows tasks that need immediate attention, including:
-  - [x] Overdue tasks
-  - [x] Upcoming tasks (due soon)
-  - [x] High-priority tasks
-  - [x] Tasks ordered by priority and due date
+- [x] The dashboard shows all the open task and the last 5 completed task
+- [x] The tasks in the dashboard are grouped in section and the sections are shown in the following order:
+  - [x] The overdue tasks
+  - [x] The upcoming tasks (due in the next 1 month)
+  - [x] Task without date, ordered by priority
+  - [x] The last 5 tasks marked as done
+- [x] The dashboard can be filtered by project or labels. By default all projects are displayed
 
 ### Calendar View
 

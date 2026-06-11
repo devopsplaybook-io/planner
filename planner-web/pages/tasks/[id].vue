@@ -1,50 +1,95 @@
 <template>
   <div class="task-detail">
-    <div v-if="loading" class="loading-indicator"/>
+    <div v-if="loading" class="loading-indicator" />
 
     <template v-else-if="task">
       <header class="detail-header">
         <div>
           <NuxtLink to="/tasks" class="back-link"
-            ><i class="bi bi-arrow-left"/> Tasks</NuxtLink
+            ><i class="bi bi-arrow-left" /> Tasks</NuxtLink
           >
-          <hgroup>
-            <h1>{{ task.title }}</h1>
-            <p>{{ task.description }}</p>
-          </hgroup>
         </div>
         <div class="header-actions">
-          <span :class="'priority-' + task.priority">
-            <i class="bi bi-flag"/> {{ task.priority }}
-          </span>
-          <span class="status-badge">{{ task.status }}</span>
+          <button v-if="!editing" class="secondary" @click="startEdit">
+            <i class="bi bi-pencil" /> Edit
+          </button>
+          <template v-if="editing">
+            <button :aria-busy="saving" @click="saveEdit">
+              <i class="bi bi-check" /> Save
+            </button>
+            <button class="secondary" @click="cancelEdit">
+              <i class="bi bi-x" /> Cancel
+            </button>
+          </template>
         </div>
       </header>
 
+      <!-- Editable Fields -->
+      <section class="edit-section">
+        <label>
+          Title
+          <input v-if="editing" v-model="editForm.title" type="text" required />
+          <h1 v-else>{{ task.title }}</h1>
+        </label>
+        <label>
+          Description
+          <textarea v-if="editing" v-model="editForm.description" rows="3" />
+          <p v-else>{{ task.description || "No description" }}</p>
+        </label>
+      </section>
+
       <!-- Meta Info -->
       <section class="meta-section">
-        <div v-if="task.dueDate"><strong>Due:</strong> {{ task.dueDate }}</div>
-        <div v-if="task.assignees.length">
-          <strong>Assignees:</strong>
-          <span
-            v-for="a in task.assignees"
-            :key="a.userId"
-            class="assignee-tag"
-            >{{ a.userName || a.userId }}</span
-          >
+        <div class="meta-field">
+          <strong>Status</strong>
+          <select v-if="editing" v-model="editForm.status">
+            <option v-for="s in availableStatuses" :key="s" :value="s">
+              {{ s }}
+            </option>
+          </select>
+          <span v-else class="status-badge">{{ task.status }}</span>
         </div>
-        <div v-if="task.labels.length">
-          <strong>Labels:</strong>
-          <span v-for="l in task.labels" :key="l" class="label-tag">{{
-            l
-          }}</span>
+        <div class="meta-field">
+          <strong>Priority</strong>
+          <select v-if="editing" v-model="editForm.priority">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+          <span v-else :class="'priority-' + task.priority">
+            <i class="bi bi-flag" /> {{ task.priority }}
+          </span>
+        </div>
+        <div class="meta-field">
+          <strong>Due date</strong>
+          <input v-if="editing" v-model="editForm.dueDate" type="date" />
+          <span v-else>{{ task.dueDate || "No due date" }}</span>
+        </div>
+        <div v-if="task.assignees.length" class="meta-field">
+          <strong>Assignees</strong>
+          <div class="assignee-list">
+            <span
+              v-for="a in task.assignees"
+              :key="a.userId"
+              class="assignee-tag"
+              >{{ a.userName || a.userId }}</span
+            >
+          </div>
+        </div>
+        <div v-if="task.labels.length" class="meta-field">
+          <strong>Labels</strong>
+          <div class="label-list">
+            <span v-for="l in task.labels" :key="l" class="label-tag">{{
+              l
+            }}</span>
+          </div>
         </div>
       </section>
 
       <!-- Checklist -->
-      <section v-if="task.checklist.length">
+      <section>
         <h2>Checklist</h2>
-        <div class="checklist">
+        <div v-if="task.checklist.length" class="checklist">
           <label
             v-for="(item, idx) in task.checklist"
             :key="idx"
@@ -54,9 +99,20 @@
               type="checkbox"
               :checked="item.done"
               @change="toggleChecklist(idx)"
-            >
+            />
             <span :class="{ done: item.done }">{{ item.text }}</span>
           </label>
+        </div>
+        <div class="add-checklist-item">
+          <input
+            v-model="newChecklistText"
+            type="text"
+            placeholder="Add checklist item..."
+            @keyup.enter="addChecklistItem"
+          />
+          <button :aria-busy="savingChecklist" @click="addChecklistItem">
+            Add
+          </button>
         </div>
       </section>
 
@@ -74,14 +130,14 @@
               target="_blank"
               class="attachment-link"
             >
-              <i class="bi bi-paperclip"/> {{ att.fileName }}
+              <i class="bi bi-paperclip" /> {{ att.fileName }}
             </a>
             <button
               class="secondary small-btn"
               :aria-busy="deletingAttachmentId === att.id"
               @click="deleteAttachment(att.id)"
             >
-              <i class="bi bi-x"/>
+              <i class="bi bi-x" />
             </button>
           </div>
         </div>
@@ -90,11 +146,7 @@
       <section>
         <h2>Add Attachment</h2>
         <form class="add-attachment" @submit.prevent="uploadAttachment">
-          <input
-            ref="fileInput"
-            type="file"
-            class="file-input"
-          >
+          <input ref="fileInput" type="file" class="file-input" />
           <button type="submit" :aria-busy="uploading">Upload</button>
         </form>
       </section>
@@ -124,7 +176,7 @@
             type="text"
             placeholder="Add a comment..."
             required
-          >
+          />
           <button type="submit" :aria-busy="submitting">Send</button>
         </form>
       </section>
@@ -132,7 +184,7 @@
       <!-- Delete -->
       <section>
         <button class="contrast" @click="showDeleteConfirm = true">
-          <i class="bi bi-trash"/> Delete Task
+          <i class="bi bi-trash" /> Delete Task
         </button>
       </section>
     </template>
@@ -159,6 +211,7 @@
 
 <script setup>
 const tasksStore = useTasksStore();
+const projectsStore = useProjectsStore();
 const router = useRouter();
 const route = useRoute();
 
@@ -171,10 +224,68 @@ const deleting = ref(false);
 const uploading = ref(false);
 const deletingAttachmentId = ref("");
 const fileInput = ref(null);
+const newChecklistText = ref("");
+const savingChecklist = ref(false);
+
+// Edit mode
+const editing = ref(false);
+const saving = ref(false);
+const editForm = ref({
+  title: "",
+  description: "",
+  status: "",
+  priority: "",
+  dueDate: "",
+});
+
+const availableStatuses = computed(() => {
+  if (!task.value) return ["To Do", "In Progress", "Done"];
+  const project = projectsStore.projects.find(
+    (p) => p.id === task.value.projectId,
+  );
+  return project?.statuses || ["To Do", "In Progress", "Done"];
+});
+
+function startEdit() {
+  if (!task.value) return;
+  editForm.value = {
+    title: task.value.title,
+    description: task.value.description,
+    status: task.value.status,
+    priority: task.value.priority,
+    dueDate: task.value.dueDate || "",
+  };
+  editing.value = true;
+}
+
+function cancelEdit() {
+  editing.value = false;
+}
+
+async function saveEdit() {
+  if (!task.value) return;
+  saving.value = true;
+  try {
+    const data = {
+      title: editForm.value.title,
+      description: editForm.value.description,
+      status: editForm.value.status,
+      priority: editForm.value.priority,
+      dueDate: editForm.value.dueDate || null,
+    };
+    await tasksStore.update(route.params.id, data);
+    editing.value = false;
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to update task");
+  } finally {
+    saving.value = false;
+  }
+}
 
 onMounted(async () => {
   try {
     await tasksStore.fetchById(route.params.id);
+    await projectsStore.fetchAll();
   } catch {
     router.push("/tasks");
   } finally {
@@ -207,6 +318,23 @@ async function toggleChecklist(idx) {
     await tasksStore.update(route.params.id, { checklist });
   } catch {
     // Handle error
+  }
+}
+
+async function addChecklistItem() {
+  if (!task.value || !newChecklistText.value.trim()) return;
+  savingChecklist.value = true;
+  const checklist = [
+    ...task.value.checklist,
+    { text: newChecklistText.value.trim(), done: false },
+  ];
+  try {
+    await tasksStore.update(route.params.id, { checklist });
+    newChecklistText.value = "";
+  } catch {
+    // Handle error
+  } finally {
+    savingChecklist.value = false;
   }
 }
 
@@ -291,6 +419,23 @@ async function deleteAttachment(attachmentId) {
   font-size: 0.85em;
 }
 
+.edit-section {
+  margin-bottom: 1.5em;
+}
+
+.edit-section label {
+  display: block;
+  margin-bottom: 0.5em;
+}
+
+.edit-section label h1 {
+  margin: 0;
+}
+
+.edit-section textarea {
+  min-height: 80px;
+}
+
 .meta-section {
   display: flex;
   flex-wrap: wrap;
@@ -299,6 +444,18 @@ async function deleteAttachment(attachmentId) {
   padding: 0.5em;
   background: var(--pico-card-background-color);
   border-radius: 0.3em;
+}
+
+.meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  min-width: 150px;
+}
+
+.meta-field select,
+.meta-field input {
+  margin: 0;
 }
 
 .assignee-tag,
@@ -356,6 +513,16 @@ section {
 .comment p {
   margin: 0;
   font-size: 0.9em;
+}
+
+.add-checklist-item {
+  display: flex;
+  gap: 0.5em;
+  margin-top: 0.5em;
+}
+
+.add-checklist-item input {
+  flex: 1;
 }
 
 .add-comment {
