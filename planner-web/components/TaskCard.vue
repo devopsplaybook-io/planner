@@ -72,7 +72,11 @@ defineEmits(["click"]);
   flex-direction: column;
   gap: var(--space-xs);
   padding: 0;
+  margin: 0;
   height: auto;
+  background: none;
+  border: none;
+  border-radius: 0;
 }
 
 .card-title {
@@ -116,7 +120,11 @@ defineEmits(["click"]);
   gap: var(--space-xs);
   flex-wrap: wrap;
   padding: 0;
+  margin: 0;
   margin-top: var(--space-xs);
+  background: none;
+  border: none;
+  border-radius: 0;
 }
 
 .label-tag {
