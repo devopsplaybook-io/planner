@@ -9,10 +9,28 @@
             ><i class="bi bi-arrow-left" /> Notes</NuxtLink
           >
           <hgroup>
-            <h1>{{ note.title }}</h1>
+            <h1 v-if="!editing">{{ note.title }}</h1>
+            <input
+              v-else
+              v-model="editForm.title"
+              type="text"
+              class="edit-title-input"
+              required
+            />
           </hgroup>
         </div>
         <div class="header-actions">
+          <button v-if="!editing" class="secondary" @click="startEdit">
+            <i class="bi bi-pencil" /> Edit
+          </button>
+          <template v-if="editing">
+            <button :aria-busy="saving" @click="saveEdit">
+              <i class="bi bi-check" /> Save
+            </button>
+            <button class="secondary" @click="cancelEdit">
+              <i class="bi bi-x" /> Cancel
+            </button>
+          </template>
           <button class="secondary" @click="showDeleteConfirm = true">
             <i class="bi bi-trash" />
           </button>
@@ -21,7 +39,15 @@
 
       <!-- Description -->
       <section>
-        <p class="note-description">{{ note.description }}</p>
+        <textarea
+          v-if="editing"
+          v-model="editForm.description"
+          class="edit-description-input"
+          rows="8"
+        />
+        <p v-else class="note-description">
+          {{ note.description || "No description" }}
+        </p>
       </section>
 
       <!-- Labels -->
@@ -134,6 +160,11 @@ const uploading = ref(false);
 const deletingAttachmentId = ref("");
 const fileInput = ref(null);
 
+// Edit mode
+const editing = ref(false);
+const saving = ref(false);
+const editForm = ref({ title: "", description: "" });
+
 onMounted(async () => {
   try {
     await notesStore.fetchById(route.params.id);
@@ -143,6 +174,35 @@ onMounted(async () => {
     loading.value = false;
   }
 });
+
+function startEdit() {
+  if (!note.value) return;
+  editForm.value = {
+    title: note.value.title,
+    description: note.value.description,
+  };
+  editing.value = true;
+}
+
+function cancelEdit() {
+  editing.value = false;
+}
+
+async function saveEdit() {
+  if (!note.value) return;
+  saving.value = true;
+  try {
+    await notesStore.update(route.params.id, {
+      title: editForm.value.title,
+      description: editForm.value.description,
+    });
+    editing.value = false;
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to update note");
+  } finally {
+    saving.value = false;
+  }
+}
 
 function formatDate(dateStr) {
   if (!dateStr) return "";
@@ -217,6 +277,19 @@ async function deleteAttachment(attachmentId) {
 .note-description {
   white-space: pre-wrap;
   line-height: 1.5;
+}
+
+.edit-title-input {
+  font-size: 1.2em;
+  font-weight: bold;
+  margin: 0;
+}
+
+.edit-description-input {
+  width: 100%;
+  min-height: 120px;
+  font-family: inherit;
+  resize: vertical;
 }
 
 .labels {

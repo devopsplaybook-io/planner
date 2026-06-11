@@ -22,10 +22,18 @@
 
     <div v-else class="kanban-board">
       <div v-for="status in statuses" :key="status" class="kanban-column">
-        <h3 class="column-header">{{ status }}</h3>
+        <h3 class="column-header">
+          {{ status }}
+          <span class="column-count">{{
+            getTasksByStatus(status).length
+          }}</span>
+        </h3>
         <div
           class="column-tasks"
-          @dragover.prevent
+          :class="{ 'drag-over': dragOverStatus === status }"
+          @dragover.prevent="onDragOver(status)"
+          @dragenter.prevent="onDragOver(status)"
+          @dragleave="onDragLeave(status)"
           @drop="onDrop($event, status)"
         >
           <TaskCard
@@ -36,6 +44,9 @@
             @dragstart="onDragStart($event, task)"
             @click="openTask(task)"
           />
+          <div v-if="!getTasksByStatus(status).length" class="empty-column">
+            No tasks
+          </div>
         </div>
       </div>
     </div>
@@ -147,6 +158,7 @@ const selectedProjectId = ref("");
 const showCreateDialog = ref(false);
 const creating = ref(false);
 const dragTask = ref(null);
+const dragOverStatus = ref(null);
 const selectedTaskId = ref(null);
 
 const newTask = ref({
@@ -175,13 +187,25 @@ function getTasksByStatus(status) {
 
 function onDragStart(event, task) {
   dragTask.value = task;
-  event.dataTransfer.effectAllowed = "move";
+}
+
+function onDragOver(status) {
+  dragOverStatus.value = status;
+}
+
+function onDragLeave(status) {
+  if (dragOverStatus.value === status) dragOverStatus.value = null;
 }
 
 async function onDrop(event, newStatus) {
-  if (!dragTask.value || dragTask.value.status === newStatus) return;
+  dragOverStatus.value = null;
+  if (!dragTask.value || dragTask.value.status === newStatus) {
+    dragTask.value = null;
+    return;
+  }
   try {
     await tasksStore.update(dragTask.value.id, { status: newStatus });
+    await fetchTasks();
   } catch {
     // Handle error
   }
@@ -276,17 +300,53 @@ onMounted(async () => {
 }
 
 .column-header {
-  font-size: 1em;
+  font-size: 0.85em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   text-align: center;
   margin-bottom: var(--space-sm);
   padding-bottom: var(--space-xs);
   border-bottom: 2px solid var(--pico-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--pico-muted-color);
+}
+
+.column-count {
+  font-size: 0.8em;
+  font-weight: 600;
+  background: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 1.6;
 }
 
 .column-tasks {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
+  min-height: 60px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+  padding: 2px;
+}
+
+.column-tasks.drag-over {
+  background: color-mix(in srgb, var(--pico-primary) 10%, transparent);
+  outline: 2px dashed var(--pico-primary);
+  outline-offset: -2px;
+}
+
+.empty-column {
+  text-align: center;
+  font-size: 0.82em;
+  color: var(--pico-muted-color);
+  padding: var(--space-md) 0;
+  opacity: 0.6;
 }
 
 .checklist-input-row {

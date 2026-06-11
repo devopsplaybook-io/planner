@@ -14,7 +14,7 @@ export default defineNuxtConfig({
         { name: "description", content: "planner" },
         { name: "theme-color", content: "#212121" },
       ],
-      link: [{ rel: "icon", href: "/images/logo.png" }],
+      link: [{ rel: "icon", type: "image/svg+xml", href: "/images/logo.svg" }],
     },
   },
   css: [
@@ -31,7 +31,7 @@ export default defineNuxtConfig({
   },
   pwa: {
     registerType: "autoUpdate",
-    includeAssets: ["images/logo.png"],
+    includeAssets: ["images/logo.svg", "images/logo.png"],
     workbox: {
       globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
       runtimeCaching: [
@@ -63,6 +63,11 @@ export default defineNuxtConfig({
       background_color: "#12191f",
       theme_color: "#12191f",
       icons: [
+        {
+          src: "images/logo.svg",
+          sizes: "512x512",
+          type: "image/svg+xml",
+        },
         {
           src: "images/logo.png",
           sizes: "512x512",

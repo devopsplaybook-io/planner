@@ -2095,7 +2095,7 @@ const _i_6_SBN_qTCa8NxrFemS7vEMlMNwpWYk26s2NDGOyw = (function(nitro) {
 
 const rootDir = "/home/didier/Documents/Workspace/devopsplaybook.io/planner/planner-web";
 
-const appHead = {"meta":[{"name":"viewport","content":"width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"},{"charset":"utf-16"},{"name":"description","content":"planner"},{"name":"theme-color","content":"#212121"}],"link":[{"rel":"icon","href":"/images/logo.png"}],"style":[],"script":[],"noscript":[],"charset":"utf-16","viewport":"width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":"Planner"};
+const appHead = {"meta":[{"name":"viewport","content":"width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"},{"charset":"utf-16"},{"name":"description","content":"planner"},{"name":"theme-color","content":"#212121"}],"link":[{"rel":"icon","type":"image/svg+xml","href":"/images/logo.svg"}],"style":[],"script":[],"noscript":[],"charset":"utf-16","viewport":"width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":"Planner"};
 
 const appRootTag = "div";
 

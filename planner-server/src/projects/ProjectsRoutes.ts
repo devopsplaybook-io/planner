@@ -11,6 +11,22 @@ import {
   addProjectUser,
 } from "./ProjectsData";
 
+export function validateStatuses(statuses: string[]): string | null {
+  if (!Array.isArray(statuses) || statuses.length < 2) {
+    return "At least 2 statuses are required";
+  }
+  if (statuses.some((s) => typeof s !== "string" || !s.trim())) {
+    return "All statuses must be non-empty strings";
+  }
+  if (new Set(statuses).size !== statuses.length) {
+    return "Duplicate statuses are not allowed";
+  }
+  if (statuses[statuses.length - 1] !== "Done") {
+    return '"Done" must be the last status';
+  }
+  return null;
+}
+
 export class ProjectsRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
@@ -64,9 +80,10 @@ export class ProjectsRoutes {
       if (req.body.userAccess) {
         project.userAccess = req.body.userAccess;
       }
-      if (req.body.statuses && req.body.statuses.length >= 2) {
-        if (!req.body.statuses.includes("Done")) {
-          return res.status(400).send({ error: '"Done" status is mandatory' });
+      if (req.body.statuses) {
+        const statusError = validateStatuses(req.body.statuses);
+        if (statusError) {
+          return res.status(400).send({ error: statusError });
         }
         project.statuses = req.body.statuses;
       }
@@ -102,11 +119,9 @@ export class ProjectsRoutes {
         project.description = req.body.description;
       }
       if (req.body.statuses) {
-        if (
-          req.body.statuses.length >= 2 &&
-          !req.body.statuses.includes("Done")
-        ) {
-          return res.status(400).send({ error: '"Done" status is mandatory' });
+        const statusError = validateStatuses(req.body.statuses);
+        if (statusError) {
+          return res.status(400).send({ error: statusError });
         }
         project.statuses = req.body.statuses;
       }
