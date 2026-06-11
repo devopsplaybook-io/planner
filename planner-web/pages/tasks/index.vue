@@ -344,13 +344,11 @@ onMounted(async () => {
 }
 
 .checklist-input-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: var(--space-xs);
   margin-bottom: var(--space-xs);
-}
-
-.checklist-input-row input {
-  flex: 1;
+  align-items: center;
 }
 
 .checklist-input-row button {

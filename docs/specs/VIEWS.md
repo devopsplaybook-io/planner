@@ -7,11 +7,11 @@ Each view provides a different perspective on the same task data.
 
 ### Dashboard View
 
-- [x] The dashboard shows all the open task and the last 5 completed task
-- [x] The tasks in the dashboard are grouped in section and the sections are shown in the following order:
+- [x] The dashboard shows all the open tasks and the last 5 completed tasks
+- [x] The tasks in the dashboard are grouped in sections and the sections are shown in the following order:
   - [x] The overdue tasks
   - [x] The upcoming tasks (due in the next 1 month)
-  - [x] Task without date, ordered by priority
+  - [x] Tasks without dates, ordered by priority
   - [x] The last 5 tasks marked as done
 - [x] The dashboard can be filtered by project or labels. By default all projects are displayed
 

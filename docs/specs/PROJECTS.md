@@ -17,7 +17,7 @@ Each project can define its own set of statuses. By default:
 - [x] Done
 
 - [x] Projects can define custom statuses except "Done", which is mandatory for all projects.
-  - [x] When the project is edited, the user can define the list pf statuses
-  - [x] The statuses can be ordered but the last one is always "Done'. The ordering can be done with drag and drop.
+  - [x] When the project is edited, the user can define the list of statuses
+  - [x] The statuses can be ordered but the last one is always "Done". Ordering can be done using drag and drop.
 
 _Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-06-11_

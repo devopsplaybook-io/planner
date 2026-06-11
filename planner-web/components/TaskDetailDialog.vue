@@ -128,13 +128,22 @@
               :key="att.id"
               class="attachment-item"
             >
-              <a
-                :href="`/api/tasks/${task.id}/attachments/${att.id}`"
-                target="_blank"
-                class="attachment-link"
-              >
-                <i class="bi bi-paperclip" /> {{ att.fileName }}
-              </a>
+              <div class="attachment-info">
+                <template v-if="isImageFile(att.fileName)">
+                  <img
+                    :src="`/api/tasks/${task.id}/attachments/${att.id}?inline=true`"
+                    :alt="att.fileName"
+                    class="attachment-preview"
+                  />
+                </template>
+                <a
+                  :href="`/api/tasks/${task.id}/attachments/${att.id}`"
+                  target="_blank"
+                  class="attachment-link"
+                >
+                  <i class="bi bi-paperclip" /> {{ att.fileName }}
+                </a>
+              </div>
               <button
                 class="secondary small-btn"
                 :aria-busy="deletingAttachmentId === att.id"
@@ -385,6 +394,21 @@ async function uploadAttachment() {
   }
 }
 
+function isImageFile(fileName) {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return [
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "webp",
+    "svg",
+    "bmp",
+    "ico",
+    "avif",
+  ].includes(ext || "");
+}
+
 async function deleteAttachment(attachmentId) {
   deletingAttachmentId.value = attachmentId;
   try {
@@ -433,8 +457,8 @@ async function deleteAttachment(attachmentId) {
 }
 
 .meta-section {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: var(--space-md);
   margin-bottom: var(--space-lg);
   padding: var(--space-sm);
@@ -446,7 +470,6 @@ async function deleteAttachment(attachmentId) {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
-  min-width: 130px;
 }
 
 .meta-field select,
@@ -495,14 +518,10 @@ section h4 {
 .add-checklist-item,
 .add-comment,
 .add-attachment {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: var(--space-sm);
-}
-
-.add-checklist-item input,
-.add-comment input,
-.file-input {
-  flex: 1;
+  align-items: center;
 }
 
 .comments {
@@ -553,6 +572,19 @@ section h4 {
 
 .attachment-link:hover {
   text-decoration: underline;
+}
+
+.attachment-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.attachment-preview {
+  max-width: 60px;
+  max-height: 60px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
 }
 
 .small-btn {

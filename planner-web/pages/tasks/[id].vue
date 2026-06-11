@@ -130,13 +130,22 @@
             :key="att.id"
             class="attachment-item"
           >
-            <a
-              :href="`/api/tasks/${task.id}/attachments/${att.id}`"
-              target="_blank"
-              class="attachment-link"
-            >
-              <i class="bi bi-paperclip" /> {{ att.fileName }}
-            </a>
+            <div class="attachment-info">
+              <template v-if="isImageFile(att.fileName)">
+                <img
+                  :src="`/api/tasks/${task.id}/attachments/${att.id}?inline=true`"
+                  :alt="att.fileName"
+                  class="attachment-preview"
+                />
+              </template>
+              <a
+                :href="`/api/tasks/${task.id}/attachments/${att.id}`"
+                target="_blank"
+                class="attachment-link"
+              >
+                <i class="bi bi-paperclip" /> {{ att.fileName }}
+              </a>
+            </div>
             <button
               class="secondary small-btn"
               :aria-busy="deletingAttachmentId === att.id"
@@ -365,6 +374,21 @@ async function deleteTask() {
   }
 }
 
+function isImageFile(fileName) {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return [
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "webp",
+    "svg",
+    "bmp",
+    "ico",
+    "avif",
+  ].includes(ext || "");
+}
+
 async function uploadAttachment() {
   const input = fileInput.value;
   if (!input || !input.files || !input.files[0]) return;
@@ -434,8 +458,8 @@ async function deleteAttachment(attachmentId) {
 }
 
 .meta-section {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--space-md);
   margin-bottom: var(--space-lg);
   padding: var(--space-sm);
@@ -447,7 +471,6 @@ async function deleteAttachment(attachmentId) {
   display: flex;
   flex-direction: column;
   gap: 0.2em;
-  min-width: 150px;
 }
 
 .meta-field select,
@@ -502,22 +525,18 @@ section {
 }
 
 .add-checklist-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: var(--space-sm);
   margin-top: var(--space-sm);
-}
-
-.add-checklist-item input {
-  flex: 1;
+  align-items: center;
 }
 
 .add-comment {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: var(--space-sm);
-}
-
-.add-comment input {
-  flex: 1;
+  align-items: center;
 }
 
 .attachments {
@@ -546,18 +565,28 @@ section {
   text-decoration: underline;
 }
 
+.attachment-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.attachment-preview {
+  max-width: 60px;
+  max-height: 60px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
 .small-btn {
   padding: 0.1em 0.4em;
   font-size: 0.85em;
 }
 
 .add-attachment {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: var(--space-sm);
   align-items: center;
-}
-
-.file-input {
-  flex: 1;
 }
 </style>

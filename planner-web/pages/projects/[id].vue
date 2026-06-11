@@ -516,9 +516,9 @@ section {
 }
 
 .visibility-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--space-md);
-  flex-wrap: wrap;
   margin-bottom: var(--space-sm);
 }
 

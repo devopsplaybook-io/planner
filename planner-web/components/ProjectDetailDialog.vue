@@ -220,8 +220,8 @@ async function deleteProject() {
 }
 
 .meta-section {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: var(--space-md);
   margin-bottom: var(--space-lg);
   padding: var(--space-sm);
@@ -233,7 +233,6 @@ async function deleteProject() {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
-  min-width: 130px;
 }
 
 .badge {

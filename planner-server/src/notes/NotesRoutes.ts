@@ -186,7 +186,7 @@ export class NotesRoutes {
           return res.status(400).send({ error: "No file uploaded" });
         }
 
-        const uploadDir = process.env.TMP_DIR || "/tmp";
+        const uploadDir = process.env.DATA_DIR || "/data";
         const attachmentDir = path.join(uploadDir, "attachments", "notes");
         await fs.ensureDir(attachmentDir);
 
@@ -213,32 +213,54 @@ export class NotesRoutes {
       },
     );
 
-    fastify.get<{ Params: { id: string; attachmentId: string } }>(
-      "/:id/attachments/:attachmentId",
-      async (req, res) => {
-        const userSession = await AuthGetUserSession(req);
-        if (!userSession.isAuthenticated) {
-          return res.status(403).send({ error: "Access Denied" });
-        }
-        const attachment = await getNoteAttachment(req.params.attachmentId);
-        if (!attachment) {
-          return res.status(404).send({ error: "Attachment Not Found" });
-        }
-        if (attachment.noteId !== req.params.id) {
-          return res.status(404).send({ error: "Attachment Not Found" });
-        }
-        if (!(await fs.pathExists(attachment.filePath))) {
-          return res.status(404).send({ error: "File Not Found" });
-        }
-        const stream = fs.createReadStream(attachment.filePath);
+    fastify.get<{
+      Params: { id: string; attachmentId: string };
+      Querystring: { inline?: string };
+    }>("/:id/attachments/:attachmentId", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(403).send({ error: "Access Denied" });
+      }
+      const attachment = await getNoteAttachment(req.params.attachmentId);
+      if (!attachment) {
+        return res.status(404).send({ error: "Attachment Not Found" });
+      }
+      if (attachment.noteId !== req.params.id) {
+        return res.status(404).send({ error: "Attachment Not Found" });
+      }
+      if (!(await fs.pathExists(attachment.filePath))) {
+        return res.status(404).send({ error: "File Not Found" });
+      }
+
+      if (req.query.inline === "true") {
+        const ext = path.extname(attachment.fileName).toLowerCase();
+        const mimeTypes: Record<string, string> = {
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".png": "image/png",
+          ".gif": "image/gif",
+          ".webp": "image/webp",
+          ".svg": "image/svg+xml",
+          ".bmp": "image/bmp",
+          ".ico": "image/x-icon",
+          ".avif": "image/avif",
+        };
+        res.type(mimeTypes[ext] || "application/octet-stream");
+        res.header(
+          "Content-Disposition",
+          `inline; filename="${attachment.fileName}"`,
+        );
+      } else {
         res.type("application/octet-stream");
         res.header(
           "Content-Disposition",
           `attachment; filename="${attachment.fileName}"`,
         );
-        return res.send(stream);
-      },
-    );
+      }
+
+      const stream = fs.createReadStream(attachment.filePath);
+      return res.send(stream);
+    });
 
     fastify.delete<{ Params: { id: string; attachmentId: string } }>(
       "/:id/attachments/:attachmentId",

@@ -58,6 +58,7 @@ planner/
 - **Framework**: Nuxt 4 (SSR disabled, SPA mode)
 - **State management**: Pinia stores in `stores/` directory
 - **UI library**: `@picocss/pico` for base styling, `bootstrap-icons` for icons
+- **Layout preference**: **CSS Grid is strongly preferred over Flexbox** for UI layout. Use `display: grid` with `grid-template-columns`, `grid-template-areas`, etc. for page layouts, card arrangements, form sections, and any multi-column/multi-row composition. Reserve `display: flex` for simple one-dimensional alignments (e.g., centering content, inline button rows, single-axis item lists with `align-items`/`justify-content`).
 - **PWA**: Enabled via `@vite-pwa/nuxt`, manifest configured in `nuxt.config.ts`
 - **API calls**: Axios for HTTP requests to the backend API
 - **Generating**: `nuxt generate` produces static output in `.output/public/`

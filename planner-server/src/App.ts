@@ -111,16 +111,16 @@ Promise.resolve().then(async () => {
     encodings: ["gzip", "deflate"],
   });
 
+  await fastify.register(fastifyMultipart, {
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10 MB
+    },
+  });
+
   if (config.CORS_POLICY_ORIGIN) {
     await fastify.register(fastifyCors, {
       origin: config.CORS_POLICY_ORIGIN,
       methods: "GET,PUT,POST,DELETE",
-    });
-
-    await fastify.register(fastifyMultipart, {
-      limits: {
-        fileSize: 10 * 1024 * 1024, // 10 MB
-      },
     });
   }
 
