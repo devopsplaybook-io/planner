@@ -56,23 +56,17 @@
         </div>
       </div>
     </template>
-
-    <TaskDetailDialog
-      :task-id="selectedTaskId"
-      @close="selectedTaskId = null"
-    />
   </div>
 </template>
 
 <script setup>
 const tasksStore = useTasksStore();
-const projectsStore = useProjectsStore();
+const router = useRouter();
 
 const loading = ref(true);
 const currentDate = ref(new Date());
 const draggingTask = ref(null);
 const dragOverDate = ref(null);
-const selectedTaskId = ref(null);
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const monthNames = [
@@ -197,7 +191,7 @@ function onDragStart(event, task) {
 }
 
 function openTask(task) {
-  selectedTaskId.value = task.id;
+  router.push(`/tasks/${task.id}`);
 }
 
 function onDragOver(dateStr) {

@@ -79,22 +79,16 @@
         <p>All caught up! No tasks need immediate attention.</p>
       </div>
     </template>
-
-    <TaskDetailDialog
-      :task-id="selectedTaskId"
-      @close="selectedTaskId = null"
-      @updated="refreshDashboard"
-    />
   </div>
 </template>
 
 <script setup>
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
+const router = useRouter();
 
 const loading = ref(true);
 const filterProjectId = ref("");
-const selectedTaskId = ref(null);
 const dashboardData = ref({
   overdue: [],
   upcoming: [],
@@ -118,11 +112,7 @@ async function fetchDashboard() {
 }
 
 function openTask(task) {
-  selectedTaskId.value = task.id;
-}
-
-async function refreshDashboard() {
-  await fetchDashboard();
+  router.push(`/tasks/${task.id}`);
 }
 
 onMounted(async () => {

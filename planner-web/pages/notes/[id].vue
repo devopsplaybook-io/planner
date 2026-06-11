@@ -5,8 +5,8 @@
     <template v-else-if="note">
       <header class="detail-header">
         <div>
-          <NuxtLink to="/notes" class="back-link"
-            ><i class="bi bi-arrow-left" /> Notes</NuxtLink
+          <a href="#" class="back-link" @click.prevent="goBack"
+            ><i class="bi bi-arrow-left" /> Notes</a
           >
           <hgroup>
             <h1 v-if="!editing">{{ note.title }}</h1>
@@ -165,11 +165,20 @@ const editing = ref(false);
 const saving = ref(false);
 const editForm = ref({ title: "", description: "" });
 
+function goBack() {
+  const back = window.history.state?.back;
+  if (back) {
+    router.back();
+  } else {
+    router.push("/notes");
+  }
+}
+
 onMounted(async () => {
   try {
     await notesStore.fetchById(route.params.id);
   } catch {
-    router.push("/notes");
+    goBack();
   } finally {
     loading.value = false;
   }
@@ -225,7 +234,7 @@ async function deleteNote() {
   deleting.value = true;
   try {
     await notesStore.remove(route.params.id);
-    router.push("/notes");
+    goBack();
   } catch (e) {
     alert(e.response?.data?.error || "Failed to delete note");
   } finally {

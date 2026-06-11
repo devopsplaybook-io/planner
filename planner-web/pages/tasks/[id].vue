@@ -5,9 +5,12 @@
     <template v-else-if="task">
       <header class="detail-header">
         <div>
-          <NuxtLink to="/tasks" class="back-link"
-            ><i class="bi bi-arrow-left" /> Tasks</NuxtLink
+          <a href="#" class="back-link" @click.prevent="goBack"
+            ><i class="bi bi-arrow-left" /> Tasks</a
           >
+          <hgroup>
+            <h1 v-if="!editing">{{ task.title }}</h1>
+          </hgroup>
         </div>
         <div class="header-actions">
           <button v-if="!editing" class="secondary" @click="startEdit">
@@ -21,15 +24,17 @@
               <i class="bi bi-x" /> Cancel
             </button>
           </template>
+          <button class="secondary" @click="showDeleteConfirm = true">
+            <i class="bi bi-trash" />
+          </button>
         </div>
       </header>
 
       <!-- Editable Fields -->
       <section class="edit-section">
-        <label>
+        <label v-if="editing">
           Title
-          <input v-if="editing" v-model="editForm.title" type="text" required />
-          <h1 v-else>{{ task.title }}</h1>
+          <input v-model="editForm.title" type="text" required />
         </label>
         <label>
           Description
@@ -246,6 +251,15 @@ const availableStatuses = computed(() => {
   return project?.statuses || ["To Do", "In Progress", "Done"];
 });
 
+function goBack() {
+  const back = window.history.state?.back;
+  if (back) {
+    router.back();
+  } else {
+    router.push("/tasks");
+  }
+}
+
 function startEdit() {
   if (!task.value) return;
   editForm.value = {
@@ -287,7 +301,7 @@ onMounted(async () => {
     await tasksStore.fetchById(route.params.id);
     await projectsStore.fetchAll();
   } catch {
-    router.push("/tasks");
+    goBack();
   } finally {
     loading.value = false;
   }
@@ -342,7 +356,7 @@ async function deleteTask() {
   deleting.value = true;
   try {
     await tasksStore.remove(route.params.id);
-    router.push("/tasks");
+    goBack();
   } catch (e) {
     alert(e.response?.data?.error || "Failed to delete task");
   } finally {

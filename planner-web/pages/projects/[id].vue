@@ -5,8 +5,8 @@
     <template v-else-if="project">
       <header class="detail-header">
         <div>
-          <NuxtLink to="/projects" class="back-link"
-            ><i class="bi bi-arrow-left" /> Projects</NuxtLink
+          <a href="#" class="back-link" @click.prevent="goBack"
+            ><i class="bi bi-arrow-left" /> Projects</a
           >
           <hgroup>
             <h1>{{ project.name }}</h1>
@@ -179,12 +179,6 @@
         </footer>
       </article>
     </dialog>
-
-    <TaskDetailDialog
-      :task-id="selectedTaskId"
-      @close="selectedTaskId = null"
-      @updated="refreshTasks"
-    />
   </div>
 </template>
 
@@ -194,6 +188,7 @@ import api from "../../utils/api";
 const projectsStore = useProjectsStore();
 const tasksStore = useTasksStore();
 const route = useRoute();
+const router = useRouter();
 
 const project = computed(() => projectsStore.currentProject);
 const tasks = computed(() =>
@@ -202,7 +197,6 @@ const tasks = computed(() =>
 const loading = ref(true);
 const showDeleteConfirm = ref(false);
 const deleting = ref(false);
-const selectedTaskId = ref(null);
 
 const editVisibility = ref("public");
 const editUserAccess = ref([]);
@@ -214,6 +208,15 @@ const newStatusText = ref("");
 const dragStatusIdx = ref(null);
 const savingStatuses = ref(false);
 const statusEditError = ref("");
+
+function goBack() {
+  const back = window.history.state?.back;
+  if (back) {
+    router.back();
+  } else {
+    router.push("/projects");
+  }
+}
 
 async function fetchUsers() {
   try {
@@ -246,11 +249,7 @@ function toggleUserAccess(userId) {
 }
 
 function openTask(task) {
-  selectedTaskId.value = task.id;
-}
-
-async function refreshTasks() {
-  await tasksStore.fetchAll(route.params.id);
+  router.push(`/tasks/${task.id}`);
 }
 
 onMounted(async () => {
@@ -276,7 +275,7 @@ async function deleteProject() {
   deleting.value = true;
   try {
     await projectsStore.remove(route.params.id);
-    router.push("/projects");
+    goBack();
   } catch (e) {
     alert(e.response?.data?.error || "Failed to delete project");
   } finally {

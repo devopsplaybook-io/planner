@@ -15,6 +15,10 @@ type LazyComponent<T> = DefineComponent<HydrationStrategies, {}, {}, {}, {}, {},
 
 
 export const Navigation: typeof import("../components/Navigation.vue")['default']
+export const NoteCard: typeof import("../components/NoteCard.vue")['default']
+export const NoteDetailDialog: typeof import("../components/NoteDetailDialog.vue")['default']
+export const ProjectCard: typeof import("../components/ProjectCard.vue")['default']
+export const ProjectDetailDialog: typeof import("../components/ProjectDetailDialog.vue")['default']
 export const TaskCard: typeof import("../components/TaskCard.vue")['default']
 export const TaskDetailDialog: typeof import("../components/TaskDetailDialog.vue")['default']
 export const NuxtWelcome: typeof import("../node_modules/nuxt/dist/app/components/welcome.vue")['default']
@@ -50,6 +54,10 @@ export const Html: typeof import("../node_modules/nuxt/dist/head/runtime/compone
 export const Body: typeof import("../node_modules/nuxt/dist/head/runtime/components")['Body']
 export const NuxtIsland: typeof import("../node_modules/nuxt/dist/app/components/nuxt-island")['default']
 export const LazyNavigation: LazyComponent<typeof import("../components/Navigation.vue")['default']>
+export const LazyNoteCard: LazyComponent<typeof import("../components/NoteCard.vue")['default']>
+export const LazyNoteDetailDialog: LazyComponent<typeof import("../components/NoteDetailDialog.vue")['default']>
+export const LazyProjectCard: LazyComponent<typeof import("../components/ProjectCard.vue")['default']>
+export const LazyProjectDetailDialog: LazyComponent<typeof import("../components/ProjectDetailDialog.vue")['default']>
 export const LazyTaskCard: LazyComponent<typeof import("../components/TaskCard.vue")['default']>
 export const LazyTaskDetailDialog: LazyComponent<typeof import("../components/TaskDetailDialog.vue")['default']>
 export const LazyNuxtWelcome: LazyComponent<typeof import("../node_modules/nuxt/dist/app/components/welcome.vue")['default']>
