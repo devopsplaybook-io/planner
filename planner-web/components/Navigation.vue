@@ -102,7 +102,7 @@ watch(route, () => {
 nav {
   display: flex;
   align-items: center;
-  gap: 0.5em;
+  gap: var(--space-sm);
 }
 
 .menu-toggle {
@@ -117,18 +117,18 @@ nav {
 .menu-items {
   display: flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-xs);
   flex-wrap: wrap;
 }
 
 .menu-item {
   display: flex;
   align-items: center;
-  gap: 0.3em;
-  padding: 0.3em 0.6em;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
   text-decoration: none;
   font-size: 0.9em;
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
   color: var(--pico-color);
   background: none;
   border: none;
@@ -177,20 +177,20 @@ nav {
     right: 0;
     background: var(--pico-background-color);
     border-bottom: 1px solid var(--pico-muted-border-color);
-    padding: 0.5em;
+    padding: var(--space-sm);
     z-index: 1000;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
   }
 
   nav:not(.collapsed) .menu-item {
     width: 100%;
-    padding: 0.6em 0.8em;
+    padding: var(--space-sm) var(--space-md);
   }
 
   nav:not(.collapsed) .menu-divider {
     width: 100%;
     height: 1px;
-    margin: 0.3em 0;
+    margin: var(--space-xs) 0;
   }
 }
 </style>

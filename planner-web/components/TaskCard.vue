@@ -54,7 +54,7 @@ defineEmits(["click"]);
 <style scoped>
 .task-card {
   cursor: pointer;
-  padding: 0.4em 0.8em;
+  padding: var(--space-sm) var(--space-md);
   font-size: 0.9em;
   transition: transform 0.1s;
 }
@@ -70,7 +70,7 @@ defineEmits(["click"]);
 .task-card header {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
+  gap: var(--space-xs);
   padding: 0;
   height: auto;
 }
@@ -78,7 +78,7 @@ defineEmits(["click"]);
 .card-title {
   display: flex;
   align-items: center;
-  gap: 0.5em;
+  gap: var(--space-sm);
   flex-wrap: wrap;
 }
 
@@ -89,7 +89,7 @@ defineEmits(["click"]);
 .status-badge {
   font-size: 0.75em;
   padding: 0.1em 0.4em;
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
   background: var(--pico-primary-background);
   color: var(--pico-primary-inverse);
   white-space: nowrap;
@@ -97,7 +97,7 @@ defineEmits(["click"]);
 
 .card-meta {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
   flex-wrap: wrap;
   font-size: 0.85em;
 }
@@ -113,16 +113,16 @@ defineEmits(["click"]);
 
 .task-card footer {
   display: flex;
-  gap: 0.2em;
+  gap: var(--space-xs);
   flex-wrap: wrap;
   padding: 0;
-  margin-top: 0.3em;
+  margin-top: var(--space-xs);
 }
 
 .label-tag {
   font-size: 0.7em;
   padding: 0.1em 0.3em;
-  border-radius: 0.2em;
+  border-radius: var(--radius-sm);
   background: var(--pico-primary-background);
   color: var(--pico-primary-inverse);
 }

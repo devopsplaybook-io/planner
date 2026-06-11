@@ -83,3 +83,100 @@ dialog article {
   max-width: 90vw;
   min-width: 320px;
 }
+
+/* ============================================
+   Shared Page Patterns
+   ============================================ */
+
+/* Page header (list views) */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-lg);
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* Detail header (detail views with back link) */
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-lg);
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* Dialog footer (button row) */
+.dialog-footer {
+  display: flex;
+  gap: var(--space-sm);
+  justify-content: flex-end;
+}
+
+/* Close button (X button) */
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5em;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Consistent section spacing */
+.page-section {
+  margin-bottom: var(--space-lg);
+}
+
+/* Tag / badge pill */
+.tag,
+.label-tag {
+  display: inline-block;
+  padding: 0.1em 0.4em;
+  border-radius: var(--radius-sm);
+  background: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
+  font-size: 0.85em;
+}
+
+/* Status badge (larger variant) */
+.status-badge {
+  display: inline-block;
+  padding: 0.2em 0.5em;
+  border-radius: var(--radius-sm);
+  background: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
+  font-size: 0.85em;
+  width: fit-content;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: var(--space-xl) var(--space-md);
+  color: var(--pico-muted-color);
+  font-size: 0.9em;
+}
+
+.empty-state i {
+  font-size: 3em;
+  margin-bottom: var(--space-sm);
+}
+
+/* ============================================
+   Responsive Utilities
+   ============================================ */
+
+@media (max-width: 767px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .show-mobile {
+    display: none !important;
+  }
+}

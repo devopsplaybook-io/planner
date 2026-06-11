@@ -1,12 +1,12 @@
 <template>
   <div class="note-detail">
-    <div v-if="loading" class="loading-indicator"/>
+    <div v-if="loading" class="loading-indicator" />
 
     <template v-else-if="note">
       <header class="detail-header">
         <div>
           <NuxtLink to="/notes" class="back-link"
-            ><i class="bi bi-arrow-left"/> Notes</NuxtLink
+            ><i class="bi bi-arrow-left" /> Notes</NuxtLink
           >
           <hgroup>
             <h1>{{ note.title }}</h1>
@@ -14,7 +14,7 @@
         </div>
         <div class="header-actions">
           <button class="secondary" @click="showDeleteConfirm = true">
-            <i class="bi bi-trash"/>
+            <i class="bi bi-trash" />
           </button>
         </div>
       </header>
@@ -47,14 +47,14 @@
               target="_blank"
               class="attachment-link"
             >
-              <i class="bi bi-paperclip"/> {{ att.fileName }}
+              <i class="bi bi-paperclip" /> {{ att.fileName }}
             </a>
             <button
               class="secondary small-btn"
               :aria-busy="deletingAttachmentId === att.id"
               @click="deleteAttachment(att.id)"
             >
-              <i class="bi bi-x"/>
+              <i class="bi bi-x" />
             </button>
           </div>
         </div>
@@ -63,7 +63,7 @@
       <section>
         <h2>Add Attachment</h2>
         <form class="add-attachment" @submit.prevent="uploadAttachment">
-          <input ref="fileInput" type="file" class="file-input" >
+          <input ref="fileInput" type="file" class="file-input" />
           <button type="submit" :aria-busy="uploading">Upload</button>
         </form>
       </section>
@@ -93,7 +93,7 @@
             type="text"
             placeholder="Add a comment..."
             required
-          >
+          />
           <button type="submit" :aria-busy="submitting">Send</button>
         </form>
       </section>
@@ -106,7 +106,7 @@
           <h3>Delete Note</h3>
         </header>
         <p>Are you sure you want to delete "{{ note?.title }}"?</p>
-        <footer>
+        <footer class="dialog-footer">
           <button class="secondary" @click="showDeleteConfirm = false">
             Cancel
           </button>
@@ -201,24 +201,17 @@ async function deleteAttachment(attachmentId) {
 </script>
 
 <style scoped>
-.detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1em;
-}
-
 .back-link {
   text-decoration: none;
   font-size: 0.9em;
   display: flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .header-actions {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
 }
 
 .note-description {
@@ -228,33 +221,24 @@ async function deleteAttachment(attachmentId) {
 
 .labels {
   display: flex;
-  gap: 0.3em;
+  gap: var(--space-xs);
   flex-wrap: wrap;
-  margin-bottom: 1em;
-}
-
-.label-tag {
-  display: inline-block;
-  padding: 0.1em 0.4em;
-  border-radius: 0.3em;
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
-  font-size: 0.85em;
+  margin-bottom: var(--space-md);
 }
 
 section {
-  margin-bottom: 1.5em;
+  margin-bottom: var(--space-lg);
 }
 
 .comments {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
-  margin-bottom: 0.5em;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
 }
 
 .comment {
-  padding: 0.3em 0.5em;
+  padding: var(--space-xs) var(--space-sm);
 }
 
 .comment header {
@@ -262,7 +246,7 @@ section {
   justify-content: space-between;
   padding: 0;
   height: auto;
-  margin-bottom: 0.2em;
+  margin-bottom: var(--space-xs);
 }
 
 .comment p {
@@ -272,40 +256,33 @@ section {
 
 .add-comment {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
 }
 
 .add-comment input {
   flex: 1;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 1em;
-  color: var(--pico-muted-color);
-  font-size: 0.9em;
-}
-
 .attachments {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .attachment-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.3em 0.5em;
+  padding: var(--space-xs) var(--space-sm);
   background: var(--pico-card-background-color);
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
 }
 
 .attachment-link {
   text-decoration: none;
   display: flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .attachment-link:hover {
@@ -319,17 +296,11 @@ section {
 
 .add-attachment {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
   align-items: center;
 }
 
 .file-input {
   flex: 1;
-}
-
-dialog article footer {
-  display: flex;
-  gap: 0.5em;
-  justify-content: flex-end;
 }
 </style>

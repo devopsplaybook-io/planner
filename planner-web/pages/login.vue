@@ -121,16 +121,16 @@ async function handleSubmit() {
 
 .error-message {
   color: var(--pico-del-color);
-  margin-bottom: 0.5em;
-  padding: 0.5em;
+  margin-bottom: var(--space-sm);
+  padding: var(--space-sm);
   border: 1px solid var(--pico-del-color);
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
 }
 
 footer {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
+  gap: var(--space-sm);
   align-items: center;
 }
 </style>

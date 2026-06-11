@@ -196,7 +196,7 @@
           <h3>Delete Task</h3>
         </header>
         <p>Are you sure you want to delete "{{ task?.title }}"?</p>
-        <footer>
+        <footer class="dialog-footer">
           <button class="secondary" @click="showDeleteConfirm = false">
             Cancel
           </button>
@@ -378,26 +378,17 @@ async function deleteAttachment(attachmentId) {
 </script>
 
 <style scoped>
-.detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1em;
-  flex-wrap: wrap;
-  gap: 0.5em;
-}
-
 .back-link {
   text-decoration: none;
   font-size: 0.9em;
   display: flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .header-actions {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
   align-items: center;
 }
 
@@ -411,21 +402,13 @@ async function deleteAttachment(attachmentId) {
   color: var(--pico-muted-color);
 }
 
-.status-badge {
-  padding: 0.2em 0.5em;
-  border-radius: 0.3em;
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
-  font-size: 0.85em;
-}
-
 .edit-section {
-  margin-bottom: 1.5em;
+  margin-bottom: var(--space-lg);
 }
 
 .edit-section label {
   display: block;
-  margin-bottom: 0.5em;
+  margin-bottom: var(--space-sm);
 }
 
 .edit-section label h1 {
@@ -439,11 +422,11 @@ async function deleteAttachment(attachmentId) {
 .meta-section {
   display: flex;
   flex-wrap: wrap;
-  gap: 1em;
-  margin-bottom: 1.5em;
-  padding: 0.5em;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+  padding: var(--space-sm);
   background: var(--pico-card-background-color);
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
 }
 
 .meta-field {
@@ -458,31 +441,20 @@ async function deleteAttachment(attachmentId) {
   margin: 0;
 }
 
-.assignee-tag,
-.label-tag {
-  display: inline-block;
-  padding: 0.1em 0.4em;
-  margin: 0.1em;
-  border-radius: 0.3em;
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
-  font-size: 0.85em;
-}
-
 section {
-  margin-bottom: 1.5em;
+  margin-bottom: var(--space-lg);
 }
 
 .checklist {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .checklist-item {
   display: flex;
   align-items: center;
-  gap: 0.5em;
+  gap: var(--space-sm);
   cursor: pointer;
 }
 
@@ -494,12 +466,12 @@ section {
 .comments {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
-  margin-bottom: 0.5em;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
 }
 
 .comment {
-  padding: 0.3em 0.5em;
+  padding: var(--space-xs) var(--space-sm);
 }
 
 .comment header {
@@ -507,7 +479,7 @@ section {
   justify-content: space-between;
   padding: 0;
   height: auto;
-  margin-bottom: 0.2em;
+  margin-bottom: var(--space-xs);
 }
 
 .comment p {
@@ -517,8 +489,8 @@ section {
 
 .add-checklist-item {
   display: flex;
-  gap: 0.5em;
-  margin-top: 0.5em;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
 }
 
 .add-checklist-item input {
@@ -527,40 +499,33 @@ section {
 
 .add-comment {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
 }
 
 .add-comment input {
   flex: 1;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 1em;
-  color: var(--pico-muted-color);
-  font-size: 0.9em;
-}
-
 .attachments {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .attachment-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.3em 0.5em;
+  padding: var(--space-xs) var(--space-sm);
   background: var(--pico-card-background-color);
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
 }
 
 .attachment-link {
   text-decoration: none;
   display: flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .attachment-link:hover {
@@ -574,17 +539,11 @@ section {
 
 .add-attachment {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
   align-items: center;
 }
 
 .file-input {
   flex: 1;
-}
-
-dialog article footer {
-  display: flex;
-  gap: 0.5em;
-  justify-content: flex-end;
 }
 </style>

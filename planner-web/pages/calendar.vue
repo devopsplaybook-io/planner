@@ -229,8 +229,8 @@ async function onDrop(dateStr) {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1em;
-  margin-bottom: 1em;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
 }
 
 .month-nav h2 {
@@ -244,8 +244,8 @@ async function onDrop(dateStr) {
   border: none;
   font-size: 1.2em;
   cursor: pointer;
-  padding: 0.3em 0.6em;
-  border-radius: 0.3em;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
 }
 
 .month-nav button:hover {
@@ -256,7 +256,7 @@ async function onDrop(dateStr) {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--pico-muted-border-color);
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
@@ -267,7 +267,7 @@ async function onDrop(dateStr) {
 }
 
 .calendar-day-header {
-  padding: 0.5em;
+  padding: var(--space-sm);
   text-align: center;
   font-weight: bold;
   font-size: 0.85em;
@@ -281,7 +281,7 @@ async function onDrop(dateStr) {
 
 .calendar-day {
   min-height: 80px;
-  padding: 0.3em;
+  padding: var(--space-xs);
   border-right: 1px solid var(--pico-muted-border-color);
   border-bottom: 1px solid var(--pico-muted-border-color);
   font-size: 0.85em;
@@ -309,7 +309,7 @@ async function onDrop(dateStr) {
 
 .day-number {
   display: inline-block;
-  margin-bottom: 0.2em;
+  margin-bottom: var(--space-xs);
 }
 
 .day-tasks {
@@ -345,5 +345,23 @@ async function onDrop(dateStr) {
 }
 .priority-low {
   border-left: 3px solid var(--pico-muted-color);
+}
+
+@media (max-width: 767px) {
+  .calendar-day-header span,
+  .calendar-day-header {
+    font-size: 0.75em;
+    padding: var(--space-xs);
+  }
+
+  .calendar-day {
+    min-height: 60px;
+    font-size: 0.75em;
+  }
+
+  .day-task {
+    font-size: 0.7em;
+    padding: 0.05em 0.2em;
+  }
 }
 </style>

@@ -116,7 +116,7 @@
               <i class="bi bi-plus" /> Add item
             </button>
           </fieldset>
-          <footer>
+          <footer class="dialog-footer">
             <button type="submit" :aria-busy="creating">Create</button>
             <button
               class="secondary"
@@ -255,60 +255,44 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1em;
-  flex-wrap: wrap;
-  gap: 0.5em;
-}
-
 .header-controls {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
   align-items: center;
 }
 
 .kanban-board {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1em;
+  gap: var(--space-md);
   overflow-x: auto;
 }
 
 .kanban-column {
   background: var(--pico-card-background-color);
-  border-radius: 0.5em;
-  padding: 0.5em;
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
   min-height: 200px;
 }
 
 .column-header {
   font-size: 1em;
   text-align: center;
-  margin-bottom: 0.5em;
-  padding-bottom: 0.3em;
+  margin-bottom: var(--space-sm);
+  padding-bottom: var(--space-xs);
   border-bottom: 2px solid var(--pico-primary);
 }
 
 .column-tasks {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5em;
-  cursor: pointer;
+  gap: var(--space-xs);
 }
 
 .checklist-input-row {
   display: flex;
-  gap: 0.3em;
-  margin-bottom: 0.3em;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xs);
 }
 
 .checklist-input-row input {
@@ -317,11 +301,5 @@ onMounted(async () => {
 
 .checklist-input-row button {
   padding: 0.2em 0.5em;
-}
-
-dialog article footer {
-  display: flex;
-  gap: 0.5em;
-  justify-content: flex-end;
 }
 </style>

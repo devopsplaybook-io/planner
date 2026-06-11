@@ -132,52 +132,32 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1em;
-  flex-wrap: wrap;
-  gap: 0.5em;
-}
-
-.header-controls {
-  display: flex;
-  gap: 0.5em;
-  align-items: center;
-}
-
 .dashboard {
   max-width: 800px;
   margin: 0 auto;
 }
 
+.header-controls {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
 section {
-  margin-bottom: 1.5em;
+  margin-bottom: var(--space-lg);
 }
 
 section h2 {
   font-size: 1.1em;
-  margin-bottom: 0.5em;
+  margin-bottom: var(--space-sm);
   display: flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 3em;
-  color: var(--pico-muted-color);
-}
-
-.empty-state i {
-  font-size: 3em;
-  margin-bottom: 0.5em;
+  gap: var(--space-xs);
 }
 </style>

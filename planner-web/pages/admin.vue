@@ -6,7 +6,7 @@
     </hgroup>
 
     <div v-if="!authStore.isAdmin" class="access-denied">
-      <i class="bi bi-shield-lock"/>
+      <i class="bi bi-shield-lock" />
       <p>Access denied. Admin privileges required.</p>
     </div>
 
@@ -15,11 +15,11 @@
         <header class="section-header">
           <h2>Users</h2>
           <button @click="showCreateDialog = true">
-            <i class="bi bi-plus-lg"/> Add User
+            <i class="bi bi-plus-lg" /> Add User
           </button>
         </header>
 
-        <div v-if="loading" class="loading-indicator"/>
+        <div v-if="loading" class="loading-indicator" />
 
         <table v-else>
           <thead>
@@ -50,7 +50,7 @@
                   class="small contrast"
                   @click="confirmDeleteUser(user)"
                 >
-                  <i class="bi bi-trash"/>
+                  <i class="bi bi-trash" />
                 </button>
               </td>
             </tr>
@@ -78,7 +78,7 @@
               type="text"
               required
               placeholder="Username"
-            >
+            />
           </label>
           <label>
             Password
@@ -87,7 +87,7 @@
               type="password"
               required
               placeholder="Password"
-            >
+            />
           </label>
           <label>
             Role
@@ -96,7 +96,7 @@
               <option value="admin">Admin</option>
             </select>
           </label>
-          <footer>
+          <footer class="dialog-footer">
             <button type="submit" :aria-busy="creating">Create</button>
             <button
               class="secondary"
@@ -117,7 +117,7 @@
           <h3>Delete User</h3>
         </header>
         <p>Are you sure you want to delete user "{{ deleteTarget?.name }}"?</p>
-        <footer>
+        <footer class="dialog-footer">
           <button class="secondary" @click="deleteTarget = null">Cancel</button>
           <button class="contrast" :aria-busy="deleting" @click="deleteUser">
             Delete
@@ -213,13 +213,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1em;
-}
-
 .access-denied {
   text-align: center;
   padding: 3em;
@@ -228,7 +221,7 @@ onMounted(async () => {
 
 .access-denied i {
   font-size: 3em;
-  margin-bottom: 0.5em;
+  margin-bottom: var(--space-sm);
 }
 
 table {
@@ -244,18 +237,5 @@ table select {
 button.small {
   padding: 0.2em 0.5em;
   font-size: 0.85em;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5em;
-  cursor: pointer;
-}
-
-dialog article footer {
-  display: flex;
-  gap: 0.5em;
-  justify-content: flex-end;
 }
 </style>

@@ -66,7 +66,7 @@
               placeholder="Optional description"
             />
           </label>
-          <footer>
+          <footer class="dialog-footer">
             <button type="submit" :aria-busy="creating">Create</button>
             <button
               class="secondary"
@@ -119,17 +119,10 @@ async function createProject() {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1em;
-}
-
 .project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1em;
+  gap: var(--space-md);
 }
 
 .project-card {
@@ -161,30 +154,17 @@ async function createProject() {
 .badge {
   font-size: 0.75em;
   padding: 0.2em 0.5em;
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
   background: var(--pico-primary-background);
   color: var(--pico-primary-inverse);
 }
 
 .badge-group {
   display: flex;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .badge-restricted {
   background: var(--pico-del-color);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5em;
-  cursor: pointer;
-}
-
-dialog article footer {
-  display: flex;
-  gap: 0.5em;
-  justify-content: flex-end;
 }
 </style>

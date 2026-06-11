@@ -200,7 +200,7 @@
         <article>
           <header><h3>Delete Task</h3></header>
           <p>Are you sure you want to delete "{{ task?.title }}"?</p>
-          <footer>
+          <footer class="dialog-footer">
             <button class="secondary" @click="showDeleteConfirm = false">
               Cancel
             </button>
@@ -410,25 +410,17 @@ async function deleteAttachment(attachmentId) {
 
 .dialog-actions {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
   align-items: center;
 }
 
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5em;
-  cursor: pointer;
-  padding: 0 0.3em;
-}
-
 .edit-section {
-  margin-bottom: 1em;
+  margin-bottom: var(--space-lg);
 }
 
 .edit-section label {
   display: block;
-  margin-bottom: 0.5em;
+  margin-bottom: var(--space-sm);
 }
 
 .edit-section label h2 {
@@ -443,17 +435,17 @@ async function deleteAttachment(attachmentId) {
 .meta-section {
   display: flex;
   flex-wrap: wrap;
-  gap: 1em;
-  margin-bottom: 1em;
-  padding: 0.5em;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+  padding: var(--space-sm);
   background: var(--pico-card-background-color);
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
 }
 
 .meta-field {
   display: flex;
   flex-direction: column;
-  gap: 0.2em;
+  gap: var(--space-xs);
   min-width: 130px;
 }
 
@@ -462,38 +454,13 @@ async function deleteAttachment(attachmentId) {
   margin: 0;
 }
 
-.tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2em;
-}
-
-.tag {
-  display: inline-block;
-  padding: 0.1em 0.4em;
-  border-radius: 0.3em;
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
-  font-size: 0.85em;
-}
-
 section {
-  margin-bottom: 1em;
+  margin-bottom: var(--space-lg);
 }
 
 section h4 {
   font-size: 1em;
-  margin-bottom: 0.5em;
-}
-
-.status-badge {
-  padding: 0.2em 0.5em;
-  border-radius: 0.3em;
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
-  font-size: 0.85em;
-  display: inline-block;
-  width: fit-content;
+  margin-bottom: var(--space-sm);
 }
 
 .priority-high {
@@ -509,14 +476,14 @@ section h4 {
 .checklist {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
-  margin-bottom: 0.5em;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
 }
 
 .checklist-item {
   display: flex;
   align-items: center;
-  gap: 0.5em;
+  gap: var(--space-sm);
   cursor: pointer;
 }
 
@@ -529,7 +496,7 @@ section h4 {
 .add-comment,
 .add-attachment {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
 }
 
 .add-checklist-item input,
@@ -541,12 +508,12 @@ section h4 {
 .comments {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
-  margin-bottom: 0.5em;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
 }
 
 .comment {
-  padding: 0.3em 0.5em;
+  padding: var(--space-xs) var(--space-sm);
 }
 
 .comment header {
@@ -554,7 +521,7 @@ section h4 {
   justify-content: space-between;
   padding: 0;
   height: auto;
-  margin-bottom: 0.2em;
+  margin-bottom: var(--space-xs);
 }
 
 .comment p {
@@ -562,33 +529,26 @@ section h4 {
   font-size: 0.9em;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 1em;
-  color: var(--pico-muted-color);
-  font-size: 0.9em;
-}
-
 .attachments {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .attachment-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.3em 0.5em;
+  padding: var(--space-xs) var(--space-sm);
   background: var(--pico-card-background-color);
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
 }
 
 .attachment-link {
   text-decoration: none;
   display: flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .attachment-link:hover {
@@ -602,7 +562,7 @@ section h4 {
 
 .inner-dialog article footer {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
   justify-content: flex-end;
 }
 </style>

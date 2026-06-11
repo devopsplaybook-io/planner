@@ -6,11 +6,11 @@
         <p>Free-form notes</p>
       </hgroup>
       <button class="fab-button" @click="showCreateDialog = true">
-        <i class="bi bi-plus-lg"/>
+        <i class="bi bi-plus-lg" />
       </button>
     </header>
 
-    <div v-if="loading" class="loading-indicator"/>
+    <div v-if="loading" class="loading-indicator" />
 
     <div v-else class="note-list">
       <article
@@ -31,7 +31,7 @@
             l
           }}</span>
           <small v-if="note.comments.length">
-            <i class="bi bi-chat"/> {{ note.comments.length }}
+            <i class="bi bi-chat" /> {{ note.comments.length }}
           </small>
         </footer>
       </article>
@@ -68,7 +68,7 @@
               type="text"
               required
               placeholder="Note title"
-            >
+            />
           </label>
           <label>
             Description
@@ -78,7 +78,7 @@
               rows="5"
             />
           </label>
-          <footer>
+          <footer class="dialog-footer">
             <button type="submit" :aria-busy="creating">Create</button>
             <button
               class="secondary"
@@ -144,17 +144,10 @@ async function createNote() {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1em;
-}
-
 .note-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 0.5em;
+  gap: var(--space-sm);
 }
 
 .note-card {
@@ -175,39 +168,17 @@ async function createNote() {
 }
 
 .note-desc {
-  margin-top: 0.3em;
+  margin-top: var(--space-xs);
   font-size: 0.9em;
   color: var(--pico-muted-color);
 }
 
 .note-card footer {
   display: flex;
-  gap: 0.3em;
+  gap: var(--space-xs);
   align-items: center;
   flex-wrap: wrap;
   padding: 0;
-  margin-top: 0.3em;
-}
-
-.label-tag {
-  display: inline-block;
-  padding: 0.1em 0.4em;
-  border-radius: 0.3em;
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
-  font-size: 0.8em;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5em;
-  cursor: pointer;
-}
-
-dialog article footer {
-  display: flex;
-  gap: 0.5em;
-  justify-content: flex-end;
+  margin-top: var(--space-xs);
 }
 </style>

@@ -84,7 +84,7 @@ header {
 
 header,
 main {
-  padding: 0.5em;
+  padding: var(--space-sm);
 }
 
 main {

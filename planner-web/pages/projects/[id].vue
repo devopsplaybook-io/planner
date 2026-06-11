@@ -106,7 +106,7 @@
           Are you sure you want to delete "{{ project?.name }}"? All associated
           tasks, notes, and comments will also be deleted.
         </p>
-        <footer>
+        <footer class="dialog-footer">
           <button class="secondary" @click="showDeleteConfirm = false">
             Cancel
           </button>
@@ -214,55 +214,40 @@ async function deleteProject() {
 </script>
 
 <style scoped>
-.detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1em;
-}
-
 .back-link {
   text-decoration: none;
   font-size: 0.9em;
   display: flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .header-actions {
   display: flex;
-  gap: 0.5em;
+  gap: var(--space-sm);
 }
 
 section {
-  margin-bottom: 1.5em;
+  margin-bottom: var(--space-lg);
 }
 
 .status-list {
   display: flex;
-  gap: 0.3em;
+  gap: var(--space-xs);
   flex-wrap: wrap;
-}
-
-.status-badge {
-  padding: 0.2em 0.5em;
-  border-radius: 0.3em;
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
-  font-size: 0.85em;
 }
 
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
+  gap: var(--space-xs);
 }
 
 .visibility-controls {
   display: flex;
-  gap: 1em;
+  gap: var(--space-md);
   flex-wrap: wrap;
-  margin-bottom: 0.5em;
+  margin-bottom: var(--space-sm);
 }
 
 .radio-label {
@@ -270,9 +255,9 @@ section {
   flex-direction: column;
   gap: 0.2em;
   cursor: pointer;
-  padding: 0.5em 1em;
+  padding: var(--space-sm) var(--space-md);
   border: 2px solid var(--pico-muted-border-color);
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
 }
 
 .radio-label:has(input:checked) {
@@ -289,22 +274,16 @@ section {
 .user-access-list {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
-  padding: 0.5em;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
   background: var(--pico-card-background-color);
-  border-radius: 0.3em;
+  border-radius: var(--radius-sm);
 }
 
 .user-access-item label {
   display: flex;
   align-items: center;
-  gap: 0.5em;
+  gap: var(--space-sm);
   cursor: pointer;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 2em;
-  color: var(--pico-muted-color);
 }
 </style>
