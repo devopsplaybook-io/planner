@@ -220,7 +220,7 @@ onMounted(async () => {
 }
 
 .access-denied i {
-  font-size: 3em;
+  font-size: var(--text-icon);
   margin-bottom: var(--space-sm);
 }
 
@@ -230,12 +230,12 @@ table {
 
 table select {
   margin: 0;
-  padding: 0.2em;
-  font-size: 0.9em;
+  padding: var(--space-2xs);
+  font-size: var(--text-md);
 }
 
 button.small {
   padding: 0.2em 0.5em;
-  font-size: 0.85em;
+  font-size: var(--text-base);
 }
 </style>

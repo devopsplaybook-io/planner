@@ -330,7 +330,7 @@ async function deleteAttachment(attachmentId) {
 
 .edit-section label h2 {
   margin: 0;
-  font-size: 1.3em;
+  font-size: var(--text-xl);
 }
 
 .edit-section textarea {
@@ -342,7 +342,7 @@ section {
 }
 
 section h4 {
-  font-size: 1em;
+  font-size: var(--text-default);
   margin-bottom: var(--space-sm);
 }
 
@@ -373,7 +373,7 @@ section h4 {
 
 .comment p {
   margin: 0;
-  font-size: 0.9em;
+  font-size: var(--text-md);
 }
 
 .add-comment,
@@ -425,7 +425,7 @@ section h4 {
 
 .small-btn {
   padding: 0.1em 0.4em;
-  font-size: 0.85em;
+  font-size: var(--text-base);
 }
 
 .inner-dialog article footer {

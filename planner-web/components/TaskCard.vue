@@ -84,23 +84,19 @@ function onDragEnd(event) {
   cursor: pointer;
   display: flex;
   flex-direction: row;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--pico-card-background-color);
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-sm);
   transition:
-    box-shadow 0.18s ease,
-    transform 0.18s ease,
-    opacity 0.18s ease;
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast),
+    opacity var(--transition-fast);
   user-select: none;
 }
 
 .task-card:hover {
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.13),
-    0 2px 4px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
 
@@ -137,7 +133,7 @@ function onDragEnd(event) {
   gap: var(--space-xs, 4px);
   padding: var(--space-sm, 8px) var(--space-md, 12px);
   min-width: 0;
-  font-size: 0.9em;
+  font-size: var(--text-md);
 }
 
 .card-body header {
@@ -155,21 +151,21 @@ function onDragEnd(event) {
 .card-title-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2xs);
 }
 
 .task-icon {
   color: var(--pico-muted-color);
-  font-size: 0.85em;
+  font-size: var(--text-base);
   flex-shrink: 0;
   display: flex;
   align-items: center;
 }
 
 .task-title {
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  line-height: 1.3;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  line-height: var(--leading-compact);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -179,39 +175,39 @@ function onDragEnd(event) {
 /* Status badge with distinct colors per status */
 .status-badge {
   align-self: flex-start;
-  font-size: 0.7em;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 999px;
+  padding: 0.1em 0.5em;
+  border-radius: var(--radius-full);
   background: var(--pico-muted-color);
   color: #fff;
   white-space: nowrap;
 }
 
 .status-to-do .status-badge {
-  background: #6c757d;
+  background: var(--color-status-todo);
 }
 .status-in-progress .status-badge {
-  background: #0d6efd;
+  background: var(--color-status-progress);
 }
 .status-done .status-badge {
-  background: #198754;
+  background: var(--color-status-done);
 }
 .status-in-review .status-badge,
 .status-review .status-badge {
-  background: #6f42c1;
+  background: var(--color-status-review);
 }
 .status-blocked .status-badge {
-  background: #dc3545;
+  background: var(--color-status-blocked);
 }
 
 .card-meta {
   display: flex;
-  gap: var(--space-sm, 6px);
+  gap: var(--space-sm);
   flex-wrap: wrap;
-  font-size: 0.82em;
+  font-size: var(--text-sm);
   color: var(--pico-muted-color);
 }
 
@@ -220,27 +216,27 @@ function onDragEnd(event) {
 .checklist-progress {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-2xs);
   color: inherit;
 }
 
 .card-body footer {
   display: flex;
-  gap: 4px;
+  gap: var(--space-xs);
   flex-wrap: wrap;
   padding: 0;
   margin: 0;
-  margin-top: var(--space-xs, 4px);
+  margin-top: var(--space-xs);
   background: none;
   border: none;
   border-radius: 0;
 }
 
 .label-tag {
-  font-size: 0.68em;
-  font-weight: 500;
-  padding: 1px 6px;
-  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  padding: 0.1em 0.4em;
+  border-radius: var(--radius-full);
   background: var(--pico-primary-background);
   color: var(--pico-primary-inverse);
   white-space: nowrap;

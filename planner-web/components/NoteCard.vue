@@ -51,14 +51,14 @@ function truncate(text, max) {
 <style scoped>
 .card-date {
   color: var(--pico-muted-color);
-  font-size: 0.78em;
+  font-size: var(--text-sm);
 }
 
 .card-desc {
-  margin-top: var(--space-xs, 4px);
-  font-size: 0.85em;
+  margin-top: var(--space-xs);
+  font-size: var(--text-base);
   color: var(--pico-muted-color);
-  line-height: 1.4;
+  line-height: var(--leading-normal);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -68,7 +68,7 @@ function truncate(text, max) {
 .comment-count {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-2xs);
   color: var(--pico-muted-color);
   margin-left: auto;
 }

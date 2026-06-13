@@ -212,7 +212,7 @@ async function deleteProject() {
 
 .edit-section label h2 {
   margin: 0;
-  font-size: 1.3em;
+  font-size: var(--text-xl);
 }
 
 .edit-section textarea {
@@ -236,7 +236,7 @@ async function deleteProject() {
 }
 
 .badge {
-  font-size: 0.75em;
+  font-size: var(--text-sm);
   padding: 0.2em 0.5em;
   border-radius: var(--radius-sm);
   background: var(--pico-primary-background);

@@ -41,15 +41,15 @@ defineEmits(["click"]);
 <style scoped>
 .badge-group {
   display: flex;
-  gap: var(--space-xs, 4px);
+  gap: var(--space-xs);
   flex-shrink: 0;
 }
 
 .badge {
-  font-size: 0.68em;
-  font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: 0.1em 0.5em;
+  border-radius: var(--radius-full);
   background: var(--pico-primary-background);
   color: var(--pico-primary-inverse);
   white-space: nowrap;
@@ -61,10 +61,10 @@ defineEmits(["click"]);
 }
 
 .card-desc {
-  margin-top: var(--space-xs, 4px);
-  font-size: 0.85em;
+  margin-top: var(--space-xs);
+  font-size: var(--text-base);
   color: var(--pico-muted-color);
-  line-height: 1.4;
+  line-height: var(--leading-normal);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -74,7 +74,7 @@ defineEmits(["click"]);
 .status-count {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-2xs);
   color: var(--pico-muted-color);
 }
 </style>

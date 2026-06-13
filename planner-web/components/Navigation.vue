@@ -79,21 +79,30 @@ const activeRoute = computed(() => {
 
 <style scoped>
 .menu-links li {
-  padding-top: 0.2em;
-  padding-bottom: 0.2em;
+  padding-top: var(--space-2xs);
+  padding-bottom: var(--space-2xs);
 }
 .menu-links li {
-  padding-right: 1em;
-  font-size: 0.85em;
+  padding-right: var(--space-sm);
+  font-size: var(--text-md);
 }
 .menu-links .inactive {
   opacity: 0.5;
 }
 .menu-links .active {
-  color: #3cabff;
+  color: var(--pico-primary);
 }
 .menu-links {
-  font-weight: bold;
+  font-weight: var(--weight-bold);
+}
+
+.menu-links a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nav-logo {
@@ -103,7 +112,8 @@ const activeRoute = computed(() => {
 }
 
 .menu-links i {
-  margin-right: 0.5rem;
+  margin-right: var(--space-2xs);
+  flex-shrink: 0;
 }
 
 /* Hide brand name on mobile and intermediate screens */
@@ -120,7 +130,7 @@ const activeRoute = computed(() => {
   }
 
   .menu-links li {
-    padding-right: 0.3em;
+    padding-right: var(--space-2xs);
   }
 }
 
@@ -128,6 +138,6 @@ const activeRoute = computed(() => {
   opacity: 0.8;
 }
 :root[data-theme="light"] .menu-links .active {
-  color: #033452;
+  color: var(--pico-primary);
 }
 </style>

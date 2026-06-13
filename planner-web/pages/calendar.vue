@@ -263,7 +263,7 @@ async function onDrop(dateStr) {
 .month-nav button {
   background: none;
   border: none;
-  font-size: 1.2em;
+  font-size: var(--text-lg);
   cursor: pointer;
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-sm);
@@ -290,8 +290,8 @@ async function onDrop(dateStr) {
 .calendar-day-header {
   padding: var(--space-sm);
   text-align: center;
-  font-weight: bold;
-  font-size: 0.85em;
+  font-weight: var(--weight-bold);
+  font-size: var(--text-base);
   border-bottom: 1px solid var(--pico-muted-border-color);
 }
 
@@ -305,7 +305,7 @@ async function onDrop(dateStr) {
   padding: var(--space-xs);
   border-right: 1px solid var(--pico-muted-border-color);
   border-bottom: 1px solid var(--pico-muted-border-color);
-  font-size: 0.85em;
+  font-size: var(--text-base);
 }
 
 .calendar-day.other-month {
@@ -341,12 +341,12 @@ async function onDrop(dateStr) {
 
 .day-task {
   padding: 0.1em 0.3em;
-  border-radius: 0.2em;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.85em;
+  font-size: var(--text-base);
   background: var(--pico-card-background-color);
 }
 
@@ -371,17 +371,17 @@ async function onDrop(dateStr) {
 @media (max-width: 767px) {
   .calendar-day-header span,
   .calendar-day-header {
-    font-size: 0.75em;
+    font-size: var(--text-sm);
     padding: var(--space-xs);
   }
 
   .calendar-day {
     min-height: 60px;
-    font-size: 0.75em;
+    font-size: var(--text-sm);
   }
 
   .day-task {
-    font-size: 0.7em;
+    font-size: var(--text-xs);
     padding: 0.05em 0.2em;
   }
 }

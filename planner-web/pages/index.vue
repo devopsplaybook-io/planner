@@ -240,7 +240,7 @@ section {
 }
 
 section h2 {
-  font-size: 1.1em;
+  font-size: var(--text-lg);
   margin-bottom: var(--space-sm);
   display: flex;
   align-items: center;
@@ -269,7 +269,7 @@ section h2 {
 }
 
 .btn-regenerate {
-  font-size: 0.8em;
+  font-size: var(--text-base);
   padding: 0.25em 0.75em;
   border: 1px solid var(--pico-muted-border-color, #444);
   border-radius: var(--pico-border-radius, 4px);
@@ -277,7 +277,7 @@ section h2 {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-2xs);
 }
 
 .btn-regenerate:hover:not(:disabled) {
@@ -318,13 +318,13 @@ section h2 {
   display: inline-block;
   padding: 0.05em 0.5em;
   margin: 0 0.1em;
-  font-size: 0.85em;
-  font-weight: 500;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  background: var(--pico-primary);
   color: var(--pico-primary-inverse, #fff);
-  background: var(--pico-primary, #1095c1);
-  border-radius: 0.35em;
+  border-radius: var(--radius-md);
   text-decoration: none;
-  line-height: 1.4;
+  line-height: var(--leading-normal);
   white-space: nowrap;
 }
 
@@ -333,23 +333,23 @@ section h2 {
 }
 
 .recommendation-date {
-  font-size: 0.85em;
+  font-size: var(--text-base);
   opacity: 0.7;
   margin-bottom: var(--space-sm);
 }
 
 .recommendation-block {
   margin-bottom: var(--space-md);
-  line-height: 1.6;
+  line-height: var(--leading-loose);
 }
 
 .recommendation-block :deep(p) {
-  margin-bottom: 0.5em;
+  margin-bottom: var(--space-sm);
 }
 
 .recommendation-block :deep(ul),
 .recommendation-block :deep(ol) {
   padding-left: 1.5em;
-  margin-bottom: 0.5em;
+  margin-bottom: var(--space-sm);
 }
 </style>

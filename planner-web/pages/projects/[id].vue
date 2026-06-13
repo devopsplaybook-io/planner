@@ -366,7 +366,7 @@ async function saveStatuses() {
 <style scoped>
 .back-link {
   text-decoration: none;
-  font-size: 0.9em;
+  font-size: var(--text-md);
   display: flex;
   align-items: center;
   gap: var(--space-xs);
@@ -382,7 +382,7 @@ section {
 }
 
 .section-hint {
-  font-size: 0.82em;
+  font-size: var(--text-sm);
   color: var(--pico-muted-color);
   margin-bottom: var(--space-sm);
 }
@@ -432,17 +432,17 @@ section {
   color: var(--pico-muted-color);
   display: flex;
   align-items: center;
-  font-size: 1.1em;
+  font-size: var(--text-lg);
   flex-shrink: 0;
 }
 
 .status-row-badge {
-  font-size: 0.78em;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
-  padding: 2px 8px;
-  border-radius: 999px;
+  padding: 0.1em 0.5em;
+  border-radius: var(--radius-full);
   background: var(--pico-muted-color);
   color: #fff;
   white-space: nowrap;
@@ -450,39 +450,39 @@ section {
 }
 
 .status-row-badge.status-to-do {
-  background: #6c757d;
+  background: var(--color-status-todo);
 }
 .status-row-badge.status-in-progress {
-  background: #0d6efd;
+  background: var(--color-status-progress);
 }
 .status-row-badge.status-done {
-  background: #198754;
+  background: var(--color-status-done);
 }
 .status-row-badge.status-in-review,
 .status-row-badge.status-review {
-  background: #6f42c1;
+  background: var(--color-status-review);
 }
 .status-row-badge.status-blocked {
-  background: #dc3545;
+  background: var(--color-status-blocked);
 }
 .status-row-badge.status-backlog {
-  background: #6c757d;
+  background: var(--color-status-todo);
 }
 
 .done-lock {
-  font-size: 0.78em;
+  font-size: var(--text-sm);
   color: var(--pico-muted-color);
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-2xs);
   margin-left: auto;
 }
 
 .remove-status-btn {
   margin-left: auto;
-  padding: 0 6px !important;
-  line-height: 1;
-  font-size: 1em !important;
+  padding: 0 var(--space-2xs) !important;
+  line-height: var(--leading-none);
+  font-size: var(--text-default) !important;
 }
 
 .add-status-row {
@@ -497,11 +497,11 @@ section {
 }
 
 .status-error {
-  font-size: 0.85em;
+  font-size: var(--text-base);
   color: var(--pico-del-color, #dc3545);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-2xs);
   margin-bottom: var(--space-sm);
 }
 
@@ -539,7 +539,7 @@ section {
 }
 
 .radio-label small {
-  font-size: 0.8em;
+  font-size: var(--text-xs);
   opacity: 0.7;
 }
 

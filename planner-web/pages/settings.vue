@@ -68,7 +68,7 @@ function handleLogout() {
 }
 
 .settings h1 {
-  font-size: 1.3em;
+  font-size: var(--text-xl);
   margin-bottom: var(--space-lg);
   display: flex;
   align-items: center;
@@ -84,11 +84,11 @@ section {
 }
 
 section h2 {
-  font-size: 1em;
+  font-size: var(--text-default);
   margin-bottom: var(--space-sm);
   color: var(--pico-muted-color);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-widest);
 }
 
 .setting-row {
@@ -102,7 +102,7 @@ section h2 {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .theme-controls {
@@ -112,7 +112,7 @@ section h2 {
 }
 
 .theme-name {
-  font-size: 0.9em;
+  font-size: var(--text-md);
   opacity: 0.7;
   min-width: 3em;
 }
@@ -120,14 +120,14 @@ section h2 {
 .btn-theme {
   display: inline-flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-2xs);
   padding: 0.4em 0.8em;
   border: 1px solid var(--pico-muted-border-color, #444);
   border-radius: var(--pico-border-radius, 4px);
   background: transparent;
   color: var(--pico-color);
   cursor: pointer;
-  font-size: 0.9em;
+  font-size: var(--text-md);
   font-family: inherit;
 }
 
@@ -138,20 +138,20 @@ section h2 {
 
 .user-info {
   margin-bottom: var(--space-sm);
-  font-size: 0.95em;
+  font-size: var(--text-md);
 }
 
 .btn-logout {
   display: inline-flex;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--space-2xs);
   padding: 0.4em 0.8em;
   border: 1px solid var(--pico-muted-border-color, #444);
   border-radius: var(--pico-border-radius, 4px);
   background: transparent;
   color: var(--pico-color);
   cursor: pointer;
-  font-size: 0.9em;
+  font-size: var(--text-md);
   font-family: inherit;
 }
 

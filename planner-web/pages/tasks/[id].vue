@@ -457,7 +457,7 @@ async function deleteAttachment(attachmentId) {
 <style scoped>
 .back-link {
   text-decoration: none;
-  font-size: 0.9em;
+  font-size: var(--text-md);
   display: flex;
   align-items: center;
   gap: var(--space-xs);
@@ -509,7 +509,7 @@ async function deleteAttachment(attachmentId) {
 .meta-field {
   display: flex;
   flex-direction: column;
-  gap: 0.2em;
+  gap: var(--space-2xs);
 }
 
 .meta-field select,
@@ -560,7 +560,7 @@ section {
 
 .comment p {
   margin: 0;
-  font-size: 0.9em;
+  font-size: var(--text-md);
 }
 
 .add-checklist-item {
@@ -619,7 +619,7 @@ section {
 
 .small-btn {
   padding: 0.1em 0.4em;
-  font-size: 0.85em;
+  font-size: var(--text-base);
 }
 
 .add-attachment {
@@ -656,10 +656,10 @@ section {
 .image-preview-dialog .close-btn {
   background: none;
   border: none;
-  font-size: 1.5em;
+  font-size: var(--text-2xl);
   cursor: pointer;
   padding: 0;
-  line-height: 1;
+  line-height: var(--leading-none);
 }
 
 .preview-image {

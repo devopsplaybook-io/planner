@@ -320,10 +320,10 @@ onMounted(async () => {
 }
 
 .column-header {
-  font-size: 0.85em;
-  font-weight: 700;
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-widest);
   text-align: center;
   margin-bottom: var(--space-sm);
   padding-bottom: var(--space-xs);
@@ -331,18 +331,18 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-2xs);
   color: var(--pico-muted-color);
 }
 
 .column-count {
-  font-size: 0.8em;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   background: var(--pico-primary-background);
   color: var(--pico-primary-inverse);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 0 6px;
-  line-height: 1.6;
+  line-height: var(--leading-loose);
 }
 
 .column-tasks {
@@ -363,7 +363,7 @@ onMounted(async () => {
 
 .empty-column {
   text-align: center;
-  font-size: 0.82em;
+  font-size: var(--text-sm);
   color: var(--pico-muted-color);
   padding: var(--space-md) 0;
   opacity: 0.6;

@@ -335,7 +335,7 @@ async function deleteAttachment(attachmentId) {
 <style scoped>
 .back-link {
   text-decoration: none;
-  font-size: 0.9em;
+  font-size: var(--text-md);
   display: flex;
   align-items: center;
   gap: var(--space-xs);
@@ -348,12 +348,12 @@ async function deleteAttachment(attachmentId) {
 
 .note-description {
   white-space: pre-wrap;
-  line-height: 1.5;
+  line-height: var(--leading-relaxed);
 }
 
 .edit-title-input {
-  font-size: 1.2em;
-  font-weight: bold;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
   margin: 0;
 }
 
@@ -396,7 +396,7 @@ section {
 
 .comment p {
   margin: 0;
-  font-size: 0.9em;
+  font-size: var(--text-md);
 }
 
 .add-comment {
@@ -447,7 +447,7 @@ section {
 
 .small-btn {
   padding: 0.1em 0.4em;
-  font-size: 0.85em;
+  font-size: var(--text-base);
 }
 
 .add-attachment {
@@ -484,10 +484,10 @@ section {
 .image-preview-dialog .close-btn {
   background: none;
   border: none;
-  font-size: 1.5em;
+  font-size: var(--text-2xl);
   cursor: pointer;
   padding: 0;
-  line-height: 1;
+  line-height: var(--leading-none);
 }
 
 .preview-image {
