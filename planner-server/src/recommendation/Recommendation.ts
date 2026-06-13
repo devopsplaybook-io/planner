@@ -247,6 +247,7 @@ interface TaskStats {
 interface UserRecommendationStats {
   userId: string;
   userName: string;
+  singleUserMode: boolean;
   totalAssigned: number;
   totalUnassigned: number;
   totalDone: number;
@@ -273,14 +274,26 @@ async function CollectStats(userId: string): Promise<UserRecommendationStats> {
   ]);
   const userName = userRows.length > 0 ? userRows[0].name : "Unknown";
 
-  // Assigned tasks (not Done)
-  const assignedTasks = await getTasksForUser(userId, false);
+  // Check if single user mode
+  const userCountRows = await DbUtilsQuerySQL(SQL_QUERIES.COUNT_USERS[dbType]);
+  const singleUserMode =
+    userCountRows.length > 0 && Number(userCountRows[0].count) <= 1;
 
-  // Unassigned tasks (not Done)
-  const unassignedTasks = await getUnassignedTasks();
+  let assignedTasks: TaskStats[];
+  let unassignedTasks: TaskStats[];
+  let doneTasks: TaskStats[];
 
-  // Done tasks assigned to user (for performance stats)
-  const doneTasks = await getTasksForUser(userId, true);
+  if (singleUserMode) {
+    // Single user: treat ALL tasks as theirs, ignore assignment
+    assignedTasks = await getAllTasks(false);
+    unassignedTasks = [];
+    doneTasks = await getAllTasks(true);
+  } else {
+    // Multi-user: filter by assignment
+    assignedTasks = await getTasksForUser(userId, false);
+    unassignedTasks = await getUnassignedTasks();
+    doneTasks = await getTasksForUser(userId, true);
+  }
 
   // Categorize
   const overdue: TaskStats[] = [];
@@ -323,6 +336,7 @@ async function CollectStats(userId: string): Promise<UserRecommendationStats> {
   return {
     userId,
     userName,
+    singleUserMode,
     totalAssigned: assignedTasks.length,
     totalUnassigned: unassignedTasks.length,
     totalDone: doneTasks.length,
@@ -350,6 +364,34 @@ async function getTasksForUser(
     : SQL_QUERIES.TASKS_BY_USER_NOT_DONE[dbType];
 
   const rows = await DbUtilsQuerySQL(sql, [userId]);
+
+  const tasks: TaskStats[] = [];
+  for (const row of rows) {
+    const labelRows = await DbUtilsQuerySQL(SQL_QUERIES.GET_LABELS[dbType], [
+      row.id,
+    ]);
+    tasks.push({
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      priority: row.priority,
+      dueDate: row.dueDate || undefined,
+      labels: labelRows.map((l) => l.name),
+      projectId: row.projectId,
+      dateCreated: row.dateCreated,
+      dateUpdated: row.dateUpdated,
+    });
+  }
+  return tasks;
+}
+
+async function getAllTasks(doneOnly: boolean): Promise<TaskStats[]> {
+  const dbType = DbUtilsGetType();
+  const sql = doneOnly
+    ? SQL_QUERIES.ALL_TASKS_DONE[dbType]
+    : SQL_QUERIES.ALL_TASKS_NOT_DONE[dbType];
+
+  const rows = await DbUtilsQuerySQL(sql);
 
   const tasks: TaskStats[] = [];
   for (const row of rows) {
@@ -407,8 +449,12 @@ function BuildPrompt(stats: UserRecommendationStats): string {
 
   // Summary
   lines.push("--- Summary ---");
-  lines.push(`Total assigned tasks (not done): ${stats.totalAssigned}`);
-  lines.push(`Total unassigned tasks (not done): ${stats.totalUnassigned}`);
+  if (stats.singleUserMode) {
+    lines.push(`Total open tasks: ${stats.totalAssigned}`);
+  } else {
+    lines.push(`Total assigned tasks (not done): ${stats.totalAssigned}`);
+    lines.push(`Total unassigned tasks (not done): ${stats.totalUnassigned}`);
+  }
   lines.push(`Total completed tasks: ${stats.totalDone}`);
   lines.push(
     `Average completion time: ${stats.performanceStats.avgCompletionDays} days`,
@@ -534,6 +580,26 @@ const SQL_QUERIES = {
     sqlite:
       "SELECT t.id, t.projectId, t.title, t.status, t.priority, t.dueDate, t.dateCreated, t.dateUpdated " +
       "FROM tasks t WHERE t.id NOT IN (SELECT taskId FROM task_assignees) AND t.status != 'Done'",
+  },
+  COUNT_USERS: {
+    postgres: "SELECT COUNT(*) AS count FROM users",
+    sqlite: "SELECT COUNT(*) AS count FROM users",
+  },
+  ALL_TASKS_NOT_DONE: {
+    postgres:
+      'SELECT t.id, t."projectId", t.title, t.status, t.priority, t."dueDate", t."dateCreated", t."dateUpdated" ' +
+      "FROM tasks t WHERE t.status != 'Done'",
+    sqlite:
+      "SELECT t.id, t.projectId, t.title, t.status, t.priority, t.dueDate, t.dateCreated, t.dateUpdated " +
+      "FROM tasks t WHERE t.status != 'Done'",
+  },
+  ALL_TASKS_DONE: {
+    postgres:
+      'SELECT t.id, t."projectId", t.title, t.status, t.priority, t."dueDate", t."dateCreated", t."dateUpdated" ' +
+      "FROM tasks t WHERE t.status = 'Done'",
+    sqlite:
+      "SELECT t.id, t.projectId, t.title, t.status, t.priority, t.dueDate, t.dateCreated, t.dateUpdated " +
+      "FROM tasks t WHERE t.status = 'Done'",
   },
   GET_LABELS: {
     postgres: 'SELECT name FROM task_labels WHERE "taskId" = $1',

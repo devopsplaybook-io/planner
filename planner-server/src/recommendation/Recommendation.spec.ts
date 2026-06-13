@@ -147,10 +147,11 @@ describe("Recommendation", () => {
     const mockLabels = [{ name: "bug" }];
 
     beforeEach(() => {
-      // Default mock for DbUtilsQuerySQL
+      // Default mock for DbUtilsQuerySQL (multi-user mode by default)
       mockDbUtils.DbUtilsQuerySQL.mockImplementation((sql: string) => {
         if (sql.includes("FROM users WHERE id"))
           return Promise.resolve(mockUser);
+        if (sql.includes("COUNT(*)")) return Promise.resolve([{ count: 2 }]);
         if (sql.includes("FROM users")) return Promise.resolve(mockUser);
         if (sql.includes("task_assignees") && sql.includes("!= 'Done'"))
           return Promise.resolve(mockUserTasks);
@@ -260,6 +261,86 @@ describe("Recommendation", () => {
         tasks: { id: string; title: string }[];
       };
       expect(result.tasks.length).toBeGreaterThan(0);
+    });
+
+    it("should ignore task assignment when only 1 user exists (single-user mode)", async () => {
+      const allTasks = [
+        {
+          id: "task-1",
+          title: "Fix bug",
+          status: "In Progress",
+          priority: "high",
+          dueDate: "2026-01-10",
+          projectId: "proj-1",
+          dateCreated: "2026-01-01T00:00:00.000Z",
+          dateUpdated: "2026-01-05T00:00:00.000Z",
+        },
+        {
+          id: "task-2",
+          title: "Unassigned task",
+          status: "To Do",
+          priority: "low",
+          dueDate: null,
+          projectId: "proj-1",
+          dateCreated: "2026-01-02T00:00:00.000Z",
+          dateUpdated: "2026-01-02T00:00:00.000Z",
+        },
+      ];
+
+      // Override mock to simulate single user + all-tasks queries
+      mockDbUtils.DbUtilsQuerySQL.mockImplementation((sql: string) => {
+        if (sql.includes("FROM users WHERE id"))
+          return Promise.resolve(mockUser);
+        if (sql.includes("COUNT(*)")) return Promise.resolve([{ count: 1 }]);
+        if (sql.includes("FROM users")) return Promise.resolve(mockUser);
+        // Single-user mode uses ALL_TASKS queries (no task_assignees join)
+        if (
+          sql.includes("FROM tasks t WHERE") &&
+          !sql.includes("task_assignees") &&
+          sql.includes("!= 'Done'")
+        )
+          return Promise.resolve(allTasks);
+        if (
+          sql.includes("FROM tasks t WHERE") &&
+          !sql.includes("task_assignees") &&
+          sql.includes("= 'Done'")
+        )
+          return Promise.resolve(mockDoneTasks);
+        if (sql.includes("task_labels")) return Promise.resolve(mockLabels);
+        return Promise.resolve([]);
+      });
+
+      const llmResponse = {
+        data: {
+          choices: [
+            {
+              message: {
+                content:
+                  "## Analysis\nYou have 2 open tasks.\n\n## Recommendations\n- Prioritize task-1",
+              },
+            },
+          ],
+        },
+      };
+      mockAxios.post.mockResolvedValue(llmResponse);
+
+      await RecommendationInit(config);
+      await RecommendationGenerateForUser("user-1");
+
+      // Verify the prompt sent to LLM includes both tasks (not just assigned ones)
+      const postCall = mockAxios.post.mock.calls[0];
+      const body = postCall[1] as {
+        messages: { role: string; content: string }[];
+      };
+      const messages = body.messages;
+      const userMessage = messages.find(
+        (m: { role: string }) => m.role === "user",
+      );
+      expect(userMessage.content).toContain("task-1");
+      expect(userMessage.content).toContain("task-2");
+      // Should show "Total open tasks" not "Total assigned tasks"
+      expect(userMessage.content).toContain("Total open tasks: 2");
+      expect(userMessage.content).not.toContain("unassigned");
     });
   });
 });
