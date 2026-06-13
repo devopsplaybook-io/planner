@@ -71,13 +71,14 @@
             <div class="attachment-info">
               <template v-if="isImageFile(att.fileName)">
                 <img
-                  :src="`/api/notes/${note.id}/attachments/${att.id}?inline=true`"
+                  :src="attachmentUrl(att.id, true)"
                   :alt="att.fileName"
                   class="attachment-preview"
+                  @click="openPreview(att.id)"
                 />
               </template>
               <a
-                :href="`/api/notes/${note.id}/attachments/${att.id}`"
+                :href="attachmentUrl(att.id)"
                 target="_blank"
                 class="attachment-link"
               >
@@ -94,6 +95,25 @@
           </div>
         </div>
       </section>
+
+      <!-- Image Preview Dialog -->
+      <dialog
+        :open="!!previewImageId"
+        class="image-preview-dialog"
+        @click="closePreview"
+      >
+        <article v-if="previewImageId" @click.stop>
+          <header>
+            <button class="close-btn" @click="closePreview">
+              <i class="bi bi-x" />
+            </button>
+          </header>
+          <img
+            :src="attachmentUrl(previewImageId, true)"
+            class="preview-image"
+          />
+        </article>
+      </dialog>
 
       <section>
         <h2>Add Attachment</h2>
@@ -167,6 +187,15 @@ const showDeleteConfirm = ref(false);
 const deleting = ref(false);
 const uploading = ref(false);
 const deletingAttachmentId = ref("");
+const previewImageId = ref(null);
+
+function openPreview(attachmentId) {
+  previewImageId.value = attachmentId;
+}
+
+function closePreview() {
+  previewImageId.value = null;
+}
 const fileInput = ref(null);
 
 // Edit mode
@@ -265,6 +294,16 @@ function isImageFile(fileName) {
     "ico",
     "avif",
   ].includes(ext || "");
+}
+
+function attachmentUrl(attachmentId, inline = false) {
+  const base = `/api/notes/${note.value.id}/attachments/${attachmentId}`;
+  const token = localStorage.getItem("token");
+  const params = new URLSearchParams();
+  if (inline) params.set("inline", "true");
+  if (token) params.set("token", token);
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
 }
 
 async function uploadAttachment() {
@@ -416,5 +455,48 @@ section {
   grid-template-columns: 1fr auto;
   gap: var(--space-sm);
   align-items: center;
+}
+
+.image-preview-dialog {
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.image-preview-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.image-preview-dialog article {
+  margin: 0;
+  padding: var(--space-sm);
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
+.image-preview-dialog article header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0;
+  margin-bottom: var(--space-xs);
+}
+
+.image-preview-dialog .close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5em;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.preview-image {
+  display: block;
+  max-width: 80vw;
+  max-height: 75vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  margin: 0 auto;
 }
 </style>

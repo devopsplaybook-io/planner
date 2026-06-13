@@ -190,8 +190,8 @@ export class NotesRoutes {
         const attachmentDir = path.join(uploadDir, "attachments", "notes");
         await fs.ensureDir(attachmentDir);
 
-        const ext = path.extname(data.filename);
         const attachmentId = uuidv4();
+        const ext = path.extname(data.filename);
         const savedFileName = attachmentId + ext;
         const filePath = path.join(attachmentDir, savedFileName);
 
@@ -202,7 +202,12 @@ export class NotesRoutes {
           writeStream.on("error", reject);
         });
 
-        await addNoteAttachment(req.params.id, data.filename, filePath);
+        await addNoteAttachment(
+          req.params.id,
+          data.filename,
+          filePath,
+          attachmentId,
+        );
 
         return res.status(201).send({
           id: attachmentId,

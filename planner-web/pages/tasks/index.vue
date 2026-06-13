@@ -149,7 +149,10 @@ const projectsStore = useProjectsStore();
 const router = useRouter();
 
 const loading = ref(true);
-const selectedProjectId = ref("");
+const selectedProjectId = ref(localStorage.getItem("projectId") || "");
+watch(selectedProjectId, (val) => {
+  localStorage.setItem("projectId", val);
+});
 const showCreateDialog = ref(false);
 const creating = ref(false);
 const dragTask = ref(null);
@@ -171,8 +174,29 @@ const statuses = computed(() => {
     );
     return project?.statuses || ["To Do", "In Progress", "Done"];
   }
-  // Collect all unique statuses from tasks
-  return [...new Set(tasksStore.tasks.map((t) => t.status))].sort();
+  // Collect statuses from all projects preserving their defined order
+  const orderedStatuses = [];
+  const seen = new Set();
+  for (const project of projectsStore.projects) {
+    if (project.statuses) {
+      for (const status of project.statuses) {
+        if (!seen.has(status)) {
+          seen.add(status);
+          orderedStatuses.push(status);
+        }
+      }
+    }
+  }
+  // Add any statuses from tasks not in any project's status list
+  for (const task of tasksStore.tasks) {
+    if (!seen.has(task.status)) {
+      seen.add(task.status);
+      orderedStatuses.push(task.status);
+    }
+  }
+  return orderedStatuses.length > 0
+    ? orderedStatuses
+    : ["To Do", "In Progress", "Done"];
 });
 
 function getTasksByStatus(status) {
@@ -260,9 +284,11 @@ async function createTask() {
 onMounted(async () => {
   try {
     await projectsStore.fetchAll();
-    if (projectsStore.projects.length > 0) {
+    if (!selectedProjectId.value && projectsStore.projects.length > 0) {
       selectedProjectId.value =
         projectsStore.defaultProject?.id || projectsStore.projects[0].id;
+    }
+    if (selectedProjectId.value) {
       newTask.value.projectId = selectedProjectId.value;
     }
     await fetchTasks();

@@ -11,3 +11,6 @@ coverage
 /env-dev.js
 /*/tmp
 planner-proxy/bin/
+/docs/dev/data/attachments
+planner-web/.nuxt
+planner-web/.output

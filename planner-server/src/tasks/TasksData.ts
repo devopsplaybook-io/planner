@@ -147,9 +147,8 @@ export async function addTaskAttachment(
   taskId: string,
   fileName: string,
   filePath: string,
-): Promise<string> {
-  const { v4: uuidv4 } = await import("uuid");
-  const id = uuidv4();
+  id: string,
+): Promise<void> {
   await DbUtilsExecSQL(SQL_QUERIES.INSERT_ATTACHMENT[DbUtilsGetType()], [
     id,
     taskId,
@@ -157,7 +156,6 @@ export async function addTaskAttachment(
     filePath,
     new Date().toISOString(),
   ]);
-  return id;
 }
 
 export async function deleteTaskAttachment(
@@ -168,9 +166,7 @@ export async function deleteTaskAttachment(
   ]);
 }
 
-export async function getTaskAttachment(
-  attachmentId: string,
-): Promise<{
+export async function getTaskAttachment(attachmentId: string): Promise<{
   id: string;
   taskId: string;
   fileName: string;

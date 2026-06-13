@@ -111,9 +111,8 @@ export async function addNoteAttachment(
   noteId: string,
   fileName: string,
   filePath: string,
-): Promise<string> {
-  const { v4: uuidv4 } = await import("uuid");
-  const id = uuidv4();
+  id: string,
+): Promise<void> {
   await DbUtilsExecSQL(SQL_QUERIES.INSERT_NOTE_ATTACHMENT[DbUtilsGetType()], [
     id,
     noteId,
@@ -121,7 +120,6 @@ export async function addNoteAttachment(
     filePath,
     new Date().toISOString(),
   ]);
-  return id;
 }
 
 export async function deleteNoteAttachment(
@@ -132,9 +130,7 @@ export async function deleteNoteAttachment(
   ]);
 }
 
-export async function getNoteAttachment(
-  attachmentId: string,
-): Promise<{
+export async function getNoteAttachment(attachmentId: string): Promise<{
   id: string;
   noteId: string;
   fileName: string;

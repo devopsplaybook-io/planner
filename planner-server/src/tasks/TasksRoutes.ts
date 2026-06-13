@@ -255,7 +255,12 @@ export class TasksRoutes {
           writeStream.on("error", reject);
         });
 
-        await addTaskAttachment(req.params.id, data.filename, filePath);
+        await addTaskAttachment(
+          req.params.id,
+          data.filename,
+          filePath,
+          attachmentId,
+        );
 
         return res.status(201).send({
           id: attachmentId,

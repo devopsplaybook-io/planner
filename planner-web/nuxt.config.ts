@@ -31,7 +31,7 @@ export default defineNuxtConfig({
   },
   pwa: {
     registerType: "autoUpdate",
-    includeAssets: ["images/logo.svg", "images/logo.png"],
+    includeAssets: ["images/logo.svg"],
     workbox: {
       globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
       runtimeCaching: [
@@ -67,11 +67,6 @@ export default defineNuxtConfig({
           src: "images/logo.svg",
           sizes: "512x512",
           type: "image/svg+xml",
-        },
-        {
-          src: "images/logo.png",
-          sizes: "512x512",
-          type: "image/png",
         },
       ],
     },

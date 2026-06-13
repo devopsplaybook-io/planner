@@ -28,14 +28,17 @@ function jwtDecodeCached(
   if (req._jwtPayload) {
     return req._jwtPayload;
   }
-  if (!req.headers.authorization) {
+  let token: string | null = null;
+  if (req.headers.authorization) {
+    token = req.headers.authorization.split(" ")[1];
+  } else if (req.query?.token) {
+    token = req.query.token as string;
+  }
+  if (!token) {
     return null;
   }
   try {
-    const info = jwt.verify(
-      req.headers.authorization.split(" ")[1],
-      config.JWT_KEY,
-    ) as Record<string, unknown>;
+    const info = jwt.verify(token, config.JWT_KEY) as Record<string, unknown>;
     req._jwtPayload = info;
     return info;
   } catch {

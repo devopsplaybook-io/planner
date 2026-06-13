@@ -15,6 +15,10 @@ It is installable on mobile and desktop devices and works offline.
 - [x] The menu provides access to: Projects, Tasks, Notes, Calendar, Kanban, and Settings
 - [x] Offline support (PWA configured with service worker, cache strategies)
 
+### Project Selection
+
+- [x] The user interface saves the selected project in the local storage and automatically keep this project selected. It should remember this across the entire UI for all task view: Tasks, Calender, Tasks
+
 ## Components
 
 ### Shared

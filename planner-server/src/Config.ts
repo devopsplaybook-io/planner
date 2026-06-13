@@ -34,7 +34,7 @@ export class Config {
     this.CORS_POLICY_ORIGIN = "";
     this.JWT_KEY = "";
     this.DATABASE_TYPE = "sqlite";
-    this.JWT_VALIDITY_DURATION = 86400; // 24 hours
+    this.JWT_VALIDITY_DURATION = 3600 * 24 * 30;
     this.LLM_API_KEY = "";
     this.LLM_API_URL = "https://api.deepseek.com/chat/completions";
     this.LLM_MODEL = "deepseek-chat";

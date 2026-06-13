@@ -71,20 +71,6 @@
               "
             />
           </div>
-          <div
-            v-if="recommendationStore.recommendation.tasks.length > 0"
-            class="recommendation-tasks"
-          >
-            <h3>Referenced Tasks</h3>
-            <div class="task-list">
-              <TaskCard
-                v-for="task in recommendationTasks"
-                :key="task.id"
-                :task="task"
-                @click="openTask(task)"
-              />
-            </div>
-          </div>
         </div>
         <div v-else class="empty-state">
           <i class="bi bi-lightbulb" />
@@ -168,7 +154,10 @@ const recommendationStore = useRecommendationStore();
 const router = useRouter();
 
 const loading = ref(true);
-const filterProjectId = ref("");
+const filterProjectId = ref(localStorage.getItem("projectId") || "");
+watch(filterProjectId, (val) => {
+  localStorage.setItem("projectId", val);
+});
 const dashboardData = ref({
   overdue: [],
   upcoming: [],
@@ -176,25 +165,24 @@ const dashboardData = ref({
   recentlyDone: [],
 });
 
-const recommendationTasks = computed(() => {
-  if (!recommendationStore.recommendation?.tasks) return [];
-  return recommendationStore.recommendation.tasks.map((t) => ({
-    ...t,
-    labels: [],
-    assignees: [],
-    comments: [],
-    attachments: [],
-    checklist: [],
-    description: "",
-    projectId: "",
-    dateCreated: "",
-    dateUpdated: "",
-  }));
-});
-
 function renderMarkdown(text) {
   if (!text) return "";
-  return marked(text, { breaks: true });
+  const html = marked(text, { breaks: true });
+  return injectTaskLinks(html);
+}
+
+function injectTaskLinks(html) {
+  if (!html || !recommendationStore.recommendation?.tasks) return html;
+  let result = html;
+  for (const task of recommendationStore.recommendation.tasks) {
+    const escapedId = task.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escapedId, "g");
+    result = result.replace(
+      regex,
+      `<a href="/tasks/${task.id}" class="task-badge">${task.title}</a>`,
+    );
+  }
+  return result;
 }
 
 function formatDate(dateStr) {
@@ -315,6 +303,35 @@ section h2 {
   }
 }
 
+.recommendation-content {
+  max-height: 25vh;
+  overflow-y: auto;
+}
+
+.recommendation-content :deep(a) {
+  color: var(--pico-primary, #1095c1);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.recommendation-content :deep(.task-badge) {
+  display: inline-block;
+  padding: 0.05em 0.5em;
+  margin: 0 0.1em;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--pico-primary-inverse, #fff);
+  background: var(--pico-primary, #1095c1);
+  border-radius: 0.35em;
+  text-decoration: none;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.recommendation-content :deep(.task-badge:hover) {
+  filter: brightness(1.15);
+}
+
 .recommendation-date {
   font-size: 0.85em;
   opacity: 0.7;
@@ -334,14 +351,5 @@ section h2 {
 .recommendation-block :deep(ol) {
   padding-left: 1.5em;
   margin-bottom: 0.5em;
-}
-
-.recommendation-tasks {
-  margin-top: var(--space-md);
-}
-
-.recommendation-tasks h3 {
-  font-size: 1em;
-  margin-bottom: var(--space-sm);
 }
 </style>

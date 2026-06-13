@@ -1,9 +1,19 @@
 <template>
   <div class="calendar-page">
-    <hgroup>
-      <h1>Calendar</h1>
-      <p>Tasks by due date</p>
-    </hgroup>
+    <header class="page-header">
+      <hgroup>
+        <h1>Calendar</h1>
+        <p>Tasks by due date</p>
+      </hgroup>
+      <div class="header-controls">
+        <select v-model="selectedProjectId" @change="fetchTasks">
+          <option value="">All projects</option>
+          <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
+            {{ p.name }}
+          </option>
+        </select>
+      </div>
+    </header>
 
     <div v-if="loading" class="loading-indicator" />
 
@@ -61,9 +71,14 @@
 
 <script setup>
 const tasksStore = useTasksStore();
+const projectsStore = useProjectsStore();
 const router = useRouter();
 
 const loading = ref(true);
+const selectedProjectId = ref(localStorage.getItem("projectId") || "");
+watch(selectedProjectId, (val) => {
+  localStorage.setItem("projectId", val);
+});
 const currentDate = ref(new Date());
 const draggingTask = ref(null);
 const dragOverDate = ref(null);
@@ -174,9 +189,21 @@ function nextMonth() {
   );
 }
 
+async function fetchTasks() {
+  loading.value = true;
+  try {
+    await tasksStore.fetchAll(selectedProjectId.value || undefined);
+  } catch {
+    // Handle error
+  } finally {
+    loading.value = false;
+  }
+}
+
 onMounted(async () => {
   try {
-    await tasksStore.fetchAll();
+    await projectsStore.fetchAll();
+    await fetchTasks();
   } catch {
     // Handle error
   } finally {
