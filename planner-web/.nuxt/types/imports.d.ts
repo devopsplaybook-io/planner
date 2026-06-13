@@ -131,6 +131,7 @@ declare global {
   const usePinia: typeof import('../../node_modules/@pinia/nuxt/dist/runtime/composables').usePinia
   const usePreviewMode: typeof import('../../node_modules/nuxt/dist/app/composables/preview').usePreviewMode
   const useProjectsStore: typeof import('../../stores/projects').useProjectsStore
+  const useRecommendationStore: typeof import('../../stores/recommendation').useRecommendationStore
   const useRequestEvent: typeof import('../../node_modules/nuxt/dist/app/composables/ssr').useRequestEvent
   const useRequestFetch: typeof import('../../node_modules/nuxt/dist/app/composables/ssr').useRequestFetch
   const useRequestHeader: typeof import('../../node_modules/nuxt/dist/app/composables/ssr').useRequestHeader
@@ -224,6 +225,9 @@ declare global {
   // @ts-ignore
   export type { Project } from '../../stores/projects'
   import('../../stores/projects')
+  // @ts-ignore
+  export type { RecommendationTask, Recommendation, AppConfig } from '../../stores/recommendation'
+  import('../../stores/recommendation')
   // @ts-ignore
   export type { ChecklistItem, TaskComment, TaskAssignee, Task } from '../../stores/tasks'
   import('../../stores/tasks')
@@ -362,6 +366,7 @@ declare module 'vue' {
     readonly usePinia: UnwrapRef<typeof import('../../node_modules/@pinia/nuxt/dist/runtime/composables')['usePinia']>
     readonly usePreviewMode: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/preview')['usePreviewMode']>
     readonly useProjectsStore: UnwrapRef<typeof import('../../stores/projects')['useProjectsStore']>
+    readonly useRecommendationStore: UnwrapRef<typeof import('../../stores/recommendation')['useRecommendationStore']>
     readonly useRequestEvent: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/ssr')['useRequestEvent']>
     readonly useRequestFetch: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/ssr')['useRequestFetch']>
     readonly useRequestHeader: UnwrapRef<typeof import('../../node_modules/nuxt/dist/app/composables/ssr')['useRequestHeader']>

@@ -9,19 +9,45 @@ Specifications are defined in [docs/specs/](docs/specs/). Each spec file embeds 
 - `[x]` = Implemented
 - `[~]` = Partially implemented
 - `[ ]` = Not yet implemented
+- `[NEEDS CLARIFICATION: ...]` = Ambiguity that needs user input before proceeding (see the [Spec-Driven Development skill](../../.qoder/skills/spec-driven-development.md) for details)
 
-When starting any development task, read all spec files first. Items marked `[ ]` are what needs to be built. Items marked `[x]` are already done.
+When starting any development task, read all spec files first. Items marked `[ ]` are what needs to be built. Items marked `[x]` are already done. Items marked `[NEEDS CLARIFICATION]` signal incomplete requirements that need user input before proceeding.
 
-### How to update status when implementing
+### Development workflow
 
-When you implement a spec item:
+#### Before starting
 
-1. Change `[ ]` to `[x]` (or `[~]` for partial)
+1. Read all spec files in `docs/specs/`
+2. Identify items marked `[ ]` — these are what needs to be built
+3. Identify items marked `[~]` — these are partially implemented, check what remains
+4. Identify any `[NEEDS CLARIFICATION: ...]` markers — flag these to the user before proceeding
+5. Review items marked `[x]` for context on existing patterns
+
+#### During implementation
+
+1. Build features exactly matching spec requirements
+2. For each ambiguity encountered, use `[NEEDS CLARIFICATION]` to flag it rather than guessing — never make assumptions about unspecified details
+3. Follow existing patterns from what is already marked `[x]`
+
+#### After implementation
+
+1. Change `[ ]` to `[x]` (or `[~]` for partial implementation)
 2. Update the "Last spec review" date in the footer to the current date
+3. Run automated checks (tests, build, lint) — see Post-Change Validation for project-specific commands
+4. Verify the implementation against the relevant spec file
 
 ### How the user signals spec changes
 
 When the user edits a spec file (adds, removes, or modifies requirements), they leave new or changed items as `[ ]`. The agents see these markers and implement them automatically.
+
+### Anti-patterns awareness
+
+Be aware of these common SDD anti-patterns (see the full [Spec-Driven Development skill](../../.qoder/skills/spec-driven-development.md) for details):
+
+- **Specification Theater**: Specs must be living documents actively used in the workflow, not static documents no one references
+- **Spec-Implementation Drift**: Always update markers immediately after implementation to keep specs and code aligned
+- **Implementation Detail Leakage**: Specs focus on WHAT users need, not HOW to implement it — implementation details belong in implementation plans, not specs
+- **Speculative Features**: Only implement what is specified; do not add "might need" features that complicate the codebase
 
 ## Project Structure
 
@@ -92,10 +118,7 @@ Secrets required in GitHub repository:
 
 ## Post-Change Validation
 
-After any implementation, always:
+Refer to the **After implementation** workflow above for the standard validation sequence. The project-specific commands for running checks are:
 
-1. Run the affected project's checks before considering the task done:
-   - **Server update**: Run `npm run test`, `npm run build`, and `npm run lint` in `planner-server/`. Also update unit tests: remove unused tests and add new coverage for new code.
-   - **Web update**: Run `npm run build` (or `npm run generate`) in `planner-web/`
-2. Verify the implementation against the relevant spec file
-3. Update the status markers in the corresponding spec file (`[ ]` -> `[x]` or `[~]`) and bump the "Last spec review" date
+- **Server update**: Run `npm run test`, `npm run build`, and `npm run lint` in `planner-server/`. Also update unit tests: remove unused tests and add new coverage for new code.
+- **Web update**: Run `npm run build` (or `npm run generate`) in `planner-web/`

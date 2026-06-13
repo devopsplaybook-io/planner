@@ -14,6 +14,13 @@ export class Config {
   public DATABASE_TYPE: string;
   public JWT_VALIDITY_DURATION: number;
 
+  // LLM Recommendation
+  public LLM_API_KEY: string;
+  public LLM_API_URL: string;
+  public LLM_MODEL: string;
+  public LLM_RECOMMENDATION_ENABLED: boolean;
+  public LLM_RECOMMENDATION_SCHEDULE_CRON: string;
+
   constructor() {
     this.DATA_DIR = process.env.DATA_DIR || "/data";
     this.TMP_DIR = process.env.TMP_DIR || "/tmp";
@@ -28,6 +35,11 @@ export class Config {
     this.JWT_KEY = "";
     this.DATABASE_TYPE = "sqlite";
     this.JWT_VALIDITY_DURATION = 86400; // 24 hours
+    this.LLM_API_KEY = "";
+    this.LLM_API_URL = "https://api.deepseek.com/chat/completions";
+    this.LLM_MODEL = "deepseek-chat";
+    this.LLM_RECOMMENDATION_ENABLED = false;
+    this.LLM_RECOMMENDATION_SCHEDULE_CRON = "0 0 * * *"; // daily at midnight
   }
 
   public async reload(): Promise<void> {
@@ -39,6 +51,14 @@ export class Config {
     this.JWT_KEY = config.JWT_KEY || "dev";
     this.DATABASE_TYPE = config.DATABASE_TYPE || "sqlite";
     this.JWT_VALIDITY_DURATION = config.JWT_VALIDITY_DURATION || 86400;
+    this.LLM_API_KEY = config.LLM_API_KEY || "";
+    this.LLM_API_URL =
+      config.LLM_API_URL || "https://api.deepseek.com/chat/completions";
+    this.LLM_MODEL = config.LLM_MODEL || "deepseek-chat";
+    this.LLM_RECOMMENDATION_ENABLED =
+      config.LLM_RECOMMENDATION_ENABLED ?? false;
+    this.LLM_RECOMMENDATION_SCHEDULE_CRON =
+      config.LLM_RECOMMENDATION_SCHEDULE_CRON || "0 0 * * *";
 
     if (process.env.APPLICATION_TITLE) {
       this.APPLICATION_TITLE = process.env.APPLICATION_TITLE;
@@ -60,6 +80,23 @@ export class Config {
     }
     if (process.env.TMP_DIR) {
       this.TMP_DIR = process.env.TMP_DIR;
+    }
+    if (process.env.LLM_API_KEY) {
+      this.LLM_API_KEY = process.env.LLM_API_KEY;
+    }
+    if (process.env.LLM_API_URL) {
+      this.LLM_API_URL = process.env.LLM_API_URL;
+    }
+    if (process.env.LLM_MODEL) {
+      this.LLM_MODEL = process.env.LLM_MODEL;
+    }
+    if (process.env.LLM_RECOMMENDATION_ENABLED) {
+      this.LLM_RECOMMENDATION_ENABLED =
+        process.env.LLM_RECOMMENDATION_ENABLED === "true";
+    }
+    if (process.env.LLM_RECOMMENDATION_SCHEDULE_CRON) {
+      this.LLM_RECOMMENDATION_SCHEDULE_CRON =
+        process.env.LLM_RECOMMENDATION_SCHEDULE_CRON;
     }
   }
 }

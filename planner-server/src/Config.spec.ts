@@ -26,6 +26,13 @@ describe("Config", () => {
       expect(config.JWT_KEY).toBe("");
       expect(config.DATABASE_TYPE).toBe("sqlite");
       expect(config.JWT_VALIDITY_DURATION).toBe(86400);
+      expect(config.LLM_API_KEY).toBe("");
+      expect(config.LLM_API_URL).toBe(
+        "https://api.deepseek.com/chat/completions",
+      );
+      expect(config.LLM_MODEL).toBe("deepseek-chat");
+      expect(config.LLM_RECOMMENDATION_ENABLED).toBe(false);
+      expect(config.LLM_RECOMMENDATION_SCHEDULE_CRON).toBe("0 0 * * *");
     });
 
     it("should respect environment variables in constructor", () => {

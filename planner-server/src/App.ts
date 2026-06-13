@@ -10,7 +10,7 @@ import {
   DbUtilsGetType,
   DbUtilsQuerySQL,
 } from "./utils/DbUtils";
-import { AuthInit } from "./users/Auth";
+import { AuthInit, AuthGetUserSession } from "./users/Auth";
 import { UsersRoutes } from "./users/UsersRoutes";
 import { UsersDataList } from "./users/UsersData";
 import { ProjectsRoutes } from "./projects/ProjectsRoutes";
@@ -19,6 +19,8 @@ import { Project } from "./model/Project";
 import { TasksRoutes } from "./tasks/TasksRoutes";
 import { NotesRoutes } from "./notes/NotesRoutes";
 import { ViewsRoutes } from "./views/ViewsRoutes";
+import { RecommendationInit } from "./recommendation/Recommendation";
+import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
 
 import fastifyCompress from "@fastify/compress";
 import fastifyMultipart from "@fastify/multipart";
@@ -86,6 +88,7 @@ Promise.resolve().then(async () => {
   await DbUtilsInit(config);
   await AuthInit(config);
   await runMigrations();
+  await RecommendationInit(config);
 
   // Ensure a default project exists
   const existingProjects = await ProjectsDataList();
@@ -126,6 +129,17 @@ Promise.resolve().then(async () => {
 
   fastify.get("/api/status", async () => {
     return { started: true };
+  });
+
+  fastify.get("/api/status/config", async (req, res) => {
+    const userSession = await AuthGetUserSession(req);
+    if (!userSession.isAuthenticated) {
+      return res.status(403).send({ error: "Access Denied" });
+    }
+    return res.status(200).send({
+      llmRecommendationEnabled:
+        config.LLM_RECOMMENDATION_ENABLED && !!config.LLM_API_KEY,
+    });
   });
 
   fastify.get("/api/status/initialization", async (req, res) => {
@@ -169,6 +183,13 @@ Promise.resolve().then(async () => {
       await new ViewsRoutes().getRoutes(instance);
     },
     { prefix: "/api/views" },
+  );
+
+  await fastify.register(
+    async (instance) => {
+      await new RecommendationRoutes().getRoutes(instance);
+    },
+    { prefix: "/api/recommendation" },
   );
 
   fastify.register(fastifyStatic, {
