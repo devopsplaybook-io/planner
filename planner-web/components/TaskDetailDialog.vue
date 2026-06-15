@@ -39,7 +39,11 @@
           <label>
             Description
             <textarea v-if="editing" v-model="editForm.description" rows="3" />
-            <p v-else>{{ task.description || "No description" }}</p>
+            <div
+              v-else
+              class="markdown-body"
+              v-html="renderMarkdown(task.description) || 'No description'"
+            />
           </label>
         </section>
 
@@ -224,6 +228,8 @@
 </template>
 
 <script setup>
+import { renderMarkdown } from "../composables/useMarkdown";
+
 const props = defineProps({
   taskId: { type: String, default: null },
 });

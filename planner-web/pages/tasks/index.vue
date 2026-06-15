@@ -6,7 +6,10 @@
         <p>Kanban board</p>
       </hgroup>
       <div class="header-controls">
-        <select v-model="selectedProjectId" @change="fetchTasks">
+        <select
+          :value="projectsStore.selectedProjectFilter"
+          @change="onFilterChange"
+        >
           <option value="">All projects</option>
           <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
             {{ p.name }}
@@ -147,12 +150,9 @@
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const router = useRouter();
+const route = useRoute();
 
 const loading = ref(true);
-const selectedProjectId = ref(localStorage.getItem("projectId") || "");
-watch(selectedProjectId, (val) => {
-  localStorage.setItem("projectId", val);
-});
 const showCreateDialog = ref(false);
 const creating = ref(false);
 const dragTask = ref(null);
@@ -168,9 +168,9 @@ const newTask = ref({
 });
 
 const statuses = computed(() => {
-  if (selectedProjectId.value) {
+  if (projectsStore.selectedProjectFilter) {
     const project = projectsStore.projects.find(
-      (p) => p.id === selectedProjectId.value,
+      (p) => p.id === projectsStore.selectedProjectFilter,
     );
     return project?.statuses || ["To Do", "In Progress", "Done"];
   }
@@ -231,13 +231,21 @@ async function onDrop(event, newStatus) {
 }
 
 function openTask(task) {
-  router.push(`/tasks/${task.id}`);
+  router.replace({
+    path: route.path,
+    query: { ...route.query, taskId: task.id },
+  });
+}
+
+function onFilterChange(event) {
+  projectsStore.setProjectFilter(event.target.value);
+  fetchTasks();
 }
 
 async function fetchTasks() {
   loading.value = true;
   try {
-    await tasksStore.fetchAll(selectedProjectId.value || undefined);
+    await tasksStore.fetchAll(projectsStore.selectedProjectFilter || undefined);
   } catch {
     // Handle error
   } finally {
@@ -267,7 +275,7 @@ async function createTask() {
     await tasksStore.create(data);
     showCreateDialog.value = false;
     newTask.value = {
-      projectId: selectedProjectId.value,
+      projectId: projectsStore.selectedProjectFilter,
       title: "",
       description: "",
       priority: "medium",
@@ -284,12 +292,16 @@ async function createTask() {
 onMounted(async () => {
   try {
     await projectsStore.fetchAll();
-    if (!selectedProjectId.value && projectsStore.projects.length > 0) {
-      selectedProjectId.value =
-        projectsStore.defaultProject?.id || projectsStore.projects[0].id;
+    if (
+      !projectsStore.selectedProjectFilter &&
+      projectsStore.projects.length > 0
+    ) {
+      projectsStore.setProjectFilter(
+        projectsStore.defaultProject?.id || projectsStore.projects[0].id,
+      );
     }
-    if (selectedProjectId.value) {
-      newTask.value.projectId = selectedProjectId.value;
+    if (projectsStore.selectedProjectFilter) {
+      newTask.value.projectId = projectsStore.selectedProjectFilter;
     }
     await fetchTasks();
   } catch {

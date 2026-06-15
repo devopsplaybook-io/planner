@@ -15,6 +15,10 @@ export const useProjectsStore = defineStore("projects", {
   state: () => ({
     projects: [] as Project[],
     currentProject: null as Project | null,
+    selectedProjectFilter:
+      (typeof localStorage !== "undefined" &&
+        localStorage.getItem("projectId")) ||
+      "",
   }),
 
   getters: {
@@ -22,6 +26,12 @@ export const useProjectsStore = defineStore("projects", {
   },
 
   actions: {
+    setProjectFilter(projectId: string) {
+      this.selectedProjectFilter = projectId;
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("projectId", projectId);
+      }
+    },
     async fetchAll() {
       const res = await api.get("/projects");
       this.projects = res.data;

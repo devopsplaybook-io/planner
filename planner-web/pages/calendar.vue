@@ -6,7 +6,10 @@
         <p>Tasks by due date</p>
       </hgroup>
       <div class="header-controls">
-        <select v-model="selectedProjectId" @change="fetchTasks">
+        <select
+          :value="projectsStore.selectedProjectFilter"
+          @change="onFilterChange"
+        >
           <option value="">All projects</option>
           <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
             {{ p.name }}
@@ -73,12 +76,9 @@
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const router = useRouter();
+const route = useRoute();
 
 const loading = ref(true);
-const selectedProjectId = ref(localStorage.getItem("projectId") || "");
-watch(selectedProjectId, (val) => {
-  localStorage.setItem("projectId", val);
-});
 const currentDate = ref(new Date());
 const draggingTask = ref(null);
 const dragOverDate = ref(null);
@@ -192,12 +192,17 @@ function nextMonth() {
 async function fetchTasks() {
   loading.value = true;
   try {
-    await tasksStore.fetchAll(selectedProjectId.value || undefined);
+    await tasksStore.fetchAll(projectsStore.selectedProjectFilter || undefined);
   } catch {
     // Handle error
   } finally {
     loading.value = false;
   }
+}
+
+function onFilterChange(event) {
+  projectsStore.setProjectFilter(event.target.value);
+  fetchTasks();
 }
 
 onMounted(async () => {
@@ -218,7 +223,10 @@ function onDragStart(event, task) {
 }
 
 function openTask(task) {
-  router.push(`/tasks/${task.id}`);
+  router.replace({
+    path: route.path,
+    query: { ...route.query, taskId: task.id },
+  });
 }
 
 function onDragOver(dateStr) {

@@ -10,7 +10,11 @@
           >
           <hgroup>
             <h1>{{ project.name }}</h1>
-            <p v-if="project.description">{{ project.description }}</p>
+            <div
+              v-if="project.description"
+              class="markdown-body"
+              v-html="renderMarkdown(project.description)"
+            />
           </hgroup>
         </div>
         <div class="header-actions">
@@ -183,6 +187,7 @@
 </template>
 
 <script setup>
+import { renderMarkdown } from "../../composables/useMarkdown";
 import api from "../../utils/api";
 
 const projectsStore = useProjectsStore();
@@ -249,7 +254,10 @@ function toggleUserAccess(userId) {
 }
 
 function openTask(task) {
-  router.push(`/tasks/${task.id}`);
+  router.replace({
+    path: route.path,
+    query: { ...route.query, taskId: task.id },
+  });
 }
 
 onMounted(async () => {

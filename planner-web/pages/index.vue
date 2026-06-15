@@ -6,7 +6,10 @@
         <p>Tasks that need your attention</p>
       </hgroup>
       <div class="header-controls">
-        <select v-model="filterProjectId" @change="fetchDashboard">
+        <select
+          :value="projectsStore.selectedProjectFilter"
+          @change="onFilterChange"
+        >
           <option value="">All projects</option>
           <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
             {{ p.name }}
@@ -152,12 +155,9 @@ const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const recommendationStore = useRecommendationStore();
 const router = useRouter();
+const route = useRoute();
 
 const loading = ref(true);
-const filterProjectId = ref(localStorage.getItem("projectId") || "");
-watch(filterProjectId, (val) => {
-  localStorage.setItem("projectId", val);
-});
 const dashboardData = ref({
   overdue: [],
   upcoming: [],
@@ -194,12 +194,17 @@ async function regenerate() {
   await recommendationStore.regenerateRecommendation();
 }
 
+function onFilterChange(event) {
+  projectsStore.setProjectFilter(event.target.value);
+  fetchDashboard();
+}
+
 async function fetchDashboard() {
   loading.value = true;
   try {
     const params = {};
-    if (filterProjectId.value) {
-      params.projectId = filterProjectId.value;
+    if (projectsStore.selectedProjectFilter) {
+      params.projectId = projectsStore.selectedProjectFilter;
     }
     dashboardData.value = await tasksStore.fetchDashboard(params);
   } catch {
@@ -210,7 +215,10 @@ async function fetchDashboard() {
 }
 
 function openTask(task) {
-  router.push(`/tasks/${task.id}`);
+  router.replace({
+    path: route.path,
+    query: { ...route.query, taskId: task.id },
+  });
 }
 
 onMounted(async () => {

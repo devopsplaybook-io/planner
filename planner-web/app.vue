@@ -7,10 +7,50 @@
     <main>
       <NuxtPage />
     </main>
+
+    <!-- App-level detail dialogs controlled by URL query params -->
+    <TaskDetailDialog
+      :task-id="route.query.taskId || null"
+      @close="closeDialog('taskId')"
+      @updated="onDialogUpdated"
+    />
+    <NoteDetailDialog
+      :note-id="route.query.noteId || null"
+      @close="closeDialog('noteId')"
+      @updated="onDialogUpdated"
+    />
+    <ProjectDetailDialog
+      :project-id="route.query.projectId || null"
+      @close="closeDialog('projectId')"
+      @updated="onDialogUpdated"
+    />
   </div>
 </template>
 
 <script setup>
+const route = useRoute();
+const router = useRouter();
+
+/**
+ * Close a detail dialog by removing its query param from the URL.
+ */
+function closeDialog(param) {
+  const newQuery = Object.fromEntries(
+    Object.entries(route.query).filter(([key]) => key !== param),
+  );
+  router.replace({ path: route.path, query: newQuery });
+}
+
+/**
+ * When a dialog emits 'updated', the store is already mutated.
+ * List pages react to store changes automatically via computed props.
+ * No further action needed.
+ */
+function onDialogUpdated() {
+  // no-op: stores are updated by the dialog itself;
+  // list pages reactively update via computed properties.
+}
+
 // Theme management
 const theme = ref(localStorage.getItem("theme") || "system");
 

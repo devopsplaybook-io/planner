@@ -5,19 +5,30 @@
         <h1>Notes</h1>
         <p>Free-form notes</p>
       </hgroup>
-      <button class="fab-button" @click="showCreateDialog = true">
-        <i class="bi bi-plus-lg" />
-      </button>
+      <div class="header-controls">
+        <select
+          :value="projectsStore.selectedProjectFilter"
+          @change="onFilterChange"
+        >
+          <option value="">All projects</option>
+          <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
+            {{ p.name }}
+          </option>
+        </select>
+        <button class="fab-button" @click="showCreateDialog = true">
+          <i class="bi bi-plus-lg" />
+        </button>
+      </div>
     </header>
 
     <div v-if="loading" class="loading-indicator" />
 
     <div v-else class="note-list">
       <NoteCard
-        v-for="note in notesStore.notes"
+        v-for="note in filteredNotes"
         :key="note.id"
         :note="note"
-        @click="router.push(`/notes/${note.id}`)"
+        @click="openNote(note)"
       />
     </div>
 
@@ -82,11 +93,30 @@
 const notesStore = useNotesStore();
 const projectsStore = useProjectsStore();
 const router = useRouter();
+const route = useRoute();
 
 const loading = ref(true);
 const showCreateDialog = ref(false);
 const creating = ref(false);
 const newNote = ref({ projectId: "", title: "", description: "" });
+
+const filteredNotes = computed(() => {
+  if (!projectsStore.selectedProjectFilter) return notesStore.notes;
+  return notesStore.notes.filter(
+    (n) => n.projectId === projectsStore.selectedProjectFilter,
+  );
+});
+
+function onFilterChange(event) {
+  projectsStore.setProjectFilter(event.target.value);
+}
+
+function openNote(note) {
+  router.replace({
+    path: route.path,
+    query: { ...route.query, noteId: note.id },
+  });
+}
 
 onMounted(async () => {
   try {
