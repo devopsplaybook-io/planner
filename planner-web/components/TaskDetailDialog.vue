@@ -183,13 +183,16 @@
               <div class="attachment-info">
                 <template v-if="isImageFile(att.fileName)">
                   <img
-                    :src="`/api/tasks/${task.id}/attachments/${att.id}?inline=true`"
+                    :src="`/api/tasks/${task.id}/attachments/${att.id}?inline=true&token=${authToken}`"
                     :alt="att.fileName"
                     class="attachment-preview"
+                    @click="
+                      fullscreenImage = `/api/tasks/${task.id}/attachments/${att.id}?inline=true&token=${authToken}`
+                    "
                   />
                 </template>
                 <a
-                  :href="`/api/tasks/${task.id}/attachments/${att.id}`"
+                  :href="`/api/tasks/${task.id}/attachments/${att.id}?token=${authToken}`"
                   target="_blank"
                   class="attachment-link"
                 >
@@ -257,6 +260,22 @@
         </section>
       </template>
 
+      <!-- Fullscreen Image Viewer -->
+      <div
+        v-if="fullscreenImage"
+        class="fullscreen-overlay"
+        @click="fullscreenImage = null"
+      >
+        <button
+          class="fullscreen-close"
+          aria-label="Close"
+          @click.stop="fullscreenImage = null"
+        >
+          ×
+        </button>
+        <img :src="fullscreenImage" class="fullscreen-image" @click.stop />
+      </div>
+
       <!-- Delete Confirmation -->
       <dialog :open="showDeleteConfirm" class="inner-dialog">
         <article>
@@ -307,6 +326,8 @@ const editForm = ref({
   priority: "",
   dueDate: "",
 });
+const authToken = computed(() => localStorage.getItem("token") || "");
+const fullscreenImage = ref(null);
 
 const availableStatuses = computed(() => {
   if (!task.value) return ["To Do", "In Progress", "Done"];
@@ -686,6 +707,7 @@ section h4 {
   max-height: 60px;
   object-fit: cover;
   border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 
 .small-btn {
@@ -765,5 +787,48 @@ section h4 {
   padding: 0.05em 0.35em;
   border-radius: var(--radius-full);
   margin-left: auto;
+}
+
+/* Fullscreen image viewer */
+.fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.fullscreen-image {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  cursor: default;
+  border-radius: var(--radius-sm);
+}
+
+.fullscreen-close {
+  position: fixed;
+  top: var(--space-md);
+  right: var(--space-md);
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 2.5em;
+  height: 2.5em;
+  font-size: var(--text-2xl);
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fullscreen-close:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 </style>

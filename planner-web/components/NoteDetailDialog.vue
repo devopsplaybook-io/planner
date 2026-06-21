@@ -4,15 +4,29 @@
       <header class="dialog-header">
         <h3>Note Details</h3>
         <div class="dialog-actions">
-          <button v-if="!editing" class="secondary" @click="startEdit">
-            <i class="bi bi-pencil" /> Edit
+          <button
+            v-if="!editing"
+            class="secondary icon-btn"
+            aria-label="Edit"
+            @click="startEdit"
+          >
+            <i class="bi bi-pencil" />
           </button>
           <template v-if="editing">
-            <button :aria-busy="saving" @click="saveEdit">
-              <i class="bi bi-check" /> Save
+            <button
+              class="icon-btn"
+              :aria-busy="saving"
+              aria-label="Save"
+              @click="saveEdit"
+            >
+              <i class="bi bi-check" />
             </button>
-            <button class="secondary" @click="cancelEdit">
-              <i class="bi bi-x" /> Cancel
+            <button
+              class="secondary icon-btn"
+              aria-label="Cancel"
+              @click="cancelEdit"
+            >
+              <i class="bi bi-x" />
             </button>
           </template>
           <button class="close-btn" aria-label="Close" @click="handleClose">
@@ -58,9 +72,23 @@
         </section>
 
         <!-- Attachments -->
-        <section v-if="note.attachments && note.attachments.length">
-          <h4>Attachments ({{ note.attachments.length }})</h4>
-          <div class="attachments">
+        <details
+          class="compact-section"
+          :open="note.attachments && note.attachments.length > 0"
+        >
+          <summary>
+            Attachments
+            <span
+              v-if="note.attachments && note.attachments.length"
+              class="count-badge"
+            >
+              {{ note.attachments.length }}
+            </span>
+          </summary>
+          <div
+            v-if="note.attachments && note.attachments.length"
+            class="attachments"
+          >
             <div
               v-for="att in note.attachments"
               :key="att.id"
@@ -69,13 +97,16 @@
               <div class="attachment-info">
                 <template v-if="isImageFile(att.fileName)">
                   <img
-                    :src="`/api/notes/${note.id}/attachments/${att.id}?inline=true`"
+                    :src="`/api/notes/${note.id}/attachments/${att.id}?inline=true&token=${authToken}`"
                     :alt="att.fileName"
                     class="attachment-preview"
+                    @click="
+                      fullscreenImage = `/api/notes/${note.id}/attachments/${att.id}?inline=true&token=${authToken}`
+                    "
                   />
                 </template>
                 <a
-                  :href="`/api/notes/${note.id}/attachments/${att.id}`"
+                  :href="`/api/notes/${note.id}/attachments/${att.id}?token=${authToken}`"
                   target="_blank"
                   class="attachment-link"
                 >
@@ -91,19 +122,26 @@
               </button>
             </div>
           </div>
-        </section>
-
-        <section>
-          <h4>Add Attachment</h4>
           <form class="add-attachment" @submit.prevent="uploadAttachment">
             <input ref="fileInput" type="file" class="file-input" />
             <button type="submit" :aria-busy="uploading">Upload</button>
           </form>
-        </section>
+        </details>
 
         <!-- Comments -->
-        <section>
-          <h4>Comments ({{ note.comments ? note.comments.length : 0 }})</h4>
+        <details
+          class="compact-section"
+          :open="note.comments && note.comments.length > 0"
+        >
+          <summary>
+            Comments
+            <span
+              v-if="note.comments && note.comments.length"
+              class="count-badge"
+            >
+              {{ note.comments.length }}
+            </span>
+          </summary>
           <div class="comments">
             <article
               v-for="comment in note.comments || []"
@@ -116,12 +154,6 @@
               </header>
               <p>{{ comment.text }}</p>
             </article>
-            <div
-              v-if="!note.comments || note.comments.length === 0"
-              class="empty-state"
-            >
-              No comments
-            </div>
           </div>
           <form class="add-comment" @submit.prevent="addComment">
             <input
@@ -132,7 +164,7 @@
             />
             <button type="submit" :aria-busy="submitting">Send</button>
           </form>
-        </section>
+        </details>
 
         <!-- Delete -->
         <section>
@@ -141,6 +173,22 @@
           </button>
         </section>
       </template>
+
+      <!-- Fullscreen Image Viewer -->
+      <div
+        v-if="fullscreenImage"
+        class="fullscreen-overlay"
+        @click="fullscreenImage = null"
+      >
+        <button
+          class="fullscreen-close"
+          aria-label="Close"
+          @click.stop="fullscreenImage = null"
+        >
+          ×
+        </button>
+        <img :src="fullscreenImage" class="fullscreen-image" @click.stop />
+      </div>
 
       <!-- Delete Confirmation -->
       <dialog :open="showDeleteConfirm" class="inner-dialog">
@@ -183,6 +231,8 @@ const fileInput = ref(null);
 const editing = ref(false);
 const saving = ref(false);
 const editForm = ref({ title: "", description: "" });
+const authToken = computed(() => localStorage.getItem("token") || "");
+const fullscreenImage = ref(null);
 
 watch(
   () => props.noteId,
@@ -313,20 +363,30 @@ async function deleteAttachment(attachmentId) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-sm);
 }
 
 .dialog-header h3 {
   margin: 0;
+  font-size: var(--text-lg);
 }
 
 .dialog-actions {
   display: flex;
-  gap: var(--space-sm);
+  gap: var(--space-2xs);
   align-items: center;
 }
 
+.icon-btn {
+  padding: 0.25em 0.5em;
+  font-size: var(--text-lg);
+  line-height: 1;
+  min-width: auto;
+  width: auto;
+}
+
 .edit-section {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
 }
 
 .edit-section label {
@@ -344,7 +404,7 @@ async function deleteAttachment(attachmentId) {
 }
 
 section {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
 }
 
 section h4 {
@@ -427,6 +487,7 @@ section h4 {
   max-height: 60px;
   object-fit: cover;
   border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 
 .small-btn {
@@ -438,5 +499,114 @@ section h4 {
   display: flex;
   gap: var(--space-sm);
   justify-content: flex-end;
+}
+
+/* Collapsible compact sections */
+.compact-section {
+  margin-bottom: var(--space-sm);
+  border: 1px solid
+    var(--pico-card-border-color, var(--pico-muted-border-color));
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.compact-section summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  cursor: pointer;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  background: var(--pico-card-background-color);
+  user-select: none;
+  list-style: none;
+}
+
+.compact-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.compact-section summary::before {
+  content: "▸";
+  font-size: var(--text-sm);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.compact-section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.compact-section[open] summary {
+  border-bottom: 1px solid
+    var(--pico-card-border-color, var(--pico-muted-border-color));
+}
+
+.compact-section > *:not(summary) {
+  padding: 0 var(--space-sm);
+}
+
+.compact-section .attachments,
+.compact-section .comments {
+  padding-top: var(--space-xs);
+}
+
+.compact-section .add-attachment,
+.compact-section .add-comment {
+  padding: var(--space-xs) 0 var(--space-sm);
+}
+
+.count-badge {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  background: var(--pico-primary-background);
+  color: var(--pico-primary);
+  padding: 0.05em 0.35em;
+  border-radius: var(--radius-full);
+  margin-left: auto;
+}
+
+/* Fullscreen image viewer */
+.fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.fullscreen-image {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  cursor: default;
+  border-radius: var(--radius-sm);
+}
+
+.fullscreen-close {
+  position: fixed;
+  top: var(--space-md);
+  right: var(--space-md);
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 2.5em;
+  height: 2.5em;
+  font-size: var(--text-2xl);
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fullscreen-close:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 </style>
