@@ -15,6 +15,9 @@
             {{ p.name }}
           </option>
         </select>
+        <button class="fab-button" @click="showCreateDialog = true">
+          <i class="bi bi-plus-lg" />
+        </button>
       </div>
     </header>
 
@@ -70,6 +73,12 @@
       </div>
     </template>
   </div>
+
+  <TaskCreateDialog
+    :open="showCreateDialog"
+    @close="showCreateDialog = false"
+    @created="fetchTasks"
+  />
 </template>
 
 <script setup>
@@ -79,6 +88,7 @@ const router = useRouter();
 const route = useRoute();
 
 const loading = ref(true);
+const showCreateDialog = ref(false);
 const currentDate = ref(new Date());
 const draggingTask = ref(null);
 const dragOverDate = ref(null);
@@ -254,12 +264,20 @@ async function onDrop(dateStr) {
 </script>
 
 <style scoped>
+.calendar-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .month-nav {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-md);
-  margin-bottom: var(--space-md);
+  margin-bottom: var(--space-sm);
+  flex-shrink: 0;
 }
 
 .month-nav h2 {
@@ -284,6 +302,8 @@ async function onDrop(dateStr) {
 .calendar-grid {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--pico-muted-border-color);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -293,6 +313,7 @@ async function onDrop(dateStr) {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   background: var(--pico-card-background-color);
+  flex-shrink: 0;
 }
 
 .calendar-day-header {
@@ -306,14 +327,18 @@ async function onDrop(dateStr) {
 .calendar-body {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 1fr;
+  flex: 1;
+  min-height: 0;
 }
 
 .calendar-day {
-  min-height: 80px;
+  min-height: 0;
   padding: var(--space-xs);
   border-right: 1px solid var(--pico-muted-border-color);
   border-bottom: 1px solid var(--pico-muted-border-color);
   font-size: var(--text-base);
+  overflow: hidden;
 }
 
 .calendar-day.other-month {
@@ -339,12 +364,14 @@ async function onDrop(dateStr) {
 .day-number {
   display: inline-block;
   margin-bottom: var(--space-xs);
+  flex-shrink: 0;
 }
 
 .day-tasks {
   display: flex;
   flex-direction: column;
   gap: 0.15em;
+  min-width: 0;
 }
 
 .day-task {
@@ -354,6 +381,7 @@ async function onDrop(dateStr) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
   font-size: var(--text-base);
   background: var(--pico-card-background-color);
 }
@@ -384,7 +412,6 @@ async function onDrop(dateStr) {
   }
 
   .calendar-day {
-    min-height: 60px;
     font-size: var(--text-sm);
   }
 

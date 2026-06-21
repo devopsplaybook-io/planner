@@ -4,15 +4,29 @@
       <header class="dialog-header">
         <h3>Task Details</h3>
         <div class="dialog-actions">
-          <button v-if="!editing" class="secondary" @click="startEdit">
-            <i class="bi bi-pencil" /> Edit
+          <button
+            v-if="!editing"
+            class="secondary icon-btn"
+            aria-label="Edit"
+            @click="startEdit"
+          >
+            <i class="bi bi-pencil" />
           </button>
           <template v-if="editing">
-            <button :aria-busy="saving" @click="saveEdit">
-              <i class="bi bi-check" /> Save
+            <button
+              class="icon-btn"
+              :aria-busy="saving"
+              aria-label="Save"
+              @click="saveEdit"
+            >
+              <i class="bi bi-check" />
             </button>
-            <button class="secondary" @click="cancelEdit">
-              <i class="bi bi-x" /> Cancel
+            <button
+              class="secondary icon-btn"
+              aria-label="Cancel"
+              @click="cancelEdit"
+            >
+              <i class="bi bi-x" />
             </button>
           </template>
           <button class="close-btn" aria-label="Close" @click="handleClose">
@@ -24,6 +38,22 @@
       <section v-if="loading" class="loading-indicator" />
 
       <template v-else-if="task">
+        <!-- Status dropdown — always visible -->
+        <section class="status-bar">
+          <label class="status-select">
+            <strong>Status</strong>
+            <select
+              :value="task.status"
+              :aria-busy="savingStatus"
+              @change="onStatusChange($event)"
+            >
+              <option v-for="s in availableStatuses" :key="s" :value="s">
+                {{ s }}
+              </option>
+            </select>
+          </label>
+        </section>
+
         <!-- Editable Fields -->
         <section class="edit-section">
           <label>
@@ -49,15 +79,6 @@
 
         <!-- Meta Info -->
         <section class="meta-section">
-          <div class="meta-field">
-            <strong>Status</strong>
-            <select v-if="editing" v-model="editForm.status">
-              <option v-for="s in availableStatuses" :key="s" :value="s">
-                {{ s }}
-              </option>
-            </select>
-            <span v-else class="status-badge">{{ task.status }}</span>
-          </div>
           <div class="meta-field">
             <strong>Priority</strong>
             <select v-if="editing" v-model="editForm.priority">
@@ -94,8 +115,21 @@
         </section>
 
         <!-- Checklist -->
-        <section>
-          <h4>Checklist</h4>
+        <details
+          class="compact-section"
+          :open="task.checklist && task.checklist.length > 0"
+        >
+          <summary>
+            Checklist
+            <span
+              v-if="task.checklist && task.checklist.length"
+              class="count-badge"
+            >
+              {{ task.checklist.filter((i) => i.done).length }}/{{
+                task.checklist.length
+              }}
+            </span>
+          </summary>
           <div v-if="task.checklist && task.checklist.length" class="checklist">
             <label
               v-for="(item, idx) in task.checklist"
@@ -121,12 +155,26 @@
               Add
             </button>
           </div>
-        </section>
+        </details>
 
         <!-- Attachments -->
-        <section v-if="task.attachments && task.attachments.length">
-          <h4>Attachments ({{ task.attachments.length }})</h4>
-          <div class="attachments">
+        <details
+          class="compact-section"
+          :open="task.attachments && task.attachments.length > 0"
+        >
+          <summary>
+            Attachments
+            <span
+              v-if="task.attachments && task.attachments.length"
+              class="count-badge"
+            >
+              {{ task.attachments.length }}
+            </span>
+          </summary>
+          <div
+            v-if="task.attachments && task.attachments.length"
+            class="attachments"
+          >
             <div
               v-for="att in task.attachments"
               :key="att.id"
@@ -157,19 +205,26 @@
               </button>
             </div>
           </div>
-        </section>
-
-        <section>
-          <h4>Add Attachment</h4>
           <form class="add-attachment" @submit.prevent="uploadAttachment">
             <input ref="fileInput" type="file" class="file-input" />
             <button type="submit" :aria-busy="uploading">Upload</button>
           </form>
-        </section>
+        </details>
 
         <!-- Comments -->
-        <section>
-          <h4>Comments ({{ task.comments ? task.comments.length : 0 }})</h4>
+        <details
+          class="compact-section"
+          :open="task.comments && task.comments.length > 0"
+        >
+          <summary>
+            Comments
+            <span
+              v-if="task.comments && task.comments.length"
+              class="count-badge"
+            >
+              {{ task.comments.length }}
+            </span>
+          </summary>
           <div class="comments">
             <article
               v-for="comment in task.comments || []"
@@ -182,12 +237,6 @@
               </header>
               <p>{{ comment.text }}</p>
             </article>
-            <div
-              v-if="!task.comments || task.comments.length === 0"
-              class="empty-state"
-            >
-              No comments
-            </div>
           </div>
           <form class="add-comment" @submit.prevent="addComment">
             <input
@@ -198,7 +247,7 @@
             />
             <button type="submit" :aria-busy="submitting">Send</button>
           </form>
-        </section>
+        </details>
 
         <!-- Delete -->
         <section>
@@ -251,10 +300,10 @@ const newChecklistText = ref("");
 const savingChecklist = ref(false);
 const editing = ref(false);
 const saving = ref(false);
+const savingStatus = ref(false);
 const editForm = ref({
   title: "",
   description: "",
-  status: "",
   priority: "",
   dueDate: "",
 });
@@ -301,7 +350,6 @@ function startEdit() {
   editForm.value = {
     title: task.value.title,
     description: task.value.description,
-    status: task.value.status,
     priority: task.value.priority,
     dueDate: task.value.dueDate || "",
   };
@@ -319,7 +367,6 @@ async function saveEdit() {
     await tasksStore.update(props.taskId, {
       title: editForm.value.title,
       description: editForm.value.description,
-      status: editForm.value.status,
       priority: editForm.value.priority,
       dueDate: editForm.value.dueDate || null,
     });
@@ -329,6 +376,21 @@ async function saveEdit() {
     alert(e.response?.data?.error || "Failed to update task");
   } finally {
     saving.value = false;
+  }
+}
+
+async function onStatusChange(event) {
+  if (!task.value) return;
+  const newStatus = event.target.value;
+  if (newStatus === task.value.status) return;
+  savingStatus.value = true;
+  try {
+    await tasksStore.update(props.taskId, { status: newStatus });
+    emit("updated");
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to update status");
+  } finally {
+    savingStatus.value = false;
   }
 }
 
@@ -432,20 +494,53 @@ async function deleteAttachment(attachmentId) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-sm);
 }
 
 .dialog-header h3 {
   margin: 0;
+  font-size: var(--text-lg);
 }
 
 .dialog-actions {
   display: flex;
-  gap: var(--space-sm);
+  gap: var(--space-2xs);
   align-items: center;
 }
 
+.icon-btn {
+  padding: 0.25em 0.5em;
+  font-size: var(--text-lg);
+  line-height: 1;
+  min-width: auto;
+  width: auto;
+}
+
+/* Status bar — always visible dropdown */
+.status-bar {
+  margin-bottom: var(--space-md);
+}
+
+.status-select {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0;
+}
+
+.status-select strong {
+  flex-shrink: 0;
+  font-size: var(--text-base);
+}
+
+.status-select select {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
 .edit-section {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
 }
 
 .edit-section label {
@@ -464,9 +559,9 @@ async function deleteAttachment(attachmentId) {
 
 .meta-section {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: var(--space-md);
-  margin-bottom: var(--space-lg);
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
   padding: var(--space-sm);
   background: var(--pico-card-background-color);
   border-radius: var(--radius-sm);
@@ -484,7 +579,7 @@ async function deleteAttachment(attachmentId) {
 }
 
 section {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
 }
 
 section h4 {
@@ -602,5 +697,73 @@ section h4 {
   display: flex;
   gap: var(--space-sm);
   justify-content: flex-end;
+}
+
+/* Collapsible compact sections */
+.compact-section {
+  margin-bottom: var(--space-sm);
+  border: 1px solid
+    var(--pico-card-border-color, var(--pico-muted-border-color));
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.compact-section summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  cursor: pointer;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  background: var(--pico-card-background-color);
+  user-select: none;
+  list-style: none;
+}
+
+.compact-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.compact-section summary::before {
+  content: "▸";
+  font-size: var(--text-sm);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.compact-section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.compact-section[open] summary {
+  border-bottom: 1px solid
+    var(--pico-card-border-color, var(--pico-muted-border-color));
+}
+
+.compact-section > *:not(summary) {
+  padding: 0 var(--space-sm);
+}
+
+.compact-section .checklist,
+.compact-section .attachments,
+.compact-section .comments {
+  padding-top: var(--space-xs);
+}
+
+.compact-section .add-checklist-item,
+.compact-section .add-attachment,
+.compact-section .add-comment {
+  padding: var(--space-xs) 0 var(--space-sm);
+}
+
+.count-badge {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  background: var(--pico-primary-background);
+  color: var(--pico-primary);
+  padding: 0.05em 0.35em;
+  border-radius: var(--radius-full);
+  margin-left: auto;
 }
 </style>

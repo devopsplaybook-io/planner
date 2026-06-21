@@ -8,6 +8,7 @@
 - **Task Tracking** - Tasks with title, description, checklists, comments, attachments, due dates, priorities, and labels
 - **Note Taking** - Notes with title, description, comments, attachments, and labels
 - **Multiple Views** - Next (overdue/upcoming), Calendar view, and Kanban board
+- **Markdown Support** - Task, note, and project descriptions support markdown syntax
 - **User Management** - First user automatically set as admin, additional users can be added
 - **PWA Support** - Installable progressive web application for mobile and desktop
 - **Responsive Design** - Optimized for all screen sizes with auto-collapsing navigation on mobile
@@ -55,14 +56,27 @@ See [`docs/deployments`](docs/deployments) for additional deployment options.
 
 Configuration can be provided via a JSON configuration file (e.g., using a ConfigMap) or environment variables.
 
-| Parameter          | Description                            | Default | Availability                        |
-| ------------------ | -------------------------------------- | ------- | ----------------------------------- |
-| APPLICATION_TITLE  | Application title                      | Planner | Config file or environment variable |
-| API_PORT           | API server port                        | 8080    | Config file or environment variable |
-| CORS_POLICY_ORIGIN | CORS origin policy                     |         | Config file or environment variable |
-| JWT_KEY            | JWT signing key                        | dev     | Config file or environment variable |
-| DATABASE_TYPE      | Database type (`sqlite` or `postgres`) | sqlite  | Config file or environment variable |
-| DATA_DIR           | Data directory                         | /data   | Config file or environment variable |
+| Parameter             | Description                            | Default             | Availability                        |
+| --------------------- | -------------------------------------- | ------------------- | ----------------------------------- |
+| APPLICATION_TITLE     | Application title                      | Planner             | Config file or environment variable |
+| API_PORT              | API server port                        | 8080                | Config file or environment variable |
+| CORS_POLICY_ORIGIN    | CORS origin policy                     |                     | Config file or environment variable |
+| JWT_KEY               | JWT signing key                        | dev                 | Config file or environment variable |
+| JWT_VALIDITY_DURATION | JWT token validity duration in seconds | `2592000` (30 days) | Config file or environment variable |
+| DATABASE_TYPE         | Database type (`sqlite` or `postgres`) | sqlite              | Config file or environment variable |
+| DATA_DIR              | Data directory                         | /data               | Config file or environment variable |
+
+## LLM Recommendation
+
+Planner can generate task recommendations using any OpenAI-compatible chat completions API. Recommendations are enabled when `LLM_RECOMMENDATION_ENABLED` is set to `true` and `LLM_API_KEY` is configured.
+
+| Variable                           | Description                                            | Default                                     |
+| ---------------------------------- | ------------------------------------------------------ | ------------------------------------------- |
+| `LLM_API_KEY`                      | API key for the LLM provider                           |                                             |
+| `LLM_API_URL`                      | Chat completions endpoint URL                          | `https://api.deepseek.com/chat/completions` |
+| `LLM_MODEL`                        | Model name to use                                      | `deepseek-chat`                             |
+| `LLM_RECOMMENDATION_ENABLED`       | Enable LLM-based task recommendations                  | `false`                                     |
+| `LLM_RECOMMENDATION_SCHEDULE_CRON` | Cron expression for recommendation schedule (UTC time) | `0 0 * * *` (daily at midnight)             |
 
 ## Development
 

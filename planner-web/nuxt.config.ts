@@ -33,26 +33,10 @@ export default defineNuxtConfig({
     registerType: "autoUpdate",
     includeAssets: ["images/logo.svg"],
     workbox: {
-      globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
-      runtimeCaching: [
-        {
-          urlPattern: "/api/**",
-          handler: "NetworkFirst",
-          options: {
-            cacheName: "api-cache",
-            expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
-            cacheableResponse: { statuses: [0, 200] },
-          },
-        },
-        {
-          urlPattern: "/_nuxt/**",
-          handler: "CacheFirst",
-          options: {
-            cacheName: "nuxt-assets",
-            expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 30 },
-          },
-        },
-      ],
+      globPatterns: [],
+      navigateFallback: undefined,
+      skipWaiting: true,
+      clientsClaim: true,
     },
     manifest: {
       name: "Planner",

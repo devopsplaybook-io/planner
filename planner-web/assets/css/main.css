@@ -124,7 +124,26 @@ dialog[open] {
 
 dialog article {
   max-width: 90vw;
-  min-width: 320px;
+  min-width: 280px;
+  padding: var(--space-md);
+}
+
+@media (max-width: 576px) {
+  dialog article {
+    max-width: 96vw;
+    min-width: 0;
+    width: 96vw;
+    padding: var(--space-sm);
+  }
+
+  dialog article .dialog-actions button {
+    padding: 0.2em 0.4em;
+    font-size: var(--text-base);
+  }
+
+  dialog article section {
+    margin-bottom: var(--space-sm);
+  }
 }
 
 /* ============================================

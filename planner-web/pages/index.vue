@@ -15,6 +15,9 @@
             {{ p.name }}
           </option>
         </select>
+        <button class="fab-button" @click="showCreateDialog = true">
+          <i class="bi bi-plus-lg" />
+        </button>
       </div>
     </header>
 
@@ -146,6 +149,12 @@
       </div>
     </template>
   </div>
+
+  <TaskCreateDialog
+    :open="showCreateDialog"
+    @close="showCreateDialog = false"
+    @created="fetchDashboard"
+  />
 </template>
 
 <script setup>
@@ -158,6 +167,7 @@ const router = useRouter();
 const route = useRoute();
 
 const loading = ref(true);
+const showCreateDialog = ref(false);
 const dashboardData = ref({
   overdue: [],
   upcoming: [],
