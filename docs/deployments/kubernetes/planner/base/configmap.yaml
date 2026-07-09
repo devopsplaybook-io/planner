@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: planner-config
+data:
+  config.json: |
+    {
+      "CORS_POLICY_ORIGIN": "",
+      "JWT_KEY": "",
+      "DATABASE_TYPE": "sqlite"
+    }

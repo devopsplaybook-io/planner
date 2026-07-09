@@ -1,0 +1,16 @@
+/tmp
+/*/node_modules
+/*/docker-packaging
+/*/dist
+/*/docker-packaging-config/files
+/builds
+node_modules/
+coverage
+/docs/dev/env.sh
+.vscode
+/env-dev.js
+/*/tmp
+planner-proxy/bin/
+/docs/dev/data/attachments
+planner-web/.nuxt
+planner-web/.output

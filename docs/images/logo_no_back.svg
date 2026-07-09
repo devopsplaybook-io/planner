@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Kanban board (two columns) -->
+  <!-- Column 1 background -->
+  <rect x="12" y="12" width="35" height="76" rx="8" fill="#015887" opacity="0.1"/>
+  <!-- Column 2 background -->
+  <rect x="53" y="12" width="35" height="76" rx="8" fill="#015887" opacity="0.1"/>
+
+  <!-- Column header dots -->
+  <circle cx="25.5" cy="25" r="3" fill="#015887" opacity="0.45"/>
+  <circle cx="66.5" cy="25" r="3" fill="#015887" opacity="0.45"/>
+
+  <!-- Card 1 (column 1 - completed) -->
+  <rect x="18" y="36" width="23" height="16" rx="4" fill="#e8f4fd" stroke="#015887" stroke-width="1.2" stroke-opacity="0.15"/>
+  <rect x="22" y="40" width="10" height="2.5" rx="1.25" fill="#015887" opacity="0.25"/>
+  <path d="M33 44.5 L34.5 46 L37 43" fill="none" stroke="#4caf50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Card 2 (column 1 - in progress) -->
+  <rect x="18" y="56" width="23" height="16" rx="4" fill="#ffffff" stroke="#015887" stroke-width="1.2" stroke-opacity="0.15"/>
+  <rect x="22" y="60" width="12" height="2.5" rx="1.25" fill="#015887" opacity="0.25"/>
+  <circle cx="35" cy="66" r="2.5" fill="#ff9800"/>
+
+  <!-- Card 3 (column 2 - pending) -->
+  <rect x="59" y="36" width="23" height="16" rx="4" fill="#ffffff" stroke="#015887" stroke-width="1.2" stroke-opacity="0.15"/>
+  <rect x="63" y="40" width="10" height="2.5" rx="1.25" fill="#015887" opacity="0.25"/>
+  <circle cx="74" cy="44.5" r="2.5" fill="#bdbdbd"/>
+
+  <!-- Card 4 (column 2 - pending) -->
+  <rect x="59" y="56" width="23" height="16" rx="4" fill="#ffffff" stroke="#015887" stroke-width="1.2" stroke-opacity="0.15"/>
+  <rect x="63" y="60" width="12" height="2.5" rx="1.25" fill="#015887" opacity="0.25"/>
+  <circle cx="74" cy="66" r="2.5" fill="#bdbdbd"/>
+</svg>

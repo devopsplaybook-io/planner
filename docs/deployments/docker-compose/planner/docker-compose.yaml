@@ -1,0 +1,10 @@
+# https://hub.docker.com/r/devopsplaybookio/planner
+version: "3"
+
+services:
+  planner:
+    image: devopsplaybookio/planner
+    ports:
+      - 8080:8080
+    volumes:
+      - ./data:/data
