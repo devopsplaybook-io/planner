@@ -18,15 +18,15 @@ describe("getTaskNotificationKind", () => {
   const now = new Date(2026, 7, 19, 10, 0);
 
   it("should return 'day-of' for a task due today", () => {
-    expect(getTaskNotificationKind("2026-08-19", "To Do", now, notifyHour)).toBe(
-      "day-of",
-    );
+    expect(
+      getTaskNotificationKind("2026-08-19", "To Do", now, notifyHour),
+    ).toBe("day-of");
   });
 
   it("should return 'day-before' for a task due tomorrow", () => {
-    expect(getTaskNotificationKind("2026-08-20", "To Do", now, notifyHour)).toBe(
-      "day-before",
-    );
+    expect(
+      getTaskNotificationKind("2026-08-20", "To Do", now, notifyHour),
+    ).toBe("day-before");
   });
 
   it("should handle tomorrow across a month boundary", () => {
@@ -61,24 +61,39 @@ describe("getTaskNotificationKind", () => {
   });
 
   it("should return null for completed tasks", () => {
-    expect(getTaskNotificationKind("2026-08-19", "Done", now, notifyHour)).toBeNull();
-    expect(getTaskNotificationKind("2026-08-20", "Done", now, notifyHour)).toBeNull();
+    expect(
+      getTaskNotificationKind("2026-08-19", "Done", now, notifyHour),
+    ).toBeNull();
+    expect(
+      getTaskNotificationKind("2026-08-20", "Done", now, notifyHour),
+    ).toBeNull();
   });
 
   it("should return null when no due date is set", () => {
-    expect(getTaskNotificationKind(undefined, "To Do", now, notifyHour)).toBeNull();
+    expect(
+      getTaskNotificationKind(undefined, "To Do", now, notifyHour),
+    ).toBeNull();
     expect(getTaskNotificationKind(null, "To Do", now, notifyHour)).toBeNull();
     expect(getTaskNotificationKind("", "To Do", now, notifyHour)).toBeNull();
   });
 
   it("should return null for tasks due later than tomorrow or in the past", () => {
-    expect(getTaskNotificationKind("2026-08-21", "To Do", now, notifyHour)).toBeNull();
-    expect(getTaskNotificationKind("2026-08-18", "To Do", now, notifyHour)).toBeNull();
+    expect(
+      getTaskNotificationKind("2026-08-21", "To Do", now, notifyHour),
+    ).toBeNull();
+    expect(
+      getTaskNotificationKind("2026-08-18", "To Do", now, notifyHour),
+    ).toBeNull();
   });
 
   it("should accept ISO datetime due dates", () => {
     expect(
-      getTaskNotificationKind("2026-08-19T10:00:00.000Z", "To Do", now, notifyHour),
+      getTaskNotificationKind(
+        "2026-08-19T10:00:00.000Z",
+        "To Do",
+        now,
+        notifyHour,
+      ),
     ).toBe("day-of");
   });
 });
@@ -113,7 +128,13 @@ describe("getTaskNotificationKind with a timezone", () => {
     // 2026-08-27T00:30Z is 00:30 in UTC (before 9) and 14:30 in UTC+14
     const instant = new Date("2026-08-27T00:30:00.000Z");
     expect(
-      getTaskNotificationKind("2026-08-27", "To Do", instant, notifyHour, "UTC"),
+      getTaskNotificationKind(
+        "2026-08-27",
+        "To Do",
+        instant,
+        notifyHour,
+        "UTC",
+      ),
     ).toBeNull();
     expect(
       getTaskNotificationKind(
@@ -137,7 +158,9 @@ describe("getZonedDateKey", () => {
 
   it("should return the requested day offset in the given timezone", () => {
     const instant = new Date("2026-08-26T21:00:00.000Z");
-    expect(getZonedDateKey(instant, "Pacific/Kiritimati", 0)).toBe("2026-08-27");
+    expect(getZonedDateKey(instant, "Pacific/Kiritimati", 0)).toBe(
+      "2026-08-27",
+    );
     expect(getZonedDateKey(instant, "UTC", 0)).toBe("2026-08-26");
     expect(getZonedDateKey(instant, "UTC", -1)).toBe("2026-08-25");
   });

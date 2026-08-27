@@ -78,6 +78,22 @@ Planner can generate task recommendations using any OpenAI-compatible chat compl
 | `LLM_RECOMMENDATION_ENABLED`       | Enable LLM-based task recommendations                  | `false`                                     |
 | `LLM_RECOMMENDATION_SCHEDULE_CRON` | Cron expression for recommendation schedule (UTC time) | `0 0 * * *` (daily at midnight)             |
 
+## Web Push Notifications
+
+Planner sends browser push notifications for tasks due today or tomorrow. Notifications are enabled when `WEB_PUSH_ENABLED` is set to `true`. Users opt in from the Settings page.
+
+VAPID keys are read from the environment when both `WEB_PUSH_VAPID_PUBLIC_KEY` and `WEB_PUSH_VAPID_PRIVATE_KEY` are set, otherwise they are loaded from `DATA_DIR/vapid-keys.json` and generated on first start. Providing them explicitly keeps the identity of the server across a lost volume and allows several replicas.
+
+| Variable                     | Description                                                         | Default                        |
+| ---------------------------- | ------------------------------------------------------------------- | ------------------------------ |
+| `WEB_PUSH_ENABLED`           | Enable web push reminders                                           | `true`                         |
+| `WEB_PUSH_SUBJECT`           | Contact address advertised to push services (`mailto:` or `https:`) | `mailto:admin@localhost`       |
+| `WEB_PUSH_NOTIFY_HOUR`       | Hour of the day (0-23) from which reminders are sent                | `9`                            |
+| `WEB_PUSH_SCHEDULE_CRON`     | Cron expression for the reminder check                              | `\*/15 * * * *` (every 15 min) |
+| `WEB_PUSH_TIMEZONE`          | Timezone used for the day/hour calculation (IANA name)              | empty (server timezone)        |
+| `WEB_PUSH_VAPID_PUBLIC_KEY`  | VAPID public key (base64url), overrides the generated one           |                                |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | VAPID private key (base64url), overrides the generated one          |                                |
+
 ## Development
 
 To start development on Planner:

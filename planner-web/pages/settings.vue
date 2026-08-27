@@ -30,16 +30,25 @@
         >
         <button
           class="btn-theme"
-          :disabled="notificationsStore.loading || !notificationsStore.serverEnabled"
+          :disabled="
+            notificationsStore.loading || !notificationsStore.serverEnabled
+          "
           @click="toggleNotifications"
         >
           <i
-            :class="notificationsStore.active ? 'bi bi-bell-slash' : 'bi bi-bell'"
+            :class="
+              notificationsStore.active ? 'bi bi-bell-slash' : 'bi bi-bell'
+            "
           />
           {{ notificationsStore.active ? "Disable" : "Enable" }}
         </button>
       </div>
-      <p class="notification-status">{{ notificationStatus }}</p>
+      <p
+        class="notification-status"
+        :class="{ 'notification-status--error': notificationsStore.lastError }"
+      >
+        {{ notificationStatus }}
+      </p>
     </section>
 
     <section v-if="authStore.isAuthenticated">
@@ -67,6 +76,9 @@ const notificationStatus = computed(() => {
   }
   if (notificationsStore.permission === "denied") {
     return "Notifications are blocked by the browser. Allow them in the browser's site settings.";
+  }
+  if (notificationsStore.lastError) {
+    return `Notifications could not be enabled: ${notificationsStore.lastError}`;
   }
   if (notificationsStore.active) {
     return "You will be notified the day before and on the day a task is due.";
@@ -194,6 +206,11 @@ section h2 {
   margin-bottom: 0;
   font-size: var(--text-sm);
   opacity: 0.7;
+}
+
+.notification-status--error {
+  color: var(--pico-del-color, #dc3545);
+  opacity: 1;
 }
 
 .btn-logout {

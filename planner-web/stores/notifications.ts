@@ -12,6 +12,13 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
+function describeError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "Unknown error";
+}
+
 /**
  * Waits for the active service worker registration, with a timeout so the
  * UI never hangs when no service worker is available (e.g. dev mode).
@@ -37,6 +44,8 @@ export const useNotificationsStore = defineStore("notifications", {
     serverPublicKey: "",
     permission: "default" as NotificationPermission,
     loading: false,
+    // Message of the last failed enable/disable attempt, shown to the user
+    lastError: "",
   }),
 
   getters: {
@@ -80,6 +89,7 @@ export const useNotificationsStore = defineStore("notifications", {
     },
 
     async enable() {
+      this.lastError = "";
       if (!this.supported || !this.serverEnabled) {
         return;
       }
@@ -92,17 +102,21 @@ export const useNotificationsStore = defineStore("notifications", {
         await this.subscribe();
         this.enabled = true;
         localStorage.setItem("notificationsEnabled", "true");
+      } catch (error) {
+        // pushManager.subscribe() rejects with a DOMException when the push
+        // service is unreachable; report it instead of failing silently
+        this.lastError = describeError(error);
       } finally {
         this.loading = false;
       }
     },
 
     async disable() {
+      this.lastError = "";
       this.loading = true;
       try {
         const registration = await getServiceWorkerRegistration();
-        const subscription =
-          await registration.pushManager.getSubscription();
+        const subscription = await registration.pushManager.getSubscription();
         if (subscription) {
           await subscription.unsubscribe();
           try {
@@ -113,9 +127,12 @@ export const useNotificationsStore = defineStore("notifications", {
             // Server-side cleanup failure is not blocking
           }
         }
+      } catch (error) {
+        this.lastError = describeError(error);
+      } finally {
+        // The local preference is always cleared so the user is never stuck
         this.enabled = false;
         localStorage.removeItem("notificationsEnabled");
-      } finally {
         this.loading = false;
       }
     },
