@@ -251,6 +251,7 @@ watch(
       notesStore.currentNote = null;
     }
   },
+  { immediate: true },
 );
 
 function formatDate(dateStr) {

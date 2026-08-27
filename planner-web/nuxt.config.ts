@@ -37,6 +37,7 @@ export default defineNuxtConfig({
       navigateFallback: undefined,
       skipWaiting: true,
       clientsClaim: true,
+      importScripts: ["sw-push.js"],
     },
     manifest: {
       name: "Planner",

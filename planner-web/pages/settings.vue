@@ -22,6 +22,26 @@
       </div>
     </section>
 
+    <section v-if="authStore.isAuthenticated && notificationsStore.supported">
+      <h2>Notifications</h2>
+      <div class="setting-row">
+        <span class="setting-label"
+          ><i class="bi bi-bell" /> Task reminders</span
+        >
+        <button
+          class="btn-theme"
+          :disabled="notificationsStore.loading || !notificationsStore.serverEnabled"
+          @click="toggleNotifications"
+        >
+          <i
+            :class="notificationsStore.active ? 'bi bi-bell-slash' : 'bi bi-bell'"
+          />
+          {{ notificationsStore.active ? "Disable" : "Enable" }}
+        </button>
+      </div>
+      <p class="notification-status">{{ notificationStatus }}</p>
+    </section>
+
     <section v-if="authStore.isAuthenticated">
       <h2>Account</h2>
       <p class="user-info" v-if="authStore.currentUser">
@@ -36,9 +56,37 @@
 
 <script setup>
 const authStore = useAuthStore();
+const notificationsStore = useNotificationsStore();
 const router = useRouter();
 const toggleTheme = inject("toggleTheme");
 const theme = inject("theme");
+
+const notificationStatus = computed(() => {
+  if (!notificationsStore.serverEnabled) {
+    return "Notifications are not available on this server.";
+  }
+  if (notificationsStore.permission === "denied") {
+    return "Notifications are blocked by the browser. Allow them in the browser's site settings.";
+  }
+  if (notificationsStore.active) {
+    return "You will be notified the day before and on the day a task is due.";
+  }
+  return "Get notified the day before and on the day a task is due.";
+});
+
+onMounted(() => {
+  if (authStore.isAuthenticated) {
+    notificationsStore.init();
+  }
+});
+
+async function toggleNotifications() {
+  if (notificationsStore.active) {
+    await notificationsStore.disable();
+  } else {
+    await notificationsStore.enable();
+  }
+}
 
 const themeLabel = computed(() => {
   if (!theme?.value) return "System";
@@ -139,6 +187,13 @@ section h2 {
 .user-info {
   margin-bottom: var(--space-sm);
   font-size: var(--text-md);
+}
+
+.notification-status {
+  margin-top: var(--space-sm);
+  margin-bottom: 0;
+  font-size: var(--text-sm);
+  opacity: 0.7;
 }
 
 .btn-logout {

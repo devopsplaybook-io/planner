@@ -21,6 +21,8 @@ import { NotesRoutes } from "./notes/NotesRoutes";
 import { ViewsRoutes } from "./views/ViewsRoutes";
 import { RecommendationInit } from "./recommendation/Recommendation";
 import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
+import { NotificationsInit } from "./notifications/Notifications";
+import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
 
 import fastifyCompress from "@fastify/compress";
 import fastifyMultipart from "@fastify/multipart";
@@ -89,6 +91,7 @@ Promise.resolve().then(async () => {
   await AuthInit(config);
   await runMigrations();
   await RecommendationInit(config);
+  await NotificationsInit(config);
 
   // Ensure a default project exists
   const existingProjects = await ProjectsDataList();
@@ -190,6 +193,13 @@ Promise.resolve().then(async () => {
       await new RecommendationRoutes().getRoutes(instance);
     },
     { prefix: "/api/recommendation" },
+  );
+
+  await fastify.register(
+    async (instance) => {
+      await new NotificationsRoutes().getRoutes(instance);
+    },
+    { prefix: "/api/notifications" },
   );
 
   fastify.register(fastifyStatic, {
