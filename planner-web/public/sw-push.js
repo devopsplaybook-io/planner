@@ -15,8 +15,9 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || "Planner", {
       body: data.body || "",
-      icon: "/images/logo.svg",
-      badge: "/images/logo.svg",
+      // Notification icons must be raster images (SVG is ignored by browsers)
+      icon: "/images/logo-512.png",
+      badge: "/images/badge-96.png",
       tag: data.tag || "planner",
       data: { url: data.url || "/" },
     }),
