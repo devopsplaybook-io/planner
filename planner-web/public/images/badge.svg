@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- White silhouette used as the notification badge (mask) on Android -->
+  <rect x="8" y="8" width="84" height="84" rx="20" fill="none" stroke="white" stroke-width="8"/>
+  <path d="M30 52 L44 66 L70 38" fill="none" stroke="white" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

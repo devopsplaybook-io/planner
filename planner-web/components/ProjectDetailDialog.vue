@@ -140,6 +140,7 @@ watch(
       projectsStore.currentProject = null;
     }
   },
+  { immediate: true },
 );
 
 function handleClose() {

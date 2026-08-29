@@ -31,12 +31,13 @@ export default defineNuxtConfig({
   },
   pwa: {
     registerType: "autoUpdate",
-    includeAssets: ["images/logo.svg"],
     workbox: {
-      globPatterns: [],
+      // Precache the app icons so notification icon/badge resolve offline too
+      globPatterns: ["images/*.{png,svg}"],
       navigateFallback: undefined,
       skipWaiting: true,
       clientsClaim: true,
+      importScripts: ["sw-push.js"],
     },
     manifest: {
       name: "Planner",
@@ -51,6 +52,11 @@ export default defineNuxtConfig({
           src: "images/logo.svg",
           sizes: "512x512",
           type: "image/svg+xml",
+        },
+        {
+          src: "images/logo-512.png",
+          sizes: "512x512",
+          type: "image/png",
         },
       ],
     },

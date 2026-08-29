@@ -355,6 +355,7 @@ watch(
       tasksStore.currentTask = null;
     }
   },
+  { immediate: true },
 );
 
 function formatDate(dateStr) {
