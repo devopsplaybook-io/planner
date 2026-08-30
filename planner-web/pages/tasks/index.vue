@@ -168,6 +168,16 @@ onMounted(async () => {
     // Handle error
   }
 });
+
+// Refresh list when task dialog closes
+watch(
+  () => route.query.taskId,
+  (newVal, oldVal) => {
+    if (oldVal && !newVal) {
+      fetchTasks();
+    }
+  },
+);
 </script>
 
 <style scoped>

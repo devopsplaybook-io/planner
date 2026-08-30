@@ -131,6 +131,7 @@ const activeRoute = computed(() => {
 
   .menu-links li {
     padding-right: var(--space-2xs);
+    font-size: calc(var(--text-md) * 1.5);
   }
 }
 

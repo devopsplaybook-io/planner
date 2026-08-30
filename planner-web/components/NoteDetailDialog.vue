@@ -374,16 +374,28 @@ async function deleteAttachment(attachmentId) {
 
 .dialog-actions {
   display: flex;
-  gap: var(--space-2xs);
+  gap: calc(var(--space-2xs) * 1.5);
   align-items: center;
 }
 
-.icon-btn {
+.icon-btn,
+.close-btn {
   padding: 0.25em 0.5em;
   font-size: var(--text-lg);
   line-height: 1;
   min-width: auto;
   width: auto;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.close-btn:hover {
+  opacity: 1;
 }
 
 .edit-section {
