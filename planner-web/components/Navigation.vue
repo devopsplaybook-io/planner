@@ -78,19 +78,21 @@ const activeRoute = computed(() => {
 </script>
 
 <style scoped>
+.menu-links {
+  gap: var(--space-sm);
+  font-weight: var(--weight-bold);
+}
+
 .menu-links li {
   padding-top: var(--space-2xs);
   padding-bottom: var(--space-2xs);
-}
-.menu-links li {
-  padding-right: var(--space-sm);
   font-size: var(--text-md);
 }
 .menu-links .inactive {
   opacity: 0.5;
 }
 .menu-links .active {
-  color: var(--pico-primary);
+  color: var(--color-primary);
 }
 .menu-links {
   font-weight: var(--weight-bold);
@@ -130,7 +132,7 @@ const activeRoute = computed(() => {
   }
 
   .menu-links li {
-    padding-right: var(--space-2xs);
+    font-size: calc(var(--text-md) * 1.5);
   }
 }
 
@@ -138,6 +140,6 @@ const activeRoute = computed(() => {
   opacity: 0.8;
 }
 :root[data-theme="light"] .menu-links .active {
-  color: var(--pico-primary);
+  color: var(--color-primary);
 }
 </style>

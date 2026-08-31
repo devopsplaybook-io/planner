@@ -108,9 +108,8 @@ async function handleSubmit() {
 
 <style scoped>
 .login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  display: grid;
+  place-items: center;
   min-height: 80vh;
 }
 
@@ -120,10 +119,10 @@ async function handleSubmit() {
 }
 
 .error-message {
-  color: var(--pico-del-color);
+  color: var(--color-danger);
   margin-bottom: var(--space-sm);
   padding: var(--space-sm);
-  border: 1px solid var(--pico-del-color);
+  border: 1px solid var(--color-danger);
   border-radius: var(--radius-sm);
 }
 

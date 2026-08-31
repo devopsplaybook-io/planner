@@ -86,7 +86,7 @@ function onDragEnd(event) {
   flex-direction: row;
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   box-shadow: var(--shadow-sm);
   transition:
     box-shadow var(--transition-fast),
@@ -102,7 +102,7 @@ function onDragEnd(event) {
 
 .task-card.is-dragging {
   opacity: 0.4;
-  box-shadow: 0 0 0 2px var(--pico-primary);
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 .task-card.is-done {
@@ -117,13 +117,13 @@ function onDragEnd(event) {
 }
 
 .priority-high .card-accent {
-  background: var(--pico-del-color, #e53935);
+  background: var(--color-danger);
 }
 .priority-medium .card-accent {
-  background: var(--pico-primary, #1095c1);
+  background: var(--color-primary);
 }
 .priority-low .card-accent {
-  background: var(--pico-muted-color, #9e9e9e);
+  background: var(--color-text-muted);
 }
 
 .card-body {
@@ -155,7 +155,7 @@ function onDragEnd(event) {
 }
 
 .task-icon {
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   font-size: var(--text-base);
   flex-shrink: 0;
   display: flex;
@@ -181,7 +181,7 @@ function onDragEnd(event) {
   text-transform: uppercase;
   padding: 0.1em 0.5em;
   border-radius: var(--radius-full);
-  background: var(--pico-muted-color);
+  background: var(--color-text-muted);
   color: #fff;
   white-space: nowrap;
 }
@@ -208,7 +208,7 @@ function onDragEnd(event) {
   gap: var(--space-sm);
   flex-wrap: wrap;
   font-size: var(--text-sm);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
 }
 
 .due-date,
@@ -237,8 +237,8 @@ function onDragEnd(event) {
   font-weight: var(--weight-medium);
   padding: 0.1em 0.4em;
   border-radius: var(--radius-full);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   white-space: nowrap;
 }
 </style>

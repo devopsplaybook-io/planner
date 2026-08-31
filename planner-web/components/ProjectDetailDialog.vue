@@ -1,5 +1,5 @@
 <template>
-  <dialog :open="!!projectId">
+  <dialog ref="dialogEl" @close="handleClose">
     <article class="project-detail-dialog">
       <header class="dialog-header">
         <h3>Project Details</h3>
@@ -80,7 +80,11 @@
       </template>
 
       <!-- Delete Confirmation -->
-      <dialog :open="showDeleteConfirm" class="inner-dialog">
+      <dialog
+        ref="deleteDialogEl"
+        class="inner-dialog"
+        @close="showDeleteConfirm = false"
+      >
         <article>
           <header><h3>Delete Project</h3></header>
           <p>
@@ -113,11 +117,15 @@ const props = defineProps({
 });
 const emit = defineEmits(["close", "updated"]);
 
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const dialogEl = useModalDialog(() => !!props.projectId);
+
 const projectsStore = useProjectsStore();
 
 const project = computed(() => projectsStore.currentProject);
 const loading = ref(false);
 const showDeleteConfirm = ref(false);
+const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
 const editing = ref(false);
 const saving = ref(false);
@@ -232,7 +240,7 @@ async function deleteProject() {
   gap: var(--space-md);
   margin-bottom: var(--space-lg);
   padding: var(--space-sm);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   border-radius: var(--radius-sm);
 }
 
@@ -246,8 +254,8 @@ async function deleteProject() {
   font-size: var(--text-sm);
   padding: 0.2em 0.5em;
   border-radius: var(--radius-sm);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 section {

@@ -1,76 +1,17 @@
+/* ============================================================
+   Planner Design Language — App Patterns
+   Shared component and page patterns built on the design
+   tokens (tokens.css) and base element styles (base.css).
+   Grid-first layouts; flexbox only for inline alignments.
+   ============================================================ */
+
 /* ============================================
-   Design Language — CSS Custom Properties
+   Standard card component
    ============================================ */
 
-/* Spacing scale */
-:root {
-  --space-2xs: 0.2em;
-  --space-xs: 0.25em;
-  --space-sm: 0.5em;
-  --space-md: 1em;
-  --space-lg: 1.5em;
-  --space-xl: 2em;
-  --radius-sm: 0.25em;
-  --radius-md: 0.4em;
-  --radius-lg: 0.6em;
-  --radius-full: 999px;
-  --transition-fast: 150ms ease;
-  --transition-normal: 300ms ease;
-
-  /* Typography scale — semantic names */
-  --text-xs: 0.68em;
-  --text-sm: 0.78em;
-  --text-base: 0.85em;
-  --text-md: 0.9em;
-  --text-default: 1em;
-  --text-lg: 1.1em;
-  --text-xl: 1.3em;
-  --text-2xl: 1.5em;
-  --text-icon: 3em;
-
-  /* Font weight */
-  --weight-normal: 400;
-  --weight-medium: 500;
-  --weight-semibold: 600;
-  --weight-bold: 700;
-
-  /* Letter spacing (tracking) */
-  --tracking-wide: 0.01em;
-  --tracking-wider: 0.04em;
-  --tracking-widest: 0.05em;
-
-  /* Line heights (leading) */
-  --leading-none: 1;
-  --leading-tight: 1.2;
-  --leading-compact: 1.3;
-  --leading-normal: 1.4;
-  --leading-relaxed: 1.5;
-  --leading-loose: 1.6;
-
-  /* Box shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.13), 0 2px 4px rgba(0, 0, 0, 0.08);
-
-  /* Status colors */
-  --color-status-todo: #6c757d;
-  --color-status-progress: #0d6efd;
-  --color-status-done: #198754;
-  --color-status-review: #6f42c1;
-  --color-status-blocked: #dc3545;
-}
-
-/* Reset */
-html,
-body {
-  margin: 0;
-  padding: 0;
-}
-
-/* Standard card component */
 .card {
-  background: var(--pico-card-background-color, var(--pico-background-color));
-  border: var(--pico-border-width, 1px) solid
-    var(--pico-card-border-color, var(--pico-muted-border-color));
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-md);
 }
@@ -78,6 +19,34 @@ body {
 .card header {
   font-weight: var(--weight-semibold);
   margin-bottom: var(--space-sm);
+}
+
+/* ============================================
+   Shared page patterns
+   ============================================ */
+
+/* Page header (list views): title block + controls */
+.page-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+@media (max-width: 576px) {
+  .page-header {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Detail header (detail views with back link) */
+.detail-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
 }
 
 /* Standard section header */
@@ -102,89 +71,31 @@ span + i.bi {
   margin-left: var(--space-xs);
 }
 
-/* Truncated text */
-.text-truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Small muted text */
-.text-muted {
-  color: var(--pico-muted-color);
-  font-size: var(--text-base);
-}
-
-/* Dialog backdrop fix for PicoCSS */
-dialog[open] {
-  display: flex;
+/* Dialog footer / actions (button rows) */
+.dialog-footer,
+.dialog-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  justify-content: end;
   align-items: center;
-  justify-content: center;
-}
-
-dialog article {
-  max-width: 90vw;
-  min-width: 280px;
-  padding: var(--space-md);
-}
-
-@media (max-width: 576px) {
-  dialog article {
-    max-width: 96vw;
-    min-width: 0;
-    width: 96vw;
-    padding: var(--space-sm);
-  }
-
-  dialog article .dialog-actions button {
-    padding: 0.2em 0.4em;
-    font-size: var(--text-base);
-  }
-
-  dialog article section {
-    margin-bottom: var(--space-sm);
-  }
-}
-
-/* ============================================
-   Shared Page Patterns
-   ============================================ */
-
-/* Page header (list views) */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--space-lg);
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-}
-
-/* Detail header (detail views with back link) */
-.detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--space-lg);
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-}
-
-/* Dialog footer (button row) */
-.dialog-footer {
-  display: flex;
-  gap: var(--space-sm);
-  justify-content: flex-end;
+  gap: calc(var(--space-2xs) * 1.5);
 }
 
 /* Close button (X button) */
 .close-btn {
-  background: none;
+  background: transparent;
   border: none;
+  color: var(--color-text-muted);
   font-size: var(--text-2xl);
   cursor: pointer;
   padding: 0;
   line-height: var(--leading-none);
+}
+
+.close-btn:hover {
+  color: var(--color-text);
+  background: transparent;
 }
 
 /* Consistent section spacing */
@@ -192,14 +103,18 @@ dialog article {
   margin-bottom: var(--space-lg);
 }
 
+/* ============================================
+   Badges and tags
+   ============================================ */
+
 /* Tag / badge pill */
 .tag,
 .label-tag {
   display: inline-block;
   padding: 0.1em 0.4em;
   border-radius: var(--radius-sm);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
   font-size: var(--text-base);
 }
 
@@ -208,17 +123,20 @@ dialog article {
   display: inline-block;
   padding: 0.2em 0.5em;
   border-radius: var(--radius-sm);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
   font-size: var(--text-base);
   width: fit-content;
 }
 
-/* Empty state */
+/* ============================================
+   Empty state
+   ============================================ */
+
 .empty-state {
   text-align: center;
   padding: var(--space-xl) var(--space-md);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   font-size: var(--text-md);
 }
 
@@ -228,17 +146,34 @@ dialog article {
 }
 
 /* ============================================
+   Truncated text
+   ============================================ */
+
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Small muted text */
+.text-muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+}
+
+/* ============================================
    Shared Item Card Pattern (Tasks, Notes, Projects)
+   Grid: [accent stripe | body]
    ============================================ */
 
 .item-card {
   position: relative;
   cursor: pointer;
-  display: flex;
-  flex-direction: row;
-  border-radius: var(--radius-md, 6px);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   box-shadow: var(--shadow-sm);
   transition:
     box-shadow var(--transition-fast),
@@ -253,14 +188,11 @@ dialog article {
 }
 
 .item-card .card-accent {
-  flex-shrink: 0;
   width: var(--accent-width, 5px);
-  align-self: stretch;
-  background: var(--pico-primary, #1095c1);
+  background: var(--color-primary);
 }
 
 .item-card .card-body {
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
@@ -273,7 +205,7 @@ dialog article {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: var(--space-xs, 4px);
+  gap: var(--space-xs);
   padding: 0;
   margin: 0;
   height: auto;
@@ -291,7 +223,7 @@ dialog article {
 }
 
 .item-card .item-icon {
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   font-size: var(--text-base);
   flex-shrink: 0;
   display: flex;
@@ -382,13 +314,13 @@ dialog article {
   font-size: var(--text-sm);
   padding: 0.15em 0.35em;
   border-radius: var(--radius-sm);
-  background: var(--pico-code-background-color, rgba(135, 131, 120, 0.15));
+  background: var(--color-code-bg);
 }
 
 .markdown-body pre {
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-sm);
-  background: var(--pico-code-background-color, rgba(135, 131, 120, 0.15));
+  background: var(--color-code-bg);
   overflow-x: auto;
   margin: 0 0 var(--space-sm);
 }
@@ -401,18 +333,18 @@ dialog article {
 .markdown-body blockquote {
   margin: 0 0 var(--space-sm);
   padding: var(--space-xs) var(--space-md);
-  border-left: 3px solid var(--pico-primary);
-  color: var(--pico-muted-color);
+  border-left: 3px solid var(--color-primary);
+  color: var(--color-text-muted);
 }
 
 .markdown-body a {
-  color: var(--pico-primary);
+  color: var(--color-primary-text);
   text-decoration: underline;
 }
 
 .markdown-body hr {
   border: none;
-  border-top: 1px solid var(--pico-muted-border-color);
+  border-top: 1px solid var(--color-border);
   margin: var(--space-md) 0;
 }
 
@@ -424,19 +356,27 @@ dialog article {
 
 .markdown-body th,
 .markdown-body td {
-  border: 1px solid var(--pico-muted-border-color);
+  border: 1px solid var(--color-border);
   padding: var(--space-xs) var(--space-sm);
   text-align: left;
 }
 
 .markdown-body th {
-  background: var(--pico-card-background-color);
+  background: var(--color-surface-hover);
   font-weight: var(--weight-semibold);
 }
 
 .markdown-body img {
   max-width: 100%;
   border-radius: var(--radius-sm);
+}
+
+/* ============================================
+   Dialog helpers
+   ============================================ */
+
+dialog article section {
+  margin-bottom: var(--space-sm);
 }
 
 /* ============================================

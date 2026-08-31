@@ -116,13 +116,14 @@ provide("toggleTheme", toggleTheme);
   overflow: hidden !important;
 }
 
-/* Layout */
+/* Layout — banner rules are scoped to the app banner so page
+   headers (e.g. .page-header) keep their natural height */
 
-header {
+#page-layout > header {
   height: var(--header-height, 3em);
 }
 
-header,
+#page-layout > header,
 main {
   padding: var(--space-sm);
 }
@@ -139,21 +140,11 @@ main {
 /* Common Component */
 
 .actions i {
+  color: var(--color-text);
   font-size: var(--text-xl);
   cursor: pointer;
   margin-left: var(--space-sm);
   margin-right: var(--space-sm);
-}
-
-@media (prefers-color-scheme: dark) {
-  .actions i {
-    color: var(--pico-color, #bcc6ce);
-  }
-}
-@media (prefers-color-scheme: light) {
-  .actions i {
-    color: var(--pico-color, #1d2832);
-  }
 }
 
 .fab-button {
@@ -162,51 +153,24 @@ main {
   right: var(--space-xl);
   z-index: 1000;
   opacity: 0.3;
-  color: var(--pico-primary-inverse, #fff);
+  color: var(--color-on-primary);
   border: none;
   border-radius: var(--radius-full);
   padding: var(--space-sm) var(--space-lg);
   font-size: var(--text-default);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.13);
   cursor: pointer;
-  background: var(--pico-primary-background);
+  background: var(--color-primary);
   transition:
     background var(--transition-normal),
     opacity var(--transition-normal);
 }
 .fab-button:hover {
-  background: var(--pico-primary-background);
+  background: var(--color-primary);
   opacity: 0.9;
 }
 
-/* Dialogs */
-
-dialog article {
-  max-width: 90vw;
-}
-dialog kbd {
-  font-size: var(--text-xs);
-  margin-right: var(--space-sm);
-  margin-bottom: var(--space-sm);
-}
-dialog pre {
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-dialog article {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: var(--space-md);
-}
-dialog article section {
-  overflow-x: auto;
-  overflow-y: auto;
-  max-height: 70vh;
-}
-dialog article header {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-}
+/* Dialog styling lives in assets/css/base.css */
 
 /* Animations */
 
@@ -234,7 +198,7 @@ dialog article header {
     color: inherit;
   }
   50% {
-    color: var(--pico-primary, #039be5);
+    color: var(--color-primary);
   }
   100% {
     color: inherit;
@@ -243,15 +207,9 @@ dialog article header {
 
 /* Loading */
 
-:root[data-theme="dark"] .loading-indicator {
-  --c: no-repeat linear-gradient(var(--pico-color, #bcc6ce) 0 0);
-}
-
-:root[data-theme="light"] .loading-indicator {
-  --c: no-repeat linear-gradient(var(--pico-color, #1d2832) 0 0);
-}
-
 .loading-indicator {
+  --c: no-repeat linear-gradient(var(--color-text) 0 0);
+
   width: 15%;
   margin-left: auto;
   margin-right: auto;

@@ -1,5 +1,5 @@
 <template>
-  <dialog :open="!!noteId">
+  <dialog ref="dialogEl" @close="handleClose">
     <article class="note-detail-dialog">
       <header class="dialog-header">
         <h3>Note Details</h3>
@@ -191,7 +191,11 @@
       </div>
 
       <!-- Delete Confirmation -->
-      <dialog :open="showDeleteConfirm" class="inner-dialog">
+      <dialog
+        ref="deleteDialogEl"
+        class="inner-dialog"
+        @close="showDeleteConfirm = false"
+      >
         <article>
           <header><h3>Delete Note</h3></header>
           <p>Are you sure you want to delete "{{ note?.title }}"?</p>
@@ -217,6 +221,9 @@ const props = defineProps({
 });
 const emit = defineEmits(["close", "updated"]);
 
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const dialogEl = useModalDialog(() => !!props.noteId);
+
 const notesStore = useNotesStore();
 
 const note = computed(() => notesStore.currentNote);
@@ -224,6 +231,7 @@ const loading = ref(false);
 const newComment = ref("");
 const submitting = ref(false);
 const showDeleteConfirm = ref(false);
+const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
 const uploading = ref(false);
 const deletingAttachmentId = ref("");
@@ -374,16 +382,28 @@ async function deleteAttachment(attachmentId) {
 
 .dialog-actions {
   display: flex;
-  gap: var(--space-2xs);
+  gap: calc(var(--space-2xs) * 1.5);
   align-items: center;
 }
 
-.icon-btn {
+.icon-btn,
+.close-btn {
   padding: 0.25em 0.5em;
   font-size: var(--text-lg);
   line-height: 1;
   min-width: auto;
   width: auto;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.close-btn:hover {
+  opacity: 1;
 }
 
 .edit-section {
@@ -462,7 +482,7 @@ section h4 {
   align-items: center;
   justify-content: space-between;
   padding: var(--space-xs) var(--space-sm);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   border-radius: var(--radius-sm);
 }
 
@@ -506,7 +526,7 @@ section h4 {
 .compact-section {
   margin-bottom: var(--space-sm);
   border: 1px solid
-    var(--pico-card-border-color, var(--pico-muted-border-color));
+    var(--color-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -519,7 +539,7 @@ section h4 {
   cursor: pointer;
   font-weight: var(--weight-semibold);
   font-size: var(--text-base);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   user-select: none;
   list-style: none;
 }
@@ -541,7 +561,7 @@ section h4 {
 
 .compact-section[open] summary {
   border-bottom: 1px solid
-    var(--pico-card-border-color, var(--pico-muted-border-color));
+    var(--color-border);
 }
 
 .compact-section > *:not(summary) {
@@ -561,8 +581,8 @@ section h4 {
 .count-badge {
   font-size: var(--text-xs);
   font-weight: var(--weight-normal);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
   padding: 0.05em 0.35em;
   border-radius: var(--radius-full);
   margin-left: auto;

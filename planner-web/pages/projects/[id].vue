@@ -164,7 +164,10 @@
     </template>
 
     <!-- Delete Confirmation -->
-    <dialog :open="showDeleteConfirm">
+    <dialog
+      ref="deleteDialogEl"
+      @close="showDeleteConfirm = false"
+    >
       <article>
         <header>
           <h3>Delete Project</h3>
@@ -201,6 +204,8 @@ const tasks = computed(() =>
 );
 const loading = ref(true);
 const showDeleteConfirm = ref(false);
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
 
 const editVisibility = ref("public");
@@ -391,7 +396,7 @@ section {
 
 .section-hint {
   font-size: var(--text-sm);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   margin-bottom: var(--space-sm);
 }
 
@@ -408,9 +413,9 @@ section {
   align-items: center;
   gap: var(--space-sm);
   padding: 6px 10px;
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--pico-muted-border-color);
+  border: 1px solid var(--color-border);
   transition:
     background 0.12s,
     box-shadow 0.12s;
@@ -427,7 +432,7 @@ section {
 
 .status-row.is-dragging {
   opacity: 0.4;
-  box-shadow: 0 0 0 2px var(--pico-primary);
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 .status-row.is-done-row {
@@ -437,7 +442,7 @@ section {
 }
 
 .drag-handle {
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
   font-size: var(--text-lg);
@@ -451,7 +456,7 @@ section {
   text-transform: uppercase;
   padding: 0.1em 0.5em;
   border-radius: var(--radius-full);
-  background: var(--pico-muted-color);
+  background: var(--color-text-muted);
   color: #fff;
   white-space: nowrap;
   flex-shrink: 0;
@@ -479,7 +484,7 @@ section {
 
 .done-lock {
   font-size: var(--text-sm);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
   gap: var(--space-2xs);
@@ -506,7 +511,7 @@ section {
 
 .status-error {
   font-size: var(--text-base);
-  color: var(--pico-del-color, #dc3545);
+  color: var(--color-danger);
   display: flex;
   align-items: center;
   gap: var(--space-2xs);
@@ -536,14 +541,14 @@ section {
   gap: 0.2em;
   cursor: pointer;
   padding: var(--space-sm) var(--space-md);
-  border: 2px solid var(--pico-muted-border-color);
+  border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
 
 .radio-label:has(input:checked) {
-  border-color: var(--pico-primary);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 .radio-label small {
@@ -556,7 +561,7 @@ section {
   flex-direction: column;
   gap: var(--space-xs);
   padding: var(--space-sm);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   border-radius: var(--radius-sm);
 }
 

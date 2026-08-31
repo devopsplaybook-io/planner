@@ -168,6 +168,16 @@ onMounted(async () => {
     // Handle error
   }
 });
+
+// Refresh list when task dialog closes
+watch(
+  () => route.query.taskId,
+  (newVal, oldVal) => {
+    if (oldVal && !newVal) {
+      fetchTasks();
+    }
+  },
+);
 </script>
 
 <style scoped>
@@ -185,7 +195,7 @@ onMounted(async () => {
 }
 
 .kanban-column {
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   border-radius: var(--radius-md);
   padding: var(--space-sm);
   min-height: 200px;
@@ -199,19 +209,19 @@ onMounted(async () => {
   text-align: center;
   margin-bottom: var(--space-sm);
   padding-bottom: var(--space-xs);
-  border-bottom: 2px solid var(--pico-primary);
+  border-bottom: 2px solid var(--color-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2xs);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
 }
 
 .column-count {
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   border-radius: var(--radius-full);
   padding: 0 6px;
   line-height: var(--leading-loose);
@@ -228,15 +238,15 @@ onMounted(async () => {
 }
 
 .column-tasks.drag-over {
-  background: color-mix(in srgb, var(--pico-primary) 10%, transparent);
-  outline: 2px dashed var(--pico-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  outline: 2px dashed var(--color-primary);
   outline-offset: -2px;
 }
 
 .empty-column {
   text-align: center;
   font-size: var(--text-sm);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   padding: var(--space-md) 0;
   opacity: 0.6;
 }
