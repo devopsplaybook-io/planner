@@ -471,19 +471,26 @@ dialog::backdrop {
 dialog[open] {
   display: grid;
   place-items: center;
+  /* Span the layout viewport so % widths on the article resolve against
+     it — 100vw would include the page scrollbar and cause a horizontal
+     scrollbar on the dialog */
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 dialog article {
-  width: min(90vw, 560px);
-  max-width: 90vw;
+  width: min(90%, 560px);
   padding: var(--space-lg);
   animation: dialog-in var(--transition-fast);
 }
 
-/* Header/footer bleed to the dialog edges (article padding is --space-lg here) */
+/* Header/footer bleed to the dialog edges (article padding is --space-lg here);
+   the header keeps a larger inline-start padding for the title but a smaller
+   one at the end so the close button sits closer to the dialog edge */
 dialog article > header {
   margin: calc(var(--space-lg) * -1) calc(var(--space-lg) * -1) var(--space-md);
-  padding: var(--space-sm) var(--space-lg);
+  padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-lg);
 }
 
 dialog article > footer {
@@ -529,7 +536,7 @@ dialog pre {
 
 @media (max-width: 576px) {
   dialog article {
-    width: 96vw;
+    width: 96%;
   }
 }
 
