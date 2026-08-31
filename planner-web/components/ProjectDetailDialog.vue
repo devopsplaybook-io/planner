@@ -1,5 +1,5 @@
 <template>
-  <dialog :open="!!projectId">
+  <dialog ref="dialogEl" @close="handleClose">
     <article class="project-detail-dialog">
       <header class="dialog-header">
         <h3>Project Details</h3>
@@ -80,7 +80,11 @@
       </template>
 
       <!-- Delete Confirmation -->
-      <dialog :open="showDeleteConfirm" class="inner-dialog">
+      <dialog
+        ref="deleteDialogEl"
+        class="inner-dialog"
+        @close="showDeleteConfirm = false"
+      >
         <article>
           <header><h3>Delete Project</h3></header>
           <p>
@@ -113,11 +117,15 @@ const props = defineProps({
 });
 const emit = defineEmits(["close", "updated"]);
 
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const dialogEl = useModalDialog(() => !!props.projectId);
+
 const projectsStore = useProjectsStore();
 
 const project = computed(() => projectsStore.currentProject);
 const loading = ref(false);
 const showDeleteConfirm = ref(false);
+const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
 const editing = ref(false);
 const saving = ref(false);

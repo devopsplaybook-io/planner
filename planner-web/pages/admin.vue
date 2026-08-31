@@ -60,7 +60,10 @@
     </template>
 
     <!-- Create User Dialog -->
-    <dialog :open="showCreateDialog">
+    <dialog
+      ref="createDialogEl"
+      @close="showCreateDialog = false"
+    >
       <article>
         <header>
           <h3>Add User</h3>
@@ -111,7 +114,10 @@
     </dialog>
 
     <!-- Delete Confirmation -->
-    <dialog :open="deleteTarget !== null">
+    <dialog
+      ref="deleteDialogEl"
+      @close="deleteTarget = null"
+    >
       <article>
         <header>
           <h3>Delete User</h3>
@@ -137,9 +143,12 @@ const router = useRouter();
 const loading = ref(true);
 const users = ref([]);
 const showCreateDialog = ref(false);
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const createDialogEl = useModalDialog(() => showCreateDialog.value);
 const creating = ref(false);
 const deleting = ref(false);
 const deleteTarget = ref(null);
+const deleteDialogEl = useModalDialog(() => deleteTarget.value !== null);
 
 const newUser = ref({ name: "", password: "", role: "user" });
 

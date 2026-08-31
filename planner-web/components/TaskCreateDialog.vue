@@ -1,5 +1,5 @@
 <template>
-  <dialog :open="open">
+  <dialog ref="dialogEl" @close="emit('close')">
     <article>
       <header>
         <h3>Create Task</h3>
@@ -90,6 +90,9 @@ const props = defineProps({
   open: { type: Boolean, default: false },
 });
 const emit = defineEmits(["close", "created"]);
+
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const dialogEl = useModalDialog(() => props.open);
 
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();

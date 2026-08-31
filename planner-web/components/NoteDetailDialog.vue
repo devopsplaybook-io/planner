@@ -1,5 +1,5 @@
 <template>
-  <dialog :open="!!noteId">
+  <dialog ref="dialogEl" @close="handleClose">
     <article class="note-detail-dialog">
       <header class="dialog-header">
         <h3>Note Details</h3>
@@ -191,7 +191,11 @@
       </div>
 
       <!-- Delete Confirmation -->
-      <dialog :open="showDeleteConfirm" class="inner-dialog">
+      <dialog
+        ref="deleteDialogEl"
+        class="inner-dialog"
+        @close="showDeleteConfirm = false"
+      >
         <article>
           <header><h3>Delete Note</h3></header>
           <p>Are you sure you want to delete "{{ note?.title }}"?</p>
@@ -217,6 +221,9 @@ const props = defineProps({
 });
 const emit = defineEmits(["close", "updated"]);
 
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const dialogEl = useModalDialog(() => !!props.noteId);
+
 const notesStore = useNotesStore();
 
 const note = computed(() => notesStore.currentNote);
@@ -224,6 +231,7 @@ const loading = ref(false);
 const newComment = ref("");
 const submitting = ref(false);
 const showDeleteConfirm = ref(false);
+const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
 const uploading = ref(false);
 const deletingAttachmentId = ref("");

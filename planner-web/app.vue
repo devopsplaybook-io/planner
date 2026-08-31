@@ -170,34 +170,7 @@ main {
   opacity: 0.9;
 }
 
-/* Dialogs */
-
-dialog article {
-  max-width: 90vw;
-}
-dialog kbd {
-  font-size: var(--text-xs);
-  margin-right: var(--space-sm);
-  margin-bottom: var(--space-sm);
-}
-dialog pre {
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-dialog article {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: var(--space-md);
-}
-dialog article section {
-  overflow-x: auto;
-  overflow-y: auto;
-  max-height: 70vh;
-}
-dialog article header {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-}
+/* Dialog styling lives in assets/css/base.css */
 
 /* Animations */
 

@@ -33,7 +33,10 @@
     </div>
 
     <!-- Create Dialog -->
-    <dialog :open="showCreateDialog">
+    <dialog
+      ref="createDialogEl"
+      @close="showCreateDialog = false"
+    >
       <article>
         <header>
           <h3>Create Note</h3>
@@ -97,6 +100,8 @@ const route = useRoute();
 
 const loading = ref(true);
 const showCreateDialog = ref(false);
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const createDialogEl = useModalDialog(() => showCreateDialog.value);
 const creating = ref(false);
 const newNote = ref({ projectId: "", title: "", description: "" });
 

@@ -1,5 +1,5 @@
 <template>
-  <dialog :open="!!taskId">
+  <dialog ref="dialogEl" @close="handleClose">
     <article class="task-detail-dialog">
       <header class="dialog-header">
         <h3>Task Details</h3>
@@ -277,7 +277,11 @@
       </div>
 
       <!-- Delete Confirmation -->
-      <dialog :open="showDeleteConfirm" class="inner-dialog">
+      <dialog
+        ref="deleteDialogEl"
+        class="inner-dialog"
+        @close="showDeleteConfirm = false"
+      >
         <article>
           <header><h3>Delete Task</h3></header>
           <p>Are you sure you want to delete "{{ task?.title }}"?</p>
@@ -303,6 +307,9 @@ const props = defineProps({
 });
 const emit = defineEmits(["close", "updated"]);
 
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const dialogEl = useModalDialog(() => !!props.taskId);
+
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 
@@ -311,6 +318,7 @@ const loading = ref(false);
 const newComment = ref("");
 const submitting = ref(false);
 const showDeleteConfirm = ref(false);
+const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
 const uploading = ref(false);
 const deletingAttachmentId = ref("");

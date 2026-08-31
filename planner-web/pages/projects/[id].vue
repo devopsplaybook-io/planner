@@ -164,7 +164,10 @@
     </template>
 
     <!-- Delete Confirmation -->
-    <dialog :open="showDeleteConfirm">
+    <dialog
+      ref="deleteDialogEl"
+      @close="showDeleteConfirm = false"
+    >
       <article>
         <header>
           <h3>Delete Project</h3>
@@ -201,6 +204,8 @@ const tasks = computed(() =>
 );
 const loading = ref(true);
 const showDeleteConfirm = ref(false);
+// Modal dialog wiring: backdrop, focus trap, Escape to close
+const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
 
 const editVisibility = ref("public");

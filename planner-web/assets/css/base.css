@@ -451,6 +451,8 @@ tbody tr:hover {
 
 /* ============================================
    Dialogs
+   Standard dialog: <dialog> (opened modally via useModalDialog)
+   wrapping a single <article> with header / body / footer.
    ============================================ */
 
 dialog {
@@ -461,6 +463,7 @@ dialog {
   max-width: none;
 }
 
+/* Dimmed backdrop — rendered for modal dialogs (showModal) */
 dialog::backdrop {
   background: var(--color-overlay);
 }
@@ -472,7 +475,49 @@ dialog[open] {
 
 dialog article {
   width: min(90vw, 560px);
+  max-width: 90vw;
+  padding: var(--space-lg);
   animation: dialog-in var(--transition-fast);
+}
+
+/* Header/footer bleed to the dialog edges (article padding is --space-lg here) */
+dialog article > header {
+  margin: calc(var(--space-lg) * -1) calc(var(--space-lg) * -1) var(--space-md);
+  padding: var(--space-sm) var(--space-lg);
+}
+
+dialog article > footer {
+  margin: var(--space-md) calc(var(--space-lg) * -1) calc(var(--space-lg) * -1);
+  padding: var(--space-sm) var(--space-lg);
+}
+
+/* Dialog body grid: header / content / footer */
+dialog article {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--space-md);
+}
+
+dialog article > header {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+
+dialog article section {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 70vh;
+}
+
+dialog kbd {
+  font-size: var(--text-xs);
+  margin-right: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+dialog pre {
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 @keyframes dialog-in {
