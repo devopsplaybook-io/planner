@@ -116,13 +116,14 @@ provide("toggleTheme", toggleTheme);
   overflow: hidden !important;
 }
 
-/* Layout */
+/* Layout — banner rules are scoped to the app banner so page
+   headers (e.g. .page-header) keep their natural height */
 
-header {
+#page-layout > header {
   height: var(--header-height, 3em);
 }
 
-header,
+#page-layout > header,
 main {
   padding: var(--space-sm);
 }
