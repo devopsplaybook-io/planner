@@ -585,7 +585,7 @@ async function deleteAttachment(attachmentId) {
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
   padding: var(--space-sm);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   border-radius: var(--radius-sm);
 }
 
@@ -610,13 +610,13 @@ section h4 {
 }
 
 .priority-high {
-  color: var(--pico-del-color);
+  color: var(--color-danger);
 }
 .priority-medium {
-  color: var(--pico-primary);
+  color: var(--color-primary);
 }
 .priority-low {
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
 }
 
 .checklist {
@@ -635,7 +635,7 @@ section h4 {
 
 .checklist-item .done {
   text-decoration: line-through;
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
 }
 
 .add-checklist-item,
@@ -682,7 +682,7 @@ section h4 {
   align-items: center;
   justify-content: space-between;
   padding: var(--space-xs) var(--space-sm);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   border-radius: var(--radius-sm);
 }
 
@@ -726,7 +726,7 @@ section h4 {
 .compact-section {
   margin-bottom: var(--space-sm);
   border: 1px solid
-    var(--pico-card-border-color, var(--pico-muted-border-color));
+    var(--color-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -739,7 +739,7 @@ section h4 {
   cursor: pointer;
   font-weight: var(--weight-semibold);
   font-size: var(--text-base);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   user-select: none;
   list-style: none;
 }
@@ -761,7 +761,7 @@ section h4 {
 
 .compact-section[open] summary {
   border-bottom: 1px solid
-    var(--pico-card-border-color, var(--pico-muted-border-color));
+    var(--color-border);
 }
 
 .compact-section > *:not(summary) {
@@ -783,8 +783,8 @@ section h4 {
 .count-badge {
   font-size: var(--text-xs);
   font-weight: var(--weight-normal);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
   padding: 0.05em 0.35em;
   border-radius: var(--radius-full);
   margin-left: auto;

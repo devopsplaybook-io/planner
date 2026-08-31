@@ -462,7 +462,7 @@ section h4 {
   align-items: center;
   justify-content: space-between;
   padding: var(--space-xs) var(--space-sm);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   border-radius: var(--radius-sm);
 }
 
@@ -506,7 +506,7 @@ section h4 {
 .compact-section {
   margin-bottom: var(--space-sm);
   border: 1px solid
-    var(--pico-card-border-color, var(--pico-muted-border-color));
+    var(--color-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -519,7 +519,7 @@ section h4 {
   cursor: pointer;
   font-weight: var(--weight-semibold);
   font-size: var(--text-base);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   user-select: none;
   list-style: none;
 }
@@ -541,7 +541,7 @@ section h4 {
 
 .compact-section[open] summary {
   border-bottom: 1px solid
-    var(--pico-card-border-color, var(--pico-muted-border-color));
+    var(--color-border);
 }
 
 .compact-section > *:not(summary) {
@@ -561,8 +561,8 @@ section h4 {
 .count-badge {
   font-size: var(--text-xs);
   font-weight: var(--weight-normal);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
   padding: 0.05em 0.35em;
   border-radius: var(--radius-full);
   margin-left: auto;

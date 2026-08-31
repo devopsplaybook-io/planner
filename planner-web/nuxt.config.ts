@@ -18,8 +18,9 @@ export default defineNuxtConfig({
     },
   },
   css: [
-    "@picocss/pico",
     "bootstrap-icons/font/bootstrap-icons.css",
+    "~/assets/css/tokens.css",
+    "~/assets/css/base.css",
     "~/assets/css/main.css",
   ],
   modules: ["@pinia/nuxt", "@vite-pwa/nuxt"],

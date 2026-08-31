@@ -138,15 +138,15 @@ function handleLogout() {
 section {
   margin-bottom: var(--space-lg);
   padding: var(--space-md);
-  border: 1px solid var(--pico-muted-border-color, #444);
-  border-radius: var(--pico-border-radius, 8px);
-  background: var(--pico-card-background-color, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
 section h2 {
   font-size: var(--text-default);
   margin-bottom: var(--space-sm);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: var(--tracking-widest);
 }
@@ -182,18 +182,18 @@ section h2 {
   align-items: center;
   gap: var(--space-2xs);
   padding: 0.4em 0.8em;
-  border: 1px solid var(--pico-muted-border-color, #444);
-  border-radius: var(--pico-border-radius, 4px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--pico-color);
+  color: var(--color-text);
   cursor: pointer;
   font-size: var(--text-md);
   font-family: inherit;
 }
 
 .btn-theme:hover {
-  background: var(--pico-primary-background, #1095c1);
-  color: var(--pico-primary-inverse, #fff);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 .user-info {
@@ -209,7 +209,7 @@ section h2 {
 }
 
 .notification-status--error {
-  color: var(--pico-del-color, #dc3545);
+  color: var(--color-danger);
   opacity: 1;
 }
 
@@ -218,10 +218,10 @@ section h2 {
   align-items: center;
   gap: var(--space-2xs);
   padding: 0.4em 0.8em;
-  border: 1px solid var(--pico-muted-border-color, #444);
-  border-radius: var(--pico-border-radius, 4px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--pico-color);
+  color: var(--color-text);
   cursor: pointer;
   font-size: var(--text-md);
   font-family: inherit;

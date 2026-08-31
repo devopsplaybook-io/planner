@@ -50,20 +50,20 @@ defineEmits(["click"]);
   font-weight: var(--weight-semibold);
   padding: 0.1em 0.5em;
   border-radius: var(--radius-full);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   white-space: nowrap;
 }
 
 .badge-restricted {
-  background: var(--pico-del-color, #e53935);
+  background: var(--color-danger);
   color: #fff;
 }
 
 .card-desc {
   margin-top: var(--space-xs);
   font-size: var(--text-base);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   line-height: var(--leading-normal);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -75,6 +75,6 @@ defineEmits(["click"]);
   display: flex;
   align-items: center;
   gap: var(--space-2xs);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
 }
 </style>

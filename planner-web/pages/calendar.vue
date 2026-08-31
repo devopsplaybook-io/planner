@@ -296,7 +296,7 @@ async function onDrop(dateStr) {
 }
 
 .month-nav button:hover {
-  background: var(--pico-muted-border-color);
+  background: var(--color-border);
 }
 
 .calendar-grid {
@@ -304,7 +304,7 @@ async function onDrop(dateStr) {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  border: 1px solid var(--pico-muted-border-color);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -312,7 +312,7 @@ async function onDrop(dateStr) {
 .calendar-header {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   flex-shrink: 0;
 }
 
@@ -321,7 +321,7 @@ async function onDrop(dateStr) {
   text-align: center;
   font-weight: var(--weight-bold);
   font-size: var(--text-base);
-  border-bottom: 1px solid var(--pico-muted-border-color);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .calendar-body {
@@ -335,8 +335,8 @@ async function onDrop(dateStr) {
 .calendar-day {
   min-height: 0;
   padding: var(--space-xs);
-  border-right: 1px solid var(--pico-muted-border-color);
-  border-bottom: 1px solid var(--pico-muted-border-color);
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   font-size: var(--text-base);
   overflow: hidden;
 }
@@ -346,13 +346,14 @@ async function onDrop(dateStr) {
 }
 
 .calendar-day.drag-over {
-  background: var(--pico-primary-background);
-  opacity: 0.8;
+  background: var(--color-primary-soft);
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
 }
 
 .calendar-day.today .day-number {
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   border-radius: 50%;
   width: 1.5em;
   height: 1.5em;
@@ -383,7 +384,7 @@ async function onDrop(dateStr) {
   white-space: nowrap;
   max-width: 100%;
   font-size: var(--text-base);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
 }
 
 .day-task.dragging {
@@ -395,13 +396,13 @@ async function onDrop(dateStr) {
 }
 
 .priority-high {
-  border-left: 3px solid var(--pico-del-color);
+  border-left: 3px solid var(--color-danger);
 }
 .priority-medium {
-  border-left: 3px solid var(--pico-primary);
+  border-left: 3px solid var(--color-primary);
 }
 .priority-low {
-  border-left: 3px solid var(--pico-muted-color);
+  border-left: 3px solid var(--color-text-muted);
 }
 
 @media (max-width: 767px) {

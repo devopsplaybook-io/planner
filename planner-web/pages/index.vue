@@ -274,9 +274,9 @@ section h2 {
 .recommendation-section {
   margin-bottom: var(--space-lg);
   padding: var(--space-md);
-  border: 1px solid var(--pico-muted-border-color, #444);
-  border-radius: var(--pico-border-radius, 8px);
-  background: var(--pico-card-background-color, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
 .recommendation-section h2 {
@@ -289,8 +289,8 @@ section h2 {
 .btn-regenerate {
   font-size: var(--text-base);
   padding: 0.25em 0.75em;
-  border: 1px solid var(--pico-muted-border-color, #444);
-  border-radius: var(--pico-border-radius, 4px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
   display: inline-flex;
@@ -299,8 +299,8 @@ section h2 {
 }
 
 .btn-regenerate:hover:not(:disabled) {
-  background: var(--pico-primary-background, #1095c1);
-  color: var(--pico-primary-inverse, #fff);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 .btn-regenerate:disabled {
@@ -327,7 +327,7 @@ section h2 {
 }
 
 .recommendation-content :deep(a) {
-  color: var(--pico-primary, #1095c1);
+  color: var(--color-primary);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -338,8 +338,8 @@ section h2 {
   margin: 0 0.1em;
   font-size: var(--text-base);
   font-weight: var(--weight-medium);
-  background: var(--pico-primary);
-  color: var(--pico-primary-inverse, #fff);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   border-radius: var(--radius-md);
   text-decoration: none;
   line-height: var(--leading-normal);

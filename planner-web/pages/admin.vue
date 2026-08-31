@@ -216,7 +216,7 @@ onMounted(async () => {
 .access-denied {
   text-align: center;
   padding: 3em;
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
 }
 
 .access-denied i {

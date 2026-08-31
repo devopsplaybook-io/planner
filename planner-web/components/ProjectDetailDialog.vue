@@ -232,7 +232,7 @@ async function deleteProject() {
   gap: var(--space-md);
   margin-bottom: var(--space-lg);
   padding: var(--space-sm);
-  background: var(--pico-card-background-color);
+  background: var(--color-surface);
   border-radius: var(--radius-sm);
 }
 
@@ -246,8 +246,8 @@ async function deleteProject() {
   font-size: var(--text-sm);
   padding: 0.2em 0.5em;
   border-radius: var(--radius-sm);
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 section {

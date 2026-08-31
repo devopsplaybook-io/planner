@@ -90,7 +90,7 @@ const activeRoute = computed(() => {
   opacity: 0.5;
 }
 .menu-links .active {
-  color: var(--pico-primary);
+  color: var(--color-primary);
 }
 .menu-links {
   font-weight: var(--weight-bold);
@@ -138,6 +138,6 @@ const activeRoute = computed(() => {
   opacity: 0.8;
 }
 :root[data-theme="light"] .menu-links .active {
-  color: var(--pico-primary);
+  color: var(--color-primary);
 }
 </style>

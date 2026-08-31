@@ -50,14 +50,14 @@ function truncate(text, max) {
 
 <style scoped>
 .card-date {
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
 .card-desc {
   margin-top: var(--space-xs);
   font-size: var(--text-base);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   line-height: var(--leading-normal);
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -69,7 +69,7 @@ function truncate(text, max) {
   display: flex;
   align-items: center;
   gap: var(--space-2xs);
-  color: var(--pico-muted-color);
+  color: var(--color-text-muted);
   margin-left: auto;
 }
 </style>

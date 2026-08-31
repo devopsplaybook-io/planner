@@ -139,21 +139,11 @@ main {
 /* Common Component */
 
 .actions i {
+  color: var(--color-text);
   font-size: var(--text-xl);
   cursor: pointer;
   margin-left: var(--space-sm);
   margin-right: var(--space-sm);
-}
-
-@media (prefers-color-scheme: dark) {
-  .actions i {
-    color: var(--pico-color, #bcc6ce);
-  }
-}
-@media (prefers-color-scheme: light) {
-  .actions i {
-    color: var(--pico-color, #1d2832);
-  }
 }
 
 .fab-button {
@@ -162,20 +152,20 @@ main {
   right: var(--space-xl);
   z-index: 1000;
   opacity: 0.3;
-  color: var(--pico-primary-inverse, #fff);
+  color: var(--color-on-primary);
   border: none;
   border-radius: var(--radius-full);
   padding: var(--space-sm) var(--space-lg);
   font-size: var(--text-default);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.13);
   cursor: pointer;
-  background: var(--pico-primary-background);
+  background: var(--color-primary);
   transition:
     background var(--transition-normal),
     opacity var(--transition-normal);
 }
 .fab-button:hover {
-  background: var(--pico-primary-background);
+  background: var(--color-primary);
   opacity: 0.9;
 }
 
@@ -234,7 +224,7 @@ dialog article header {
     color: inherit;
   }
   50% {
-    color: var(--pico-primary, #039be5);
+    color: var(--color-primary);
   }
   100% {
     color: inherit;
@@ -243,15 +233,9 @@ dialog article header {
 
 /* Loading */
 
-:root[data-theme="dark"] .loading-indicator {
-  --c: no-repeat linear-gradient(var(--pico-color, #bcc6ce) 0 0);
-}
-
-:root[data-theme="light"] .loading-indicator {
-  --c: no-repeat linear-gradient(var(--pico-color, #1d2832) 0 0);
-}
-
 .loading-indicator {
+  --c: no-repeat linear-gradient(var(--color-text) 0 0);
+
   width: 15%;
   margin-left: auto;
   margin-right: auto;
