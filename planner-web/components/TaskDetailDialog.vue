@@ -253,11 +253,15 @@
                 <small>{{ formatDate(comment.dateCreated) }}</small>
               </header>
               <div
-                :ref="(el) => setCommentBodyRef(comment.id, el)"
                 class="comment-body markdown-body"
                 :class="{ 'is-truncated': !expandedComments.has(comment.id) }"
-                v-html="renderMarkdown(comment.text)"
-              />
+              >
+                <div
+                  :ref="(el) => setCommentBodyRef(comment.id, el)"
+                  class="comment-body-content"
+                  v-html="renderMarkdown(comment.text)"
+                />
+              </div>
               <button
                 v-if="overflowingComments.has(comment.id)"
                 class="expand-btn"
@@ -366,9 +370,18 @@ const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
 const users = ref([]);
 const expandedComments = ref(new Set());
-// Actual rendered-height overflow detection (see measureComments)
+// Overflow detection: commentBodyEls holds the inner, unclipped content
+// element of each comment; its height is the natural rendered height of
+// the markdown (the outer .comment-body does the 2-line clip).
 const commentBodyEls = new Map();
 const overflowingComments = ref(new Set());
+// A one-shot measurement races with dialog rendering: the <dialog> opens
+// via showModal in a post-flush watcher, so content may still be
+// display:none and report scrollHeight 0, hiding the expand button until
+// something else re-measures. Observing each comment's content element
+// re-measures whenever its box actually changes: dialog or <details>
+// opening, image loading, text re-wrapping.
+const commentResizeObserver = new ResizeObserver(measureComments);
 
 const availableStatuses = computed(() => {
   if (!task.value) return ["To Do", "In Progress", "Done"];
@@ -399,7 +412,9 @@ watch(
   { immediate: true },
 );
 
-// Re-measure when comments change and when wrapping changes on resize
+// Belt-and-braces alongside the ResizeObserver: re-measure after the
+// comments have rendered. The observer remains the source of truth — it
+// re-measures on every real layout change (dialog opening, image loads).
 watch(
   () => task.value?.comments,
   async () => {
@@ -408,18 +423,13 @@ watch(
   },
 );
 
-onMounted(() => {
-  window.addEventListener("resize", measureComments, { passive: true });
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener("resize", measureComments);
-});
-
 function setCommentBodyRef(commentId, el) {
   if (el) {
     commentBodyEls.set(commentId, el);
+    commentResizeObserver.observe(el);
   } else {
+    const prev = commentBodyEls.get(commentId);
+    if (prev) commentResizeObserver.unobserve(prev);
     commentBodyEls.delete(commentId);
   }
 }
@@ -432,15 +442,23 @@ function measureComments() {
   const overflowing = new Set();
   for (const [commentId, el] of commentBodyEls) {
     const style = getComputedStyle(el);
-    const lineHeight =
-      parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
-    const twoLines = lineHeight * 2 + 1;
-    if (el.scrollHeight > twoLines) {
+    const fontSize = parseFloat(style.fontSize) || 14;
+    // line-height may compute as a unitless number ("1.5"), a px value or
+    // "normal" — normalize it against the font size
+    let lineHeight = parseFloat(style.lineHeight);
+    if (!lineHeight || lineHeight < fontSize) {
+      lineHeight = fontSize * 1.5;
+    }
+    if (el.scrollHeight > lineHeight * 2 + 1) {
       overflowing.add(commentId);
     }
   }
   overflowingComments.value = overflowing;
 }
+
+onBeforeUnmount(() => {
+  commentResizeObserver.disconnect();
+});
 
 function toggleCommentExpand(commentId) {
   const newSet = new Set(expandedComments.value);
@@ -827,6 +845,23 @@ section h4 {
 .comment-body.is-truncated {
   max-height: 3em;
   overflow: hidden;
+}
+
+/* The measured content lives one level deeper than .markdown-body's
+   direct-child rules, so re-apply the tight first/last spacing here.
+   line-height and flow-root are pinned on the content element itself so
+   the expand-button threshold always matches the visible 2-line clip. */
+.comment-body-content {
+  display: flow-root;
+  line-height: 1.5;
+}
+
+.comment-body-content > :first-child {
+  margin-top: 0;
+}
+
+.comment-body-content > :last-child {
+  margin-bottom: 0;
 }
 
 .expand-btn {
