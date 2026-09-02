@@ -2,6 +2,8 @@ import * as jwt from "jsonwebtoken";
 import { Config } from "../Config";
 import { User } from "../model/User";
 import { UserSession } from "../model/UserSession";
+import { ApiKeysDataGetByKey } from "./ApiKeysData";
+import { UsersDataGet } from "./UsersData";
 
 let config: Config;
 
@@ -46,13 +48,41 @@ function jwtDecodeCached(
   }
 }
 
+async function apiKeyDecodeCached(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  req: any,
+): Promise<Record<string, unknown> | null> {
+  if (req._apiKeyPayload) {
+    return req._apiKeyPayload;
+  }
+  const apiKey = req.headers["x-api-key"] as string;
+  if (!apiKey) {
+    return null;
+  }
+  const keyRecord = await ApiKeysDataGetByKey(apiKey);
+  if (!keyRecord) {
+    return null;
+  }
+  const user = await UsersDataGet(keyRecord.userId);
+  if (!user) {
+    return null;
+  }
+  const info = {
+    userId: user.id,
+    userName: user.name,
+    role: user.role,
+  };
+  req._apiKeyPayload = info;
+  return info;
+}
+
 export async function AuthMustBeAuthenticated(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   req: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   res: any,
 ): Promise<void> {
-  if (!jwtDecodeCached(req)) {
+  if (!(await jwtDecodeCached(req)) && !(await apiKeyDecodeCached(req))) {
     res.status(403).send({ error: "Access Denied" });
     throw new Error("Access Denied");
   }
@@ -64,7 +94,9 @@ export async function AuthMustBeAdmin(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   res: any,
 ): Promise<void> {
-  const info = jwtDecodeCached(req);
+  const jwtInfo = await jwtDecodeCached(req);
+  const apiKeyInfo = await apiKeyDecodeCached(req);
+  const info = jwtInfo || apiKeyInfo;
   if (info?.role === "admin") {
     return;
   }
@@ -77,7 +109,9 @@ export async function AuthGetUserSession(
   req: any,
 ): Promise<UserSession> {
   const userSession: UserSession = { isAuthenticated: false };
-  const info = jwtDecodeCached(req);
+  const jwtInfo = await jwtDecodeCached(req);
+  const apiKeyInfo = await apiKeyDecodeCached(req);
+  const info = jwtInfo || apiKeyInfo;
   if (info) {
     userSession.userId = info.userId as string;
     userSession.userName = info.userName as string;
