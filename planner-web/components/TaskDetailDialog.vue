@@ -95,16 +95,30 @@
             <input v-if="editing" v-model="editForm.dueDate" type="date" />
             <span v-else>{{ task.dueDate || "No due date" }}</span>
           </div>
-          <div
-            v-if="task.assignees && task.assignees.length"
-            class="meta-field"
-          >
+          <div class="meta-field">
             <strong>Assignees</strong>
-            <div class="tag-list">
+            <template v-if="editing">
+              <div v-if="users.length" class="assignee-picker-edit">
+                <label
+                  v-for="u in users"
+                  :key="u.id"
+                  class="assignee-option"
+                >
+                  <input
+                    v-model="editForm.assignees"
+                    type="checkbox"
+                    :value="u.id"
+                  />
+                  {{ u.name }}
+                </label>
+              </div>
+            </template>
+            <div v-else-if="task.assignees && task.assignees.length" class="tag-list">
               <span v-for="a in task.assignees" :key="a.userId" class="tag">{{
                 a.userName || a.userId
               }}</span>
             </div>
+            <span v-else class="text-muted">Unassigned</span>
           </div>
           <div v-if="task.labels && task.labels.length" class="meta-field">
             <strong>Labels</strong>
@@ -238,14 +252,25 @@
                 <strong>{{ comment.userName || comment.userId }}</strong>
                 <small>{{ formatDate(comment.dateCreated) }}</small>
               </header>
-              <p>{{ comment.text }}</p>
+              <div
+                class="comment-body"
+                :class="{ 'is-truncated': !expandedComments.has(comment.id) }"
+                v-html="renderMarkdown(comment.text)"
+              />
+              <button
+                v-if="isCommentLong(comment.text)"
+                class="expand-btn"
+                @click="toggleCommentExpand(comment.id)"
+              >
+                {{ expandedComments.has(comment.id) ? 'Show less' : 'Show more' }}
+              </button>
             </article>
           </div>
           <form class="add-comment" @submit.prevent="addComment">
-            <input
+            <textarea
               v-model="newComment"
-              type="text"
-              placeholder="Add a comment..."
+              placeholder="Add a comment... (Markdown supported)"
+              rows="2"
               required
             />
             <button type="submit" :aria-busy="submitting">Send</button>
@@ -301,6 +326,7 @@
 
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
+import api from "../utils/api";
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -333,9 +359,12 @@ const editForm = ref({
   description: "",
   priority: "",
   dueDate: "",
+  assignees: [],
 });
 const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
+const users = ref([]);
+const expandedComments = ref(new Set());
 
 const availableStatuses = computed(() => {
   if (!task.value) return ["To Do", "In Progress", "Done"];
@@ -366,6 +395,21 @@ watch(
   { immediate: true },
 );
 
+function isCommentLong(text) {
+  // Consider a comment "long" if it has more than 2 lines or ~120 chars
+  return text.split("\n").length > 2 || text.length > 120;
+}
+
+function toggleCommentExpand(commentId) {
+  const newSet = new Set(expandedComments.value);
+  if (newSet.has(commentId)) {
+    newSet.delete(commentId);
+  } else {
+    newSet.add(commentId);
+  }
+  expandedComments.value = newSet;
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return "";
   return new Date(dateStr).toLocaleString();
@@ -382,8 +426,20 @@ function startEdit() {
     description: task.value.description,
     priority: task.value.priority,
     dueDate: task.value.dueDate || "",
+    assignees: (task.value.assignees || []).map((a) => a.userId),
   };
   editing.value = true;
+  // Fetch users for the assignee picker
+  fetchUsers();
+}
+
+async function fetchUsers() {
+  try {
+    const res = await api.get("/users/picker");
+    users.value = res.data;
+  } catch {
+    users.value = [];
+  }
 }
 
 function cancelEdit() {
@@ -400,6 +456,23 @@ async function saveEdit() {
       priority: editForm.value.priority,
       dueDate: editForm.value.dueDate || null,
     });
+    // Update assignees separately
+    const currentAssignees = (task.value.assignees || []).map((a) => a.userId);
+    const newAssignees = editForm.value.assignees;
+    // Remove assignees that are no longer selected
+    for (const userId of currentAssignees) {
+      if (!newAssignees.includes(userId)) {
+        await tasksStore.removeAssignee(props.taskId, userId);
+      }
+    }
+    // Add new assignees
+    for (const userId of newAssignees) {
+      if (!currentAssignees.includes(userId)) {
+        await tasksStore.addAssignee(props.taskId, userId);
+      }
+    }
+    // Refresh the task to get updated assignee names
+    await tasksStore.fetchById(props.taskId);
     editing.value = false;
     emit("updated");
   } catch (e) {
@@ -689,6 +762,61 @@ section h4 {
 .comment p {
   margin: 0;
   font-size: var(--text-md);
+}
+
+.comment-body {
+  font-size: var(--text-md);
+  line-height: var(--leading-normal, 1.5);
+  word-break: break-word;
+}
+
+.comment-body :deep(p) {
+  margin: 0;
+}
+
+.comment-body.is-truncated {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.expand-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  padding: 0;
+  margin-top: var(--space-2xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.expand-btn:hover {
+  color: var(--color-primary-hover);
+}
+
+.assignee-picker-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.assignee-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  cursor: pointer;
+  font-weight: var(--weight-normal);
+}
+
+.assignee-option input[type="checkbox"] {
+  margin: 0;
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 
 .attachments {

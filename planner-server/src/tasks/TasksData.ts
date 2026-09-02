@@ -209,7 +209,10 @@ async function getAssignees(
     SQL_QUERIES.GET_ASSIGNEES[DbUtilsGetType()],
     [taskId],
   );
-  return rows.map((r) => ({ userId: r.userId }));
+  return rows.map((r) => ({
+    userId: r.userId,
+    userName: r.userName as string | undefined,
+  }));
 }
 
 async function getComments(taskId: string): Promise<TaskComment[]> {
@@ -220,6 +223,7 @@ async function getComments(taskId: string): Promise<TaskComment[]> {
   return rows.map((r) => ({
     id: r.id,
     userId: r.userId,
+    userName: r.userName as string | undefined,
     text: r.text,
     dateCreated: r.dateCreated,
   }));
@@ -307,8 +311,10 @@ const SQL_QUERIES = {
     sqlite: "DELETE FROM task_assignees WHERE taskId = ? AND userId = ?",
   },
   GET_ASSIGNEES: {
-    postgres: 'SELECT * FROM task_assignees WHERE "taskId" = $1',
-    sqlite: "SELECT * FROM task_assignees WHERE taskId = ?",
+    postgres:
+      'SELECT ta."userId", u."name" AS "userName" FROM task_assignees ta LEFT JOIN users u ON ta."userId" = u."id" WHERE ta."taskId" = $1',
+    sqlite:
+      "SELECT ta.userId, u.name AS userName FROM task_assignees ta LEFT JOIN users u ON ta.userId = u.id WHERE ta.taskId = ?",
   },
   INSERT_COMMENT: {
     postgres:
@@ -322,8 +328,9 @@ const SQL_QUERIES = {
   },
   GET_COMMENTS: {
     postgres:
-      'SELECT * FROM task_comments WHERE "taskId" = $1 ORDER BY dateCreated',
-    sqlite: "SELECT * FROM task_comments WHERE taskId = ? ORDER BY dateCreated",
+      'SELECT tc.*, u."name" AS "userName" FROM task_comments tc LEFT JOIN users u ON tc."userId" = u."id" WHERE tc."taskId" = $1 ORDER BY tc."dateCreated"',
+    sqlite:
+      "SELECT tc.*, u.name AS userName FROM task_comments tc LEFT JOIN users u ON tc.userId = u.id WHERE tc.taskId = ? ORDER BY tc.dateCreated",
   },
   GET_ATTACHMENTS: {
     postgres: 'SELECT * FROM task_attachments WHERE "taskId" = $1',
