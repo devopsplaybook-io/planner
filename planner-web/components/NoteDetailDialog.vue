@@ -143,7 +143,7 @@
             </span>
           </summary>
           <div class="comments">
-            <article
+            <div
               v-for="comment in note.comments || []"
               :key="comment.id"
               class="comment"
@@ -153,7 +153,7 @@
                 <small>{{ formatDate(comment.dateCreated) }}</small>
               </header>
               <p>{{ comment.text }}</p>
-            </article>
+            </div>
           </div>
           <form class="add-comment" @submit.prevent="addComment">
             <input
@@ -446,16 +446,25 @@ section h4 {
   margin-bottom: var(--space-sm);
 }
 
+/* Comment items are plain divs on purpose: bare <article> is the design
+   language's Card component and its "article > header" bleeds outside the
+   card with negative margins, overlapping the section summary (base.css). */
 .comment {
   padding: var(--space-xs) var(--space-sm);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
 }
 
 .comment header {
   display: flex;
   justify-content: space-between;
-  padding: 0;
-  height: auto;
+  align-items: baseline;
+  gap: var(--space-sm);
   margin-bottom: var(--space-xs);
+}
+
+.comment header strong {
+  font-size: var(--text-md);
 }
 
 .comment p {
