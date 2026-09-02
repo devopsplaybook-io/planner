@@ -253,12 +253,13 @@
                 <small>{{ formatDate(comment.dateCreated) }}</small>
               </header>
               <div
-                class="comment-body"
+                :ref="(el) => setCommentBodyRef(comment.id, el)"
+                class="comment-body markdown-body"
                 :class="{ 'is-truncated': !expandedComments.has(comment.id) }"
                 v-html="renderMarkdown(comment.text)"
               />
               <button
-                v-if="isCommentLong(comment.text)"
+                v-if="overflowingComments.has(comment.id)"
                 class="expand-btn"
                 @click="toggleCommentExpand(comment.id)"
               >
@@ -365,6 +366,9 @@ const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
 const users = ref([]);
 const expandedComments = ref(new Set());
+// Actual rendered-height overflow detection (see measureComments)
+const commentBodyEls = new Map();
+const overflowingComments = ref(new Set());
 
 const availableStatuses = computed(() => {
   if (!task.value) return ["To Do", "In Progress", "Done"];
@@ -395,9 +399,47 @@ watch(
   { immediate: true },
 );
 
-function isCommentLong(text) {
-  // Consider a comment "long" if it has more than 2 lines or ~120 chars
-  return text.split("\n").length > 2 || text.length > 120;
+// Re-measure when comments change and when wrapping changes on resize
+watch(
+  () => task.value?.comments,
+  async () => {
+    await nextTick();
+    measureComments();
+  },
+);
+
+onMounted(() => {
+  window.addEventListener("resize", measureComments, { passive: true });
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", measureComments);
+});
+
+function setCommentBodyRef(commentId, el) {
+  if (el) {
+    commentBodyEls.set(commentId, el);
+  } else {
+    commentBodyEls.delete(commentId);
+  }
+}
+
+// Detect which comments actually overflow the 2-line collapsed height.
+// Measuring the rendered height is more reliable than counting characters:
+// markdown blocks (lists, code fences, headings) render at very different
+// heights for the same text length.
+function measureComments() {
+  const overflowing = new Set();
+  for (const [commentId, el] of commentBodyEls) {
+    const style = getComputedStyle(el);
+    const lineHeight =
+      parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+    const twoLines = lineHeight * 2 + 1;
+    if (el.scrollHeight > twoLines) {
+      overflowing.add(commentId);
+    }
+  }
+  overflowingComments.value = overflowing;
 }
 
 function toggleCommentExpand(commentId) {
@@ -759,25 +801,22 @@ section h4 {
   margin-bottom: var(--space-xs);
 }
 
-.comment p {
-  margin: 0;
-  font-size: var(--text-md);
-}
-
 .comment-body {
+  /* flow-root keeps child margins from collapsing out of the container,
+     which previously bled into the comment header and expand button */
+  display: flow-root;
   font-size: var(--text-md);
-  line-height: var(--leading-normal, 1.5);
-  word-break: break-word;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
-.comment-body :deep(p) {
-  margin: 0;
-}
-
+/* Deterministic 2-line clip: exactly 2 lines at line-height 1.5.
+   -webkit-line-clamp is unreliable when the element contains block
+   children (lists, pre, headings) — it mis-measures and lets content
+   overlap neighboring elements. */
 .comment-body.is-truncated {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  max-height: 3em;
   overflow: hidden;
 }
 
