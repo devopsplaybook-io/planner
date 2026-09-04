@@ -215,6 +215,10 @@ function onFilterChange(event) {
   fetchTasks();
 }
 
+// Refresh the calendar when the task dialog closes: tasks may have moved
+// between days
+useDialogCloseRefresh("taskId", fetchTasks);
+
 onMounted(async () => {
   try {
     await projectsStore.fetchAll();

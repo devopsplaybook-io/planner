@@ -67,6 +67,18 @@ export async function TasksDataUpdate(task: Task): Promise<void> {
   ]);
 }
 
+/**
+ * Bumps dateUpdated without changing the task fields. Called after
+ * sub-resource mutations (comments, assignees, labels, attachments) so
+ * clients polling for task changes see them too.
+ */
+export async function TasksDataTouch(taskId: string): Promise<void> {
+  await DbUtilsExecSQL(SQL_QUERIES.TOUCH_TASK[DbUtilsGetType()], [
+    new Date().toISOString(),
+    taskId,
+  ]);
+}
+
 export async function TasksDataDelete(id: string): Promise<void> {
   await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_LABELS[DbUtilsGetType()], [id]);
   await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_ASSIGNEES[DbUtilsGetType()], [
@@ -280,6 +292,10 @@ const SQL_QUERIES = {
       'UPDATE tasks SET "title" = $1, "description" = $2, "status" = $3, "priority" = $4, "dueDate" = $5, "checklist" = $6, "dateUpdated" = $7 WHERE "id" = $8',
     sqlite:
       "UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, dueDate = ?, checklist = ?, dateUpdated = ? WHERE id = ?",
+  },
+  TOUCH_TASK: {
+    postgres: 'UPDATE tasks SET "dateUpdated" = $1 WHERE "id" = $2',
+    sqlite: "UPDATE tasks SET dateUpdated = ? WHERE id = ?",
   },
   DELETE_TASK: {
     postgres: 'DELETE FROM tasks WHERE "id" = $1',

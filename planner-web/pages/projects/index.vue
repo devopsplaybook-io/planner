@@ -89,6 +89,10 @@ onMounted(async () => {
   }
 });
 
+// Project cards read from the store, but refresh on dialog close to catch
+// changes made by other users while the project dialog was open
+useDialogCloseRefresh("projectId", () => projectsStore.fetchAll());
+
 async function createProject() {
   creating.value = true;
   try {

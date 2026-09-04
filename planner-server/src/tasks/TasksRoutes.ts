@@ -3,11 +3,13 @@ import { v4 as uuidv4 } from "uuid";
 import { Task } from "../model/Task";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { UsersDataGet } from "../users/UsersData";
+import { NotificationsTaskUpdated } from "../notifications/Notifications";
 import {
   TasksDataAdd,
   TasksDataDelete,
   TasksDataGet,
   TasksDataList,
+  TasksDataTouch,
   TasksDataUpdate,
   addAssignee,
   removeAssignee,
@@ -21,6 +23,33 @@ import {
 } from "./TasksData";
 import * as fs from "fs-extra";
 import * as path from "path";
+
+/**
+ * Fire-and-forget push notification to the task assignees (excluding the
+ * actor) that the task changed. Never awaited and never throws: a
+ * notification problem must not slow down or fail the mutation.
+ */
+function notifyAssignees(
+  taskId: string,
+  actorUserId: string,
+  summary: string,
+): void {
+  (async () => {
+    const task = await TasksDataGet(taskId);
+    if (!task) {
+      return;
+    }
+    const actor = await UsersDataGet(actorUserId);
+    await NotificationsTaskUpdated(
+      task,
+      actorUserId,
+      actor?.name || "",
+      summary,
+    );
+  })().catch(() => {
+    // Notification failures are logged inside NotificationsTaskUpdated
+  });
+}
 
 export class TasksRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
@@ -113,6 +142,15 @@ export class TasksRoutes {
       }
       const task = await TasksDataGet(req.params.id);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
+      const userSession = await AuthGetUserSession(req);
+      const before = {
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        dueDate: task.dueDate || "",
+        checklist: JSON.stringify(task.checklist),
+      };
       if (req.body.title) task.title = req.body.title;
       if (req.body.description !== undefined)
         task.description = req.body.description;
@@ -121,6 +159,20 @@ export class TasksRoutes {
       if (req.body.dueDate !== undefined) task.dueDate = req.body.dueDate;
       if (req.body.checklist) task.checklist = req.body.checklist;
       await TasksDataUpdate(task);
+      const changes: string[] = [];
+      if (task.title !== before.title) changes.push("title");
+      if (task.description !== before.description) changes.push("description");
+      if (task.status !== before.status) changes.push(`status: ${task.status}`);
+      if (task.priority !== before.priority)
+        changes.push(`priority: ${task.priority}`);
+      if ((task.dueDate || "") !== before.dueDate) changes.push("due date");
+      if (JSON.stringify(task.checklist) !== before.checklist)
+        changes.push("checklist");
+      notifyAssignees(
+        req.params.id,
+        userSession.userId,
+        changes.join(", ") || "updated",
+      );
       return res.status(201).send(task.toTransportJson());
     });
 
@@ -162,6 +214,8 @@ export class TasksRoutes {
         dateCreated: new Date().toISOString(),
       };
       await addComment(req.params.id, comment);
+      await TasksDataTouch(req.params.id);
+      notifyAssignees(req.params.id, userSession.userId, "New comment");
       return res.status(201).send(comment);
     });
 
@@ -173,7 +227,14 @@ export class TasksRoutes {
         } catch {
           return;
         }
+        const userSession = await AuthGetUserSession(req);
         await deleteComment(req.params.commentId);
+        await TasksDataTouch(req.params.id);
+        notifyAssignees(
+          req.params.id,
+          userSession.userId,
+          "Comment deleted",
+        );
         return res.status(201).send({});
       },
     );
@@ -191,7 +252,10 @@ export class TasksRoutes {
       }
       if (!req.body.userId)
         return res.status(400).send({ error: "Missing: userId" });
+      const userSession = await AuthGetUserSession(req);
       await addAssignee(req.params.id, req.body.userId);
+      await TasksDataTouch(req.params.id);
+      notifyAssignees(req.params.id, userSession.userId, "Assignees updated");
       return res.status(201).send({});
     });
 
@@ -203,7 +267,10 @@ export class TasksRoutes {
         } catch {
           return;
         }
+        const userSession = await AuthGetUserSession(req);
         await removeAssignee(req.params.id, req.params.userId);
+        await TasksDataTouch(req.params.id);
+        notifyAssignees(req.params.id, userSession.userId, "Assignees updated");
         return res.status(201).send({});
       },
     );
@@ -219,10 +286,13 @@ export class TasksRoutes {
       } catch {
         return;
       }
+      const userSession = await AuthGetUserSession(req);
       await clearLabels(req.params.id);
       for (const label of req.body.labels) {
         await addLabel(req.params.id, label);
       }
+      await TasksDataTouch(req.params.id);
+      notifyAssignees(req.params.id, userSession.userId, "Labels updated");
       return res.status(201).send({});
     });
 
@@ -267,6 +337,9 @@ export class TasksRoutes {
           filePath,
           attachmentId,
         );
+        await TasksDataTouch(req.params.id);
+        const userSession = await AuthGetUserSession(req);
+        notifyAssignees(req.params.id, userSession.userId, "Attachment added");
 
         return res.status(201).send({
           id: attachmentId,
@@ -345,6 +418,9 @@ export class TasksRoutes {
           await fs.remove(attachment.filePath);
         }
         await deleteTaskAttachment(req.params.attachmentId);
+        await TasksDataTouch(attachment.taskId);
+        const userSession = await AuthGetUserSession(req);
+        notifyAssignees(attachment.taskId, userSession.userId, "Attachment deleted");
         return res.status(201).send({});
       },
     );

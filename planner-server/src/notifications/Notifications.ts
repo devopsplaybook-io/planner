@@ -3,10 +3,12 @@ import * as path from "path";
 import * as cron from "node-cron";
 import webpush from "web-push";
 import { Config } from "../Config";
+import { Task } from "../model/Task";
 import { DbUtilsGetType, DbUtilsQuerySQL } from "../utils/DbUtils";
 import {
   NotificationsDataDeleteSubscriptionByEndpoint,
   NotificationsDataListSubscriptions,
+  NotificationsDataListSubscriptionsByUser,
   NotificationsDataLogSent,
   type PushSubscriptionRecord,
 } from "./NotificationsData";
@@ -219,6 +221,54 @@ function validateTimezone(timezone: string): void {
   }
 }
 
+// ── Task update notifications ─────────────────────────────────────────────
+
+/**
+ * Notifies the assignees of a task (except the acting user) that the task
+ * was updated. Failures are logged, never propagated: a notification
+ * problem must not fail the underlying task mutation.
+ */
+export async function NotificationsTaskUpdated(
+  task: Task,
+  actorUserId: string,
+  actorName: string,
+  summary: string,
+): Promise<void> {
+  if (!NotificationsIsEnabled() || !task) {
+    return;
+  }
+  try {
+    const assigneeIds = [
+      ...new Set(
+        (task.assignees || [])
+          .map((a) => a.userId)
+          .filter((id) => id && id !== actorUserId),
+      ),
+    ];
+    if (assigneeIds.length === 0) {
+      return;
+    }
+    const payload = JSON.stringify({
+      title: `Task updated by ${actorName || "someone"}`,
+      body: summary ? `${task.title} — ${summary}` : task.title,
+      url: `/?taskId=${task.id}`,
+      // Same tag replaces the previous update notification instead of stacking
+      tag: `task-${task.id}-update`,
+    });
+    for (const userId of assigneeIds) {
+      const subscriptions =
+        await NotificationsDataListSubscriptionsByUser(userId);
+      for (const subscription of subscriptions) {
+        await sendPushToSubscription(subscription, payload);
+      }
+    }
+  } catch (error) {
+    logger.error(
+      `[Notifications] Failed to send task update notifications: ${(error as Error).message}`,
+    );
+  }
+}
+
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 /**
@@ -252,6 +302,30 @@ async function resolveVapidKeys(): Promise<void> {
   logger.info("[Notifications] Generated new VAPID keys in " + keysFile);
 }
 
+/** Sends a push payload to one subscription, cleaning it up when expired. */
+async function sendPushToSubscription(
+  subscription: PushSubscriptionRecord,
+  payload: string,
+): Promise<void> {
+  try {
+    await webpush.sendNotification(
+      { endpoint: subscription.endpoint, keys: subscription.keys },
+      payload,
+    );
+  } catch (error) {
+    const statusCode = (error as { statusCode?: number })?.statusCode;
+    if (statusCode === 404 || statusCode === 410) {
+      // Subscription expired or invalid: clean it up
+      await NotificationsDataDeleteSubscriptionByEndpoint(
+        subscription.endpoint,
+      );
+    }
+    logger.error(
+      `[Notifications] Push failed (status=${statusCode || "n/a"}): ${(error as Error).message}`,
+    );
+  }
+}
+
 async function sendToSubscriptions(
   subscriptions: PushSubscriptionRecord[],
   taskId: string,
@@ -266,22 +340,6 @@ async function sendToSubscriptions(
     tag: `${taskId}-${kind}`,
   });
   for (const subscription of subscriptions) {
-    try {
-      await webpush.sendNotification(
-        { endpoint: subscription.endpoint, keys: subscription.keys },
-        payload,
-      );
-    } catch (error) {
-      const statusCode = (error as { statusCode?: number })?.statusCode;
-      if (statusCode === 404 || statusCode === 410) {
-        // Subscription expired or invalid: clean it up
-        await NotificationsDataDeleteSubscriptionByEndpoint(
-          subscription.endpoint,
-        );
-      }
-      logger.error(
-        `[Notifications] Push failed (status=${statusCode || "n/a"}): ${(error as Error).message}`,
-      );
-    }
+    await sendPushToSubscription(subscription, payload);
   }
 }

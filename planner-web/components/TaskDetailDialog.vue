@@ -394,6 +394,7 @@ const availableStatuses = computed(() => {
 watch(
   () => props.taskId,
   async (newId) => {
+    stopTaskPolling();
     if (newId) {
       loading.value = true;
       editing.value = false;
@@ -405,12 +406,44 @@ watch(
       } finally {
         loading.value = false;
       }
+      startTaskPolling();
     } else {
       tasksStore.currentTask = null;
     }
   },
   { immediate: true },
 );
+
+// While the dialog is open, poll the task so changes made by other users
+// show up without reopening it. The poll never runs while the user is
+// editing or submitting: a re-fetch replaces currentTask and would fight
+// the form. The server also sends push notifications on task updates;
+// this poll covers users who have not opted in to notifications.
+const TASK_POLL_INTERVAL = 60 * 1000;
+let taskPollTimer = null;
+
+function startTaskPolling() {
+  stopTaskPolling();
+  taskPollTimer = setInterval(pollTask, TASK_POLL_INTERVAL);
+}
+
+function stopTaskPolling() {
+  if (taskPollTimer) {
+    clearInterval(taskPollTimer);
+    taskPollTimer = null;
+  }
+}
+
+async function pollTask() {
+  if (!props.taskId || loading.value || editing.value || submitting.value) {
+    return;
+  }
+  try {
+    await tasksStore.fetchById(props.taskId);
+  } catch {
+    // Transient polling errors are ignored; the next tick retries
+  }
+}
 
 // Belt-and-braces alongside the ResizeObserver: re-measure after the
 // comments have rendered. The observer remains the source of truth — it
@@ -457,6 +490,7 @@ function measureComments() {
 }
 
 onBeforeUnmount(() => {
+  stopTaskPolling();
   commentResizeObserver.disconnect();
 });
 
