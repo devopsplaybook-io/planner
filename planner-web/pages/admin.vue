@@ -27,6 +27,7 @@
               <th>Name</th>
               <th>Role</th>
               <th>Created</th>
+              <th>API Key</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -44,6 +45,15 @@
                 </select>
               </td>
               <td>{{ formatDate(user.dateCreated) }}</td>
+              <td>
+                <button
+                  class="small secondary"
+                  @click="openApiKeyDialog(user)"
+                >
+                  <i class="bi bi-key" />
+                  {{ user.hasApiKey ? 'Manage' : 'Generate' }}
+                </button>
+              </td>
               <td>
                 <button
                   v-if="user.id !== authStore.currentUser?.id"
@@ -131,6 +141,72 @@
         </footer>
       </article>
     </dialog>
+
+    <!-- API Key Dialog -->
+    <dialog
+      ref="apiKeyDialogEl"
+      @close="apiKeyTarget = null"
+    >
+      <article>
+        <header>
+          <h3>API Key for {{ apiKeyTarget?.name }}</h3>
+          <button
+            class="close-btn"
+            aria-label="Close"
+            @click="apiKeyTarget = null"
+          />
+        </header>
+        <div v-if="apiKeyLoading" class="loading-indicator" />
+        <template v-else>
+          <div v-if="userApiKey" class="api-key-admin-display">
+            <label>
+              Current API key (masked)
+              <input :value="userApiKey.key" type="text" readonly class="api-key-input" />
+            </label>
+            <small class="api-key-date">Created {{ formatDate(userApiKey.dateCreated) }}</small>
+            <div v-if="newlyGeneratedKey" class="api-key-new">
+              <label>
+                <strong>New API key</strong> — copy it now, it won't be shown again:
+                <div class="api-key-input-row">
+                  <input :value="newlyGeneratedKey" type="text" readonly class="api-key-input" />
+                  <button class="btn-copy" @click="copyNewKey">
+                    <i class="bi bi-clipboard" /> Copy
+                  </button>
+                </div>
+              </label>
+            </div>
+            <footer class="dialog-footer">
+              <button class="secondary" :aria-busy="regeneratingKey" @click="regenerateUserApiKey">
+                <i class="bi bi-arrow-clockwise" /> Regenerate
+              </button>
+              <button class="contrast" :aria-busy="deletingKey" @click="deleteUserApiKey">
+                <i class="bi bi-trash" /> Delete
+              </button>
+            </footer>
+          </div>
+          <div v-else class="api-key-admin-generate">
+            <p>This user has no API key.</p>
+            <footer class="dialog-footer">
+              <button :aria-busy="generatingKey" @click="generateUserApiKey">
+                <i class="bi bi-key" /> Generate API Key
+              </button>
+              <button class="secondary" @click="apiKeyTarget = null">Close</button>
+            </footer>
+            <div v-if="newlyGeneratedKey" class="api-key-new">
+              <label>
+                <strong>New API key</strong> — copy it now, it won't be shown again:
+                <div class="api-key-input-row">
+                  <input :value="newlyGeneratedKey" type="text" readonly class="api-key-input" />
+                  <button class="btn-copy" @click="copyNewKey">
+                    <i class="bi bi-clipboard" /> Copy
+                  </button>
+                </div>
+              </label>
+            </div>
+          </div>
+        </template>
+      </article>
+    </dialog>
   </div>
 </template>
 
@@ -150,6 +226,16 @@ const deleting = ref(false);
 const deleteTarget = ref(null);
 const deleteDialogEl = useModalDialog(() => deleteTarget.value !== null);
 
+// API Key management
+const apiKeyTarget = ref(null);
+const apiKeyDialogEl = useModalDialog(() => apiKeyTarget.value !== null);
+const apiKeyLoading = ref(false);
+const userApiKey = ref(null);
+const newlyGeneratedKey = ref("");
+const generatingKey = ref(false);
+const regeneratingKey = ref(false);
+const deletingKey = ref(false);
+
 const newUser = ref({ name: "", password: "", role: "user" });
 
 function formatDate(dateStr) {
@@ -161,7 +247,18 @@ async function fetchUsers() {
   loading.value = true;
   try {
     const res = await api.get("/users");
-    users.value = res.data;
+    // Check which users have API keys
+    const usersWithKeys = await Promise.all(
+      res.data.map(async (user) => {
+        try {
+          await api.get(`/users/${user.id}/api-key`);
+          return { ...user, hasApiKey: true };
+        } catch {
+          return { ...user, hasApiKey: false };
+        }
+      }),
+    );
+    users.value = usersWithKeys;
   } catch (e) {
     if (e.response?.status === 403) {
       router.push("/login");
@@ -219,6 +316,79 @@ onMounted(async () => {
     loading.value = false;
   }
 });
+
+// API Key functions
+async function openApiKeyDialog(user) {
+  apiKeyTarget.value = user;
+  newlyGeneratedKey.value = "";
+  await fetchUserApiKey(user.id);
+}
+
+async function fetchUserApiKey(userId) {
+  apiKeyLoading.value = true;
+  try {
+    const res = await api.get(`/users/${userId}/api-key`);
+    userApiKey.value = res.data;
+  } catch {
+    userApiKey.value = null;
+  } finally {
+    apiKeyLoading.value = false;
+  }
+}
+
+async function generateUserApiKey() {
+  if (!apiKeyTarget.value) return;
+  generatingKey.value = true;
+  try {
+    const res = await api.post(`/users/${apiKeyTarget.value.id}/api-key`);
+    newlyGeneratedKey.value = res.data.key;
+    // Update the user's hasApiKey status
+    const user = users.value.find((u) => u.id === apiKeyTarget.value.id);
+    if (user) user.hasApiKey = true;
+    await fetchUserApiKey(apiKeyTarget.value.id);
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to generate API key");
+  } finally {
+    generatingKey.value = false;
+  }
+}
+
+async function regenerateUserApiKey() {
+  if (!apiKeyTarget.value) return;
+  if (!confirm("Regenerating will invalidate the current key. Continue?")) return;
+  regeneratingKey.value = true;
+  try {
+    const res = await api.post(`/users/${apiKeyTarget.value.id}/api-key`);
+    newlyGeneratedKey.value = res.data.key;
+    await fetchUserApiKey(apiKeyTarget.value.id);
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to regenerate API key");
+  } finally {
+    regeneratingKey.value = false;
+  }
+}
+
+async function deleteUserApiKey() {
+  if (!apiKeyTarget.value) return;
+  if (!confirm("Delete this user's API key? This cannot be undone.")) return;
+  deletingKey.value = true;
+  try {
+    await api.delete(`/users/${apiKeyTarget.value.id}/api-key`);
+    userApiKey.value = null;
+    newlyGeneratedKey.value = "";
+    // Update the user's hasApiKey status
+    const user = users.value.find((u) => u.id === apiKeyTarget.value.id);
+    if (user) user.hasApiKey = false;
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to delete API key");
+  } finally {
+    deletingKey.value = false;
+  }
+}
+
+function copyNewKey() {
+  navigator.clipboard.writeText(newlyGeneratedKey.value);
+}
 </script>
 
 <style scoped>

@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS api_keys (
+    id VARCHAR(50) PRIMARY KEY,
+    userId VARCHAR(50) NOT NULL UNIQUE,
+    key VARCHAR(200) NOT NULL,
+    dateCreated VARCHAR(100) NOT NULL,
+    FOREIGN KEY (userId) REFERENCES users(id)
+);

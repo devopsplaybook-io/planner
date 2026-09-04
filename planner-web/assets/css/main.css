@@ -352,6 +352,9 @@ span + i.bi {
   border-collapse: collapse;
   width: 100%;
   margin: 0 0 var(--space-sm);
+  /* Wide tables scroll instead of overflowing their container */
+  display: block;
+  overflow-x: auto;
 }
 
 .markdown-body th,

@@ -95,16 +95,30 @@
             <input v-if="editing" v-model="editForm.dueDate" type="date" />
             <span v-else>{{ task.dueDate || "No due date" }}</span>
           </div>
-          <div
-            v-if="task.assignees && task.assignees.length"
-            class="meta-field"
-          >
+          <div class="meta-field">
             <strong>Assignees</strong>
-            <div class="tag-list">
+            <template v-if="editing">
+              <div v-if="users.length" class="assignee-picker-edit">
+                <label
+                  v-for="u in users"
+                  :key="u.id"
+                  class="assignee-option"
+                >
+                  <input
+                    v-model="editForm.assignees"
+                    type="checkbox"
+                    :value="u.id"
+                  />
+                  {{ u.name }}
+                </label>
+              </div>
+            </template>
+            <div v-else-if="task.assignees && task.assignees.length" class="tag-list">
               <span v-for="a in task.assignees" :key="a.userId" class="tag">{{
                 a.userName || a.userId
               }}</span>
             </div>
+            <span v-else class="text-muted">Unassigned</span>
           </div>
           <div v-if="task.labels && task.labels.length" class="meta-field">
             <strong>Labels</strong>
@@ -229,7 +243,7 @@
             </span>
           </summary>
           <div class="comments">
-            <article
+            <div
               v-for="comment in task.comments || []"
               :key="comment.id"
               class="comment"
@@ -238,14 +252,30 @@
                 <strong>{{ comment.userName || comment.userId }}</strong>
                 <small>{{ formatDate(comment.dateCreated) }}</small>
               </header>
-              <p>{{ comment.text }}</p>
-            </article>
+              <div
+                class="comment-body markdown-body"
+                :class="{ 'is-truncated': !expandedComments.has(comment.id) }"
+              >
+                <div
+                  :ref="(el) => setCommentBodyRef(comment.id, el)"
+                  class="comment-body-content"
+                  v-html="renderMarkdown(comment.text)"
+                />
+              </div>
+              <button
+                v-if="overflowingComments.has(comment.id)"
+                class="expand-btn"
+                @click="toggleCommentExpand(comment.id)"
+              >
+                {{ expandedComments.has(comment.id) ? 'Show less' : 'Show more' }}
+              </button>
+            </div>
           </div>
           <form class="add-comment" @submit.prevent="addComment">
-            <input
+            <textarea
               v-model="newComment"
-              type="text"
-              placeholder="Add a comment..."
+              placeholder="Add a comment... (Markdown supported)"
+              rows="2"
               required
             />
             <button type="submit" :aria-busy="submitting">Send</button>
@@ -301,6 +331,7 @@
 
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
+import api from "../utils/api";
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -333,9 +364,24 @@ const editForm = ref({
   description: "",
   priority: "",
   dueDate: "",
+  assignees: [],
 });
 const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
+const users = ref([]);
+const expandedComments = ref(new Set());
+// Overflow detection: commentBodyEls holds the inner, unclipped content
+// element of each comment; its height is the natural rendered height of
+// the markdown (the outer .comment-body does the 2-line clip).
+const commentBodyEls = new Map();
+const overflowingComments = ref(new Set());
+// A one-shot measurement races with dialog rendering: the <dialog> opens
+// via showModal in a post-flush watcher, so content may still be
+// display:none and report scrollHeight 0, hiding the expand button until
+// something else re-measures. Observing each comment's content element
+// re-measures whenever its box actually changes: dialog or <details>
+// opening, image loading, text re-wrapping.
+const commentResizeObserver = new ResizeObserver(measureComments);
 
 const availableStatuses = computed(() => {
   if (!task.value) return ["To Do", "In Progress", "Done"];
@@ -366,6 +412,64 @@ watch(
   { immediate: true },
 );
 
+// Belt-and-braces alongside the ResizeObserver: re-measure after the
+// comments have rendered. The observer remains the source of truth — it
+// re-measures on every real layout change (dialog opening, image loads).
+watch(
+  () => task.value?.comments,
+  async () => {
+    await nextTick();
+    measureComments();
+  },
+);
+
+function setCommentBodyRef(commentId, el) {
+  if (el) {
+    commentBodyEls.set(commentId, el);
+    commentResizeObserver.observe(el);
+  } else {
+    const prev = commentBodyEls.get(commentId);
+    if (prev) commentResizeObserver.unobserve(prev);
+    commentBodyEls.delete(commentId);
+  }
+}
+
+// Detect which comments actually overflow the 2-line collapsed height.
+// Measuring the rendered height is more reliable than counting characters:
+// markdown blocks (lists, code fences, headings) render at very different
+// heights for the same text length.
+function measureComments() {
+  const overflowing = new Set();
+  for (const [commentId, el] of commentBodyEls) {
+    const style = getComputedStyle(el);
+    const fontSize = parseFloat(style.fontSize) || 14;
+    // line-height may compute as a unitless number ("1.5"), a px value or
+    // "normal" — normalize it against the font size
+    let lineHeight = parseFloat(style.lineHeight);
+    if (!lineHeight || lineHeight < fontSize) {
+      lineHeight = fontSize * 1.5;
+    }
+    if (el.scrollHeight > lineHeight * 2 + 1) {
+      overflowing.add(commentId);
+    }
+  }
+  overflowingComments.value = overflowing;
+}
+
+onBeforeUnmount(() => {
+  commentResizeObserver.disconnect();
+});
+
+function toggleCommentExpand(commentId) {
+  const newSet = new Set(expandedComments.value);
+  if (newSet.has(commentId)) {
+    newSet.delete(commentId);
+  } else {
+    newSet.add(commentId);
+  }
+  expandedComments.value = newSet;
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return "";
   return new Date(dateStr).toLocaleString();
@@ -382,8 +486,20 @@ function startEdit() {
     description: task.value.description,
     priority: task.value.priority,
     dueDate: task.value.dueDate || "",
+    assignees: (task.value.assignees || []).map((a) => a.userId),
   };
   editing.value = true;
+  // Fetch users for the assignee picker
+  fetchUsers();
+}
+
+async function fetchUsers() {
+  try {
+    const res = await api.get("/users/picker");
+    users.value = res.data;
+  } catch {
+    users.value = [];
+  }
 }
 
 function cancelEdit() {
@@ -400,6 +516,23 @@ async function saveEdit() {
       priority: editForm.value.priority,
       dueDate: editForm.value.dueDate || null,
     });
+    // Update assignees separately
+    const currentAssignees = (task.value.assignees || []).map((a) => a.userId);
+    const newAssignees = editForm.value.assignees;
+    // Remove assignees that are no longer selected
+    for (const userId of currentAssignees) {
+      if (!newAssignees.includes(userId)) {
+        await tasksStore.removeAssignee(props.taskId, userId);
+      }
+    }
+    // Add new assignees
+    for (const userId of newAssignees) {
+      if (!currentAssignees.includes(userId)) {
+        await tasksStore.addAssignee(props.taskId, userId);
+      }
+    }
+    // Refresh the task to get updated assignee names
+    await tasksStore.fetchById(props.taskId);
     editing.value = false;
     emit("updated");
   } catch (e) {
@@ -674,21 +807,99 @@ section h4 {
   margin-bottom: var(--space-sm);
 }
 
+/* Comment items are plain divs on purpose: bare <article> is the design
+   language's Card component and its "article > header" bleeds outside the
+   card with negative margins, overlapping the section summary (base.css). */
 .comment {
   padding: var(--space-xs) var(--space-sm);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
 }
 
 .comment header {
   display: flex;
   justify-content: space-between;
-  padding: 0;
-  height: auto;
+  align-items: baseline;
+  gap: var(--space-sm);
   margin-bottom: var(--space-xs);
 }
 
-.comment p {
-  margin: 0;
+.comment header strong {
   font-size: var(--text-md);
+}
+
+.comment-body {
+  /* flow-root keeps child margins from collapsing out of the container,
+     which previously bled into the comment header and expand button */
+  display: flow-root;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+/* Deterministic 2-line clip: exactly 2 lines at line-height 1.5.
+   -webkit-line-clamp is unreliable when the element contains block
+   children (lists, pre, headings) — it mis-measures and lets content
+   overlap neighboring elements. */
+.comment-body.is-truncated {
+  max-height: 3em;
+  overflow: hidden;
+}
+
+/* The measured content lives one level deeper than .markdown-body's
+   direct-child rules, so re-apply the tight first/last spacing here.
+   line-height and flow-root are pinned on the content element itself so
+   the expand-button threshold always matches the visible 2-line clip. */
+.comment-body-content {
+  display: flow-root;
+  line-height: 1.5;
+}
+
+.comment-body-content > :first-child {
+  margin-top: 0;
+}
+
+.comment-body-content > :last-child {
+  margin-bottom: 0;
+}
+
+.expand-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  padding: 0;
+  margin-top: var(--space-2xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.expand-btn:hover {
+  color: var(--color-primary-hover);
+}
+
+.assignee-picker-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.assignee-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  cursor: pointer;
+  font-weight: var(--weight-normal);
+}
+
+.assignee-option input[type="checkbox"] {
+  margin: 0;
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 
 .attachments {

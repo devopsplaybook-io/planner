@@ -60,10 +60,69 @@
         <i class="bi bi-box-arrow-right" /> Logout
       </button>
     </section>
+
+    <section v-if="authStore.isAuthenticated">
+      <h2>API Key</h2>
+      <p class="api-key-info">
+        Use an API key to authenticate API calls. The key has the same
+        permissions as your user account.
+      </p>
+      <div v-if="apiKey" class="api-key-display">
+        <label>
+          Your API key
+          <div class="api-key-input-row">
+            <input
+              :value="apiKey.key"
+              type="text"
+              readonly
+              class="api-key-input"
+            />
+            <button class="btn-copy" @click="copyApiKey">
+              <i class="bi bi-clipboard" /> Copy
+            </button>
+          </div>
+        </label>
+        <small class="api-key-date"
+          >Created {{ formatDate(apiKey.dateCreated) }}</small
+        >
+        <div class="api-key-actions">
+          <button class="secondary" :aria-busy="regenerating" @click="regenerateApiKey">
+            <i class="bi bi-arrow-clockwise" /> Regenerate
+          </button>
+          <button class="contrast" :aria-busy="deletingKey" @click="deleteApiKey">
+            <i class="bi bi-trash" /> Delete
+          </button>
+        </div>
+      </div>
+      <div v-else class="api-key-generate">
+        <p>No API key yet.</p>
+        <button :aria-busy="generating" @click="generateApiKey">
+          <i class="bi bi-key" /> Generate API Key
+        </button>
+      </div>
+      <div v-if="newlyGeneratedKey" class="api-key-new">
+        <label>
+          <strong>New API key</strong> — copy it now, it won't be shown again:
+          <div class="api-key-input-row">
+            <input
+              :value="newlyGeneratedKey"
+              type="text"
+              readonly
+              class="api-key-input"
+            />
+            <button class="btn-copy" @click="copyNewKey">
+              <i class="bi bi-clipboard" /> Copy
+            </button>
+          </div>
+        </label>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
+import api from "../utils/api";
+
 const authStore = useAuthStore();
 const notificationsStore = useNotificationsStore();
 const router = useRouter();
@@ -86,11 +145,7 @@ const notificationStatus = computed(() => {
   return "Get notified the day before and on the day a task is due.";
 });
 
-onMounted(() => {
-  if (authStore.isAuthenticated) {
-    notificationsStore.init();
-  }
-});
+// API Key management
 
 async function toggleNotifications() {
   if (notificationsStore.active) {
@@ -118,6 +173,83 @@ function getThemeIcon() {
 function handleLogout() {
   authStore.logout();
   router.push("/login");
+}
+
+// API Key management
+const apiKey = ref(null);
+const newlyGeneratedKey = ref("");
+const generating = ref(false);
+const regenerating = ref(false);
+const deletingKey = ref(false);
+
+onMounted(async () => {
+  if (authStore.isAuthenticated) {
+    notificationsStore.init();
+    await fetchApiKey();
+  }
+});
+
+async function fetchApiKey() {
+  try {
+    const res = await api.get("/users/api-key");
+    apiKey.value = res.data;
+  } catch {
+    apiKey.value = null;
+  }
+}
+
+async function generateApiKey() {
+  generating.value = true;
+  try {
+    const res = await api.post("/users/api-key");
+    newlyGeneratedKey.value = res.data.key;
+    await fetchApiKey();
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to generate API key");
+  } finally {
+    generating.value = false;
+  }
+}
+
+async function regenerateApiKey() {
+  if (!confirm("Regenerating will invalidate the current key. Continue?")) return;
+  regenerating.value = true;
+  try {
+    const res = await api.post("/users/api-key");
+    newlyGeneratedKey.value = res.data.key;
+    await fetchApiKey();
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to regenerate API key");
+  } finally {
+    regenerating.value = false;
+  }
+}
+
+async function deleteApiKey() {
+  if (!confirm("Delete your API key? This cannot be undone.")) return;
+  deletingKey.value = true;
+  try {
+    await api.delete("/users/api-key");
+    apiKey.value = null;
+    newlyGeneratedKey.value = "";
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to delete API key");
+  } finally {
+    deletingKey.value = false;
+  }
+}
+
+function copyApiKey() {
+  navigator.clipboard.writeText(apiKey.value.key);
+}
+
+function copyNewKey() {
+  navigator.clipboard.writeText(newlyGeneratedKey.value);
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString();
 }
 </script>
 
@@ -231,5 +363,75 @@ section h2 {
   background: #d32f2f;
   color: #fff;
   border-color: #d32f2f;
+}
+
+.api-key-info {
+  font-size: var(--text-md);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-sm);
+}
+
+.api-key-display,
+.api-key-generate,
+.api-key-new {
+  margin-top: var(--space-sm);
+}
+
+.api-key-input-row {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+}
+
+.api-key-input {
+  flex: 1;
+  font-family: monospace;
+  font-size: var(--text-sm);
+  background: var(--color-bg-secondary);
+}
+
+.btn-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: 0.4em 0.8em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: var(--text-md);
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.btn-copy:hover {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.api-key-date {
+  display: block;
+  margin-top: var(--space-xs);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.api-key-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.api-key-new {
+  margin-top: var(--space-md);
+  padding: var(--space-sm);
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+}
+
+.api-key-new label strong {
+  color: var(--color-primary-dark);
 }
 </style>

@@ -47,6 +47,24 @@
           <input v-model="form.dueDate" type="date" />
         </label>
         <fieldset>
+          <legend>Assignees</legend>
+          <div v-if="users.length" class="assignee-picker">
+            <label
+              v-for="u in users"
+              :key="u.id"
+              class="assignee-option"
+            >
+              <input
+                v-model="form.assignees"
+                type="checkbox"
+                :value="u.id"
+              />
+              {{ u.name }}
+            </label>
+          </div>
+          <small v-else class="text-muted">No users available</small>
+        </fieldset>
+        <fieldset>
           <legend>Checklist</legend>
           <div
             v-for="(item, idx) in form.checklist"
@@ -86,6 +104,8 @@
 </template>
 
 <script setup>
+import api from "../utils/api";
+
 const props = defineProps({
   open: { type: Boolean, default: false },
 });
@@ -96,7 +116,9 @@ const dialogEl = useModalDialog(() => props.open);
 
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
+const authStore = useAuthStore();
 
+const users = ref([]);
 const creating = ref(false);
 
 function defaultProjectId() {
@@ -113,12 +135,13 @@ const form = ref({
   description: "",
   priority: "medium",
   dueDate: "",
+  assignees: [],
   checklist: [],
 });
 
 watch(
   () => props.open,
-  (isOpen) => {
+  async (isOpen) => {
     if (isOpen) {
       form.value = {
         projectId: defaultProjectId(),
@@ -126,8 +149,16 @@ watch(
         description: "",
         priority: "medium",
         dueDate: "",
+        assignees: authStore.currentUser?.id ? [authStore.currentUser.id] : [],
         checklist: [],
       };
+      // Fetch users for the assignee picker
+      try {
+        const res = await api.get("/users/picker");
+        users.value = res.data;
+      } catch {
+        users.value = [];
+      }
     }
   },
 );
@@ -141,6 +172,7 @@ async function createTask() {
       description: form.value.description,
       priority: form.value.priority,
       dueDate: form.value.dueDate || undefined,
+      assignees: form.value.assignees,
       checklist: form.value.checklist.filter((c) => c.text.trim()),
     };
     await tasksStore.create(data);
@@ -165,5 +197,27 @@ async function createTask() {
 
 .checklist-input-row button {
   padding: 0.2em 0.5em;
+}
+
+.assignee-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.assignee-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  cursor: pointer;
+  font-weight: var(--weight-normal);
+}
+
+.assignee-option input[type="checkbox"] {
+  margin: 0;
+}
+
+.text-muted {
+  color: var(--color-text-muted);
 }
 </style>

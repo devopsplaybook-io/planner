@@ -1,5 +1,6 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { User } from "../model/User";
+import { ApiKey } from "../model/ApiKey";
 import { AuthGenerateJWT, AuthGetUserSession, AuthMustBeAdmin } from "./Auth";
 import {
   UserPasswordCheckPassword,
@@ -14,6 +15,11 @@ import {
   UsersDataUpdatePassword,
   UsersDataUpdateUser,
 } from "./UsersData";
+import {
+  ApiKeysDataAdd,
+  ApiKeysDataDeleteByUserId,
+  ApiKeysDataGetByUserId,
+} from "./ApiKeysData";
 
 export class UsersRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
@@ -205,6 +211,81 @@ export class UsersRoutes {
       }
 
       await UsersDataDelete(req.params.id);
+      return res.status(201).send({});
+    });
+
+    // ==================== API KEYS (Self) ====================
+    fastify.get("/api-key", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(403).send({ error: "Access Denied" });
+      }
+      const apiKey = await ApiKeysDataGetByUserId(userSession.userId);
+      if (!apiKey) {
+        return res.status(404).send({ error: "No API Key" });
+      }
+      return res.status(200).send(apiKey.toTransportJson());
+    });
+
+    fastify.post("/api-key", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(403).send({ error: "Access Denied" });
+      }
+      const apiKey = new ApiKey();
+      apiKey.userId = userSession.userId;
+      await ApiKeysDataAdd(apiKey);
+      // Return the full key ONCE so the user can copy it
+      return res.status(201).send({ key: apiKey.key });
+    });
+
+    fastify.delete("/api-key", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(403).send({ error: "Access Denied" });
+      }
+      await ApiKeysDataDeleteByUserId(userSession.userId);
+      return res.status(201).send({});
+    });
+
+    // ==================== API KEYS (Admin) ====================
+    fastify.get<{ Params: { id: string } }>("/:id/api-key", async (req, res) => {
+      try {
+        await AuthMustBeAdmin(req, res);
+      } catch {
+        return;
+      }
+      const apiKey = await ApiKeysDataGetByUserId(req.params.id);
+      if (!apiKey) {
+        return res.status(404).send({ error: "No API Key" });
+      }
+      return res.status(200).send(apiKey.toTransportJson());
+    });
+
+    fastify.post<{ Params: { id: string } }>("/:id/api-key", async (req, res) => {
+      try {
+        await AuthMustBeAdmin(req, res);
+      } catch {
+        return;
+      }
+      const user = await UsersDataGet(req.params.id);
+      if (!user) {
+        return res.status(404).send({ error: "User Not Found" });
+      }
+      const apiKey = new ApiKey();
+      apiKey.userId = user.id;
+      await ApiKeysDataAdd(apiKey);
+      // Return the full key ONCE so the admin can share it with the user
+      return res.status(201).send({ key: apiKey.key });
+    });
+
+    fastify.delete<{ Params: { id: string } }>("/:id/api-key", async (req, res) => {
+      try {
+        await AuthMustBeAdmin(req, res);
+      } catch {
+        return;
+      }
+      await ApiKeysDataDeleteByUserId(req.params.id);
       return res.status(201).send({});
     });
   }

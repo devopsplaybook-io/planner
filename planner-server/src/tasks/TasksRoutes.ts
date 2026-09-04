@@ -2,6 +2,7 @@ import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { v4 as uuidv4 } from "uuid";
 import { Task } from "../model/Task";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
+import { UsersDataGet } from "../users/UsersData";
 import {
   TasksDataAdd,
   TasksDataDelete,
@@ -69,6 +70,7 @@ export class TasksRoutes {
       } catch {
         return;
       }
+      const userSession = await AuthGetUserSession(req);
       if (!req.body.projectId)
         return res.status(400).send({ error: "Missing: projectId" });
       if (!req.body.title)
@@ -83,6 +85,8 @@ export class TasksRoutes {
       if (req.body.dueDate) task.dueDate = req.body.dueDate;
       if (req.body.assignees)
         task.assignees = req.body.assignees.map((u) => ({ userId: u }));
+      else if (userSession.userId)
+        task.assignees = [{ userId: userSession.userId }];
       if (req.body.labels) task.labels = req.body.labels;
       if (req.body.checklist) task.checklist = req.body.checklist;
       await TasksDataAdd(task);
@@ -149,9 +153,11 @@ export class TasksRoutes {
       if (!task) return res.status(404).send({ error: "Task Not Found" });
       if (!req.body.text)
         return res.status(400).send({ error: "Missing: text" });
+      const user = await UsersDataGet(userSession.userId);
       const comment = {
         id: uuidv4(),
         userId: userSession.userId,
+        userName: user?.name,
         text: req.body.text,
         dateCreated: new Date().toISOString(),
       };
