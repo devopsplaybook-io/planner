@@ -139,14 +139,7 @@ onMounted(async () => {
 });
 
 // Refresh list when note dialog closes
-watch(
-  () => route.query.noteId,
-  (newVal, oldVal) => {
-    if (oldVal && !newVal) {
-      notesStore.fetchAll();
-    }
-  },
-);
+useDialogCloseRefresh("noteId", () => notesStore.fetchAll());
 
 async function createNote() {
   creating.value = true;

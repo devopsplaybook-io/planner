@@ -265,6 +265,19 @@ function openTask(task) {
   });
 }
 
+// Refresh project and task data when a dialog closes: tasks may have been
+// changed in the dialog or by other users while it was open
+async function refreshProjectData() {
+  try {
+    await projectsStore.fetchById(route.params.id);
+    await tasksStore.fetchAll(route.params.id);
+  } catch {
+    // Error handled silently
+  }
+}
+useDialogCloseRefresh("taskId", refreshProjectData);
+useDialogCloseRefresh("projectId", refreshProjectData);
+
 onMounted(async () => {
   try {
     await projectsStore.fetchById(route.params.id);

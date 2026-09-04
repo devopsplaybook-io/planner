@@ -80,6 +80,29 @@ export async function NotificationsDataListSubscriptions(): Promise<
   return subscriptions;
 }
 
+/** Subscriptions of a single user, for targeted notifications (e.g. task updates). */
+export async function NotificationsDataListSubscriptionsByUser(
+  userId: string,
+): Promise<PushSubscriptionRecord[]> {
+  const rows = await DbUtilsQuerySQL(
+    `SELECT ${col("userId")} AS "userId", ${col("endpoint")} AS "endpoint", ${col("keys")} AS "keys", ${col("dateCreated")} AS "dateCreated" FROM push_subscriptions WHERE ${col("userId")} = ?`,
+    [userId],
+  );
+  const subscriptions: PushSubscriptionRecord[] = [];
+  for (const row of rows) {
+    subscriptions.push({
+      userId: row.userId as string,
+      endpoint: row.endpoint as string,
+      keys:
+        typeof row.keys === "string"
+          ? JSON.parse(row.keys)
+          : (row.keys as PushSubscriptionKeys),
+      dateCreated: row.dateCreated as string,
+    });
+  }
+  return subscriptions;
+}
+
 /**
  * Records that a notification was sent for a task/due date/kind.
  * Returns true if the entry was created by this call (first sender wins),
