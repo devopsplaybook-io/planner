@@ -231,6 +231,10 @@ function openTask(task) {
   });
 }
 
+// Dashboard data is a local snapshot (not a store computed), so refresh it
+// when the task dialog closes: the dialog may have changed the task
+useDialogCloseRefresh("taskId", fetchDashboard);
+
 onMounted(async () => {
   await projectsStore.fetchAll();
   await recommendationStore.fetchConfig();
