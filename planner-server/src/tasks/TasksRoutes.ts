@@ -170,11 +170,13 @@ export class TasksRoutes {
       if ((task.dueDate || "") !== before.dueDate) changes.push("due date");
       if (JSON.stringify(task.checklist) !== before.checklist)
         changes.push("checklist");
-      notifyAssignees(
-        req.params.id,
-        userSession.userId,
-        changes.join(", ") || "updated",
-      );
+      if (changes.length > 0) {
+        notifyAssignees(
+          req.params.id,
+          userSession.userId,
+          changes.join(", "),
+        );
+      }
       return res.status(201).send(task.toTransportJson());
     });
 
@@ -267,6 +269,8 @@ export class TasksRoutes {
       if (!req.body.text)
         return res.status(400).send({ error: "Missing: text" });
       await updateComment(req.params.commentId, req.body.text);
+      await TasksDataTouch(req.params.id);
+      notifyAssignees(req.params.id, userSession.userId, "Comment updated");
       const updated = await getComment(req.params.commentId);
       return res.status(200).send(updated);
     });
