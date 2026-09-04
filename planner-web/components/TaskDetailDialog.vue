@@ -391,34 +391,14 @@ const availableStatuses = computed(() => {
   return project?.statuses || ["To Do", "In Progress", "Done"];
 });
 
-watch(
-  () => props.taskId,
-  async (newId) => {
-    stopTaskPolling();
-    if (newId) {
-      loading.value = true;
-      editing.value = false;
-      try {
-        await tasksStore.fetchById(newId);
-        await projectsStore.fetchAll();
-      } catch {
-        // Error fetching task
-      } finally {
-        loading.value = false;
-      }
-      startTaskPolling();
-    } else {
-      tasksStore.currentTask = null;
-    }
-  },
-  { immediate: true },
-);
-
 // While the dialog is open, poll the task so changes made by other users
 // show up without reopening it. The poll never runs while the user is
 // editing or submitting: a re-fetch replaces currentTask and would fight
 // the form. The server also sends push notifications on task updates;
 // this poll covers users who have not opted in to notifications.
+// Declared before the taskId watch below: that watch is immediate and its
+// callback runs synchronously during setup, calling stopTaskPolling() —
+// reading taskPollTimer before its declaration would be a TDZ error.
 const TASK_POLL_INTERVAL = 60 * 1000;
 let taskPollTimer = null;
 
@@ -444,6 +424,29 @@ async function pollTask() {
     // Transient polling errors are ignored; the next tick retries
   }
 }
+
+watch(
+  () => props.taskId,
+  async (newId) => {
+    stopTaskPolling();
+    if (newId) {
+      loading.value = true;
+      editing.value = false;
+      try {
+        await tasksStore.fetchById(newId);
+        await projectsStore.fetchAll();
+      } catch {
+        // Error fetching task
+      } finally {
+        loading.value = false;
+      }
+      startTaskPolling();
+    } else {
+      tasksStore.currentTask = null;
+    }
+  },
+  { immediate: true },
+);
 
 // Belt-and-braces alongside the ResizeObserver: re-measure after the
 // comments have rendered. The observer remains the source of truth — it
