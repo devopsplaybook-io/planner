@@ -13,6 +13,8 @@ import {
   removeAssignee,
   addComment,
   deleteComment,
+  getComment,
+  updateComment,
   clearLabels,
   addLabel,
   addTaskAttachment,
@@ -168,15 +170,46 @@ export class TasksRoutes {
     fastify.delete<{ Params: { id: string; commentId: string } }>(
       "/:id/comments/:commentId",
       async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
         try {
           await AuthMustBeAuthenticated(req, res);
         } catch {
           return;
         }
+        const comment = await getComment(req.params.commentId);
+        if (!comment)
+          return res.status(404).send({ error: "Comment Not Found" });
+        if (comment.userId !== userSession.userId && userSession.role !== "admin") {
+          return res.status(403).send({ error: "Access Denied" });
+        }
         await deleteComment(req.params.commentId);
         return res.status(201).send({});
       },
     );
+
+    interface PutComment extends RequestGenericInterface {
+      Params: { id: string; commentId: string };
+      Body: { text: string };
+    }
+    fastify.put<PutComment>("/:id/comments/:commentId", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      try {
+        await AuthMustBeAuthenticated(req, res);
+      } catch {
+        return;
+      }
+      const comment = await getComment(req.params.commentId);
+      if (!comment)
+        return res.status(404).send({ error: "Comment Not Found" });
+      if (comment.userId !== userSession.userId && userSession.role !== "admin") {
+        return res.status(403).send({ error: "Access Denied" });
+      }
+      if (!req.body.text)
+        return res.status(400).send({ error: "Missing: text" });
+      await updateComment(req.params.commentId, req.body.text);
+      const updated = await getComment(req.params.commentId);
+      return res.status(200).send(updated);
+    });
 
     // ==================== ASSIGNEES ====================
     interface PostAssignee extends RequestGenericInterface {

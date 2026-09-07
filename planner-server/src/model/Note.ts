@@ -6,6 +6,7 @@ export interface NoteComment {
   userName?: string;
   text: string;
   dateCreated: string;
+  dateUpdated?: string;
 }
 
 export interface NoteAttachment {

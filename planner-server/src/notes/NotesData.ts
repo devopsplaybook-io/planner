@@ -85,6 +85,33 @@ export async function deleteNoteComment(commentId: string): Promise<void> {
   ]);
 }
 
+export async function getNoteComment(commentId: string): Promise<NoteComment | null> {
+  const rows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_NOTE_COMMENT_BY_ID[DbUtilsGetType()],
+    [commentId],
+  );
+  if (rows.length === 0) return null;
+  return {
+    id: rows[0].id,
+    userId: rows[0].userId,
+    userName: rows[0].userName as string | undefined,
+    text: rows[0].text,
+    dateCreated: rows[0].dateCreated,
+    dateUpdated: rows[0].dateUpdated as string | undefined,
+  };
+}
+
+export async function updateNoteComment(
+  commentId: string,
+  text: string,
+): Promise<void> {
+  await DbUtilsExecSQL(SQL_QUERIES.UPDATE_NOTE_COMMENT[DbUtilsGetType()], [
+    text,
+    new Date().toISOString(),
+    commentId,
+  ]);
+}
+
 // ==================== LABELS ====================
 
 export async function addNoteLabel(
@@ -169,8 +196,10 @@ async function getNoteComments(noteId: string): Promise<NoteComment[]> {
   return rows.map((r) => ({
     id: r.id,
     userId: r.userId,
+    userName: r.userName as string | undefined,
     text: r.text,
     dateCreated: r.dateCreated,
+    dateUpdated: r.dateUpdated as string | undefined,
   }));
 }
 
@@ -253,10 +282,23 @@ const SQL_QUERIES = {
     postgres: 'DELETE FROM note_comments WHERE "id" = $1',
     sqlite: "DELETE FROM note_comments WHERE id = ?",
   },
+  GET_NOTE_COMMENT_BY_ID: {
+    postgres:
+      'SELECT nc.*, u."name" AS "userName" FROM note_comments nc LEFT JOIN users u ON nc."userId" = u."id" WHERE nc."id" = $1',
+    sqlite:
+      "SELECT nc.*, u.name AS userName FROM note_comments nc LEFT JOIN users u ON nc.userId = u.id WHERE nc.id = ?",
+  },
+  UPDATE_NOTE_COMMENT: {
+    postgres:
+      'UPDATE note_comments SET "text" = $1, "dateUpdated" = $2 WHERE "id" = $3',
+    sqlite:
+      "UPDATE note_comments SET text = ?, dateUpdated = ? WHERE id = ?",
+  },
   GET_NOTE_COMMENTS: {
     postgres:
-      'SELECT * FROM note_comments WHERE "noteId" = $1 ORDER BY dateCreated',
-    sqlite: "SELECT * FROM note_comments WHERE noteId = ? ORDER BY dateCreated",
+      'SELECT nc.*, u."name" AS "userName" FROM note_comments nc LEFT JOIN users u ON nc."userId" = u."id" WHERE nc."noteId" = $1 ORDER BY nc."dateCreated"',
+    sqlite:
+      "SELECT nc.*, u.name AS userName FROM note_comments nc LEFT JOIN users u ON nc.userId = u.id WHERE nc.noteId = ? ORDER BY nc.dateCreated",
   },
   GET_NOTE_ATTACHMENTS: {
     postgres: 'SELECT * FROM note_attachments WHERE "noteId" = $1',

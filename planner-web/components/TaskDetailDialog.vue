@@ -251,24 +251,55 @@
               <header>
                 <strong>{{ comment.userName || comment.userId }}</strong>
                 <small>{{ formatDate(comment.dateCreated) }}</small>
+                <div v-if="canModifyComment(comment)" class="comment-actions">
+                  <button
+                    class="comment-action-btn"
+                    aria-label="Edit comment"
+                    @click="startEditComment(comment)"
+                  >
+                    <i class="bi bi-pencil" />
+                  </button>
+                  <button
+                    class="comment-action-btn danger"
+                    aria-label="Delete comment"
+                    :aria-busy="deletingCommentId === comment.id"
+                    @click="handleDeleteComment(comment.id)"
+                  >
+                    <i class="bi bi-trash" />
+                  </button>
+                </div>
               </header>
-              <div
-                class="comment-body markdown-body"
-                :class="{ 'is-truncated': !expandedComments.has(comment.id) }"
-              >
+              <template v-if="editingCommentId === comment.id">
+                <div class="comment-edit-form">
+                  <textarea
+                    v-model="editingCommentText"
+                    rows="2"
+                  />
+                  <div class="comment-edit-actions">
+                    <button class="secondary small-btn" @click="cancelEditComment">Cancel</button>
+                    <button class="small-btn" :aria-busy="savingComment" @click="saveEditComment(comment.id)">Save</button>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
                 <div
-                  :ref="(el) => setCommentBodyRef(comment.id, el)"
-                  class="comment-body-content"
-                  v-html="renderMarkdown(comment.text)"
-                />
-              </div>
-              <button
-                v-if="overflowingComments.has(comment.id)"
-                class="expand-btn"
-                @click="toggleCommentExpand(comment.id)"
-              >
-                {{ expandedComments.has(comment.id) ? 'Show less' : 'Show more' }}
-              </button>
+                  class="comment-body markdown-body"
+                  :class="{ 'is-truncated': !expandedComments.has(comment.id) }"
+                >
+                  <div
+                    :ref="(el) => setCommentBodyRef(comment.id, el)"
+                    class="comment-body-content"
+                    v-html="renderMarkdown(comment.text)"
+                  />
+                </div>
+                <button
+                  v-if="overflowingComments.has(comment.id)"
+                  class="expand-btn"
+                  @click="toggleCommentExpand(comment.id)"
+                >
+                  {{ expandedComments.has(comment.id) ? 'Show less' : 'Show more' }}
+                </button>
+              </template>
             </div>
           </div>
           <form class="add-comment" @submit.prevent="addComment">
@@ -343,6 +374,7 @@ const dialogEl = useModalDialog(() => !!props.taskId);
 
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
+const authStore = useAuthStore();
 
 const task = computed(() => tasksStore.currentTask);
 const loading = ref(false);
@@ -375,6 +407,11 @@ const expandedComments = ref(new Set());
 // the markdown (the outer .comment-body does the 2-line clip).
 const commentBodyEls = new Map();
 const overflowingComments = ref(new Set());
+// Comment edit/delete state
+const deletingCommentId = ref("");
+const editingCommentId = ref("");
+const editingCommentText = ref("");
+const savingComment = ref(false);
 // A one-shot measurement races with dialog rendering: the <dialog> opens
 // via showModal in a post-flush watcher, so content may still be
 // display:none and report scrollHeight 0, hiding the expand button until
@@ -566,6 +603,47 @@ async function addComment() {
     alert(e.response?.data?.error || "Failed to add comment");
   } finally {
     submitting.value = false;
+  }
+}
+
+function canModifyComment(comment) {
+  if (authStore.isAdmin) return true;
+  return authStore.currentUser?.id === comment.userId;
+}
+
+async function handleDeleteComment(commentId) {
+  if (!confirm("Delete this comment?")) return;
+  deletingCommentId.value = commentId;
+  try {
+    await tasksStore.deleteComment(props.taskId, commentId);
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to delete comment");
+  } finally {
+    deletingCommentId.value = "";
+  }
+}
+
+function startEditComment(comment) {
+  editingCommentId.value = comment.id;
+  editingCommentText.value = comment.text;
+}
+
+function cancelEditComment() {
+  editingCommentId.value = "";
+  editingCommentText.value = "";
+}
+
+async function saveEditComment(commentId) {
+  if (!editingCommentText.value.trim()) return;
+  savingComment.value = true;
+  try {
+    await tasksStore.updateComment(props.taskId, commentId, editingCommentText.value);
+    editingCommentId.value = "";
+    editingCommentText.value = "";
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to update comment");
+  } finally {
+    savingComment.value = false;
   }
 }
 
@@ -814,6 +892,8 @@ section h4 {
   padding: var(--space-xs) var(--space-sm);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
+  margin-left: var(--space-sm);
+  border-left: 3px solid var(--color-border);
 }
 
 .comment header {
@@ -826,6 +906,76 @@ section h4 {
 
 .comment header strong {
   font-size: var(--text-md);
+}
+
+.comment-actions {
+  display: flex;
+  gap: var(--space-2xs);
+  margin-left: auto;
+}
+
+.comment-action-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  padding: 0 var(--space-2xs);
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.comment:hover .comment-action-btn {
+  opacity: 1;
+}
+
+.comment-action-btn:hover {
+  color: var(--color-primary-text);
+}
+
+.comment-action-btn.danger:hover {
+  color: var(--color-danger);
+}
+
+.comment-edit-form {
+  margin-top: var(--space-xs);
+}
+
+.comment-edit-form textarea {
+  width: 100%;
+  min-height: 60px;
+  margin-bottom: var(--space-xs);
+}
+
+.comment-edit-actions {
+  display: flex;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+}
+
+/* Flatten heading sizes inside comment markdown so titles don't dominate */
+.comment-body.markdown-body h1,
+.comment-body.markdown-body h2,
+.comment-body.markdown-body h3,
+.comment-body.markdown-body h4,
+.comment-body.markdown-body h5,
+.comment-body.markdown-body h6 {
+  margin-top: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.comment-body.markdown-body h1 {
+  font-size: 1.15em;
+}
+.comment-body.markdown-body h2 {
+  font-size: 1.08em;
+}
+.comment-body.markdown-body h3 {
+  font-size: 1.02em;
+}
+.comment-body.markdown-body h4 {
+  font-size: 1em;
 }
 
 .comment-body {

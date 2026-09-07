@@ -151,15 +151,48 @@
               <header>
                 <strong>{{ comment.userName || comment.userId }}</strong>
                 <small>{{ formatDate(comment.dateCreated) }}</small>
+                <div v-if="canModifyComment(comment)" class="comment-actions">
+                  <button
+                    class="comment-action-btn"
+                    aria-label="Edit comment"
+                    @click="startEditComment(comment)"
+                  >
+                    <i class="bi bi-pencil" />
+                  </button>
+                  <button
+                    class="comment-action-btn danger"
+                    aria-label="Delete comment"
+                    :aria-busy="deletingCommentId === comment.id"
+                    @click="handleDeleteComment(comment.id)"
+                  >
+                    <i class="bi bi-trash" />
+                  </button>
+                </div>
               </header>
-              <p>{{ comment.text }}</p>
+              <template v-if="editingCommentId === comment.id">
+                <div class="comment-edit-form">
+                  <textarea
+                    v-model="editingCommentText"
+                    rows="2"
+                  />
+                  <div class="comment-edit-actions">
+                    <button class="secondary small-btn" @click="cancelEditComment">Cancel</button>
+                    <button class="small-btn" :aria-busy="savingComment" @click="saveEditComment(comment.id)">Save</button>
+                  </div>
+                </div>
+              </template>
+              <div
+                v-else
+                class="comment-body markdown-body"
+                v-html="renderMarkdown(comment.text)"
+              />
             </div>
           </div>
           <form class="add-comment" @submit.prevent="addComment">
-            <input
+            <textarea
               v-model="newComment"
-              type="text"
-              placeholder="Add a comment..."
+              placeholder="Add a comment... (Markdown supported)"
+              rows="2"
               required
             />
             <button type="submit" :aria-busy="submitting">Send</button>
@@ -225,6 +258,7 @@ const emit = defineEmits(["close", "updated"]);
 const dialogEl = useModalDialog(() => !!props.noteId);
 
 const notesStore = useNotesStore();
+const authStore = useAuthStore();
 
 const note = computed(() => notesStore.currentNote);
 const loading = ref(false);
@@ -241,6 +275,11 @@ const saving = ref(false);
 const editForm = ref({ title: "", description: "" });
 const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
+// Comment edit/delete state
+const deletingCommentId = ref("");
+const editingCommentId = ref("");
+const editingCommentText = ref("");
+const savingComment = ref(false);
 
 watch(
   () => props.noteId,
@@ -310,6 +349,47 @@ async function addComment() {
     alert(e.response?.data?.error || "Failed to add comment");
   } finally {
     submitting.value = false;
+  }
+}
+
+function canModifyComment(comment) {
+  if (authStore.isAdmin) return true;
+  return authStore.currentUser?.id === comment.userId;
+}
+
+async function handleDeleteComment(commentId) {
+  if (!confirm("Delete this comment?")) return;
+  deletingCommentId.value = commentId;
+  try {
+    await notesStore.deleteComment(props.noteId, commentId);
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to delete comment");
+  } finally {
+    deletingCommentId.value = "";
+  }
+}
+
+function startEditComment(comment) {
+  editingCommentId.value = comment.id;
+  editingCommentText.value = comment.text;
+}
+
+function cancelEditComment() {
+  editingCommentId.value = "";
+  editingCommentText.value = "";
+}
+
+async function saveEditComment(commentId) {
+  if (!editingCommentText.value.trim()) return;
+  savingComment.value = true;
+  try {
+    await notesStore.updateComment(props.noteId, commentId, editingCommentText.value);
+    editingCommentId.value = "";
+    editingCommentText.value = "";
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to update comment");
+  } finally {
+    savingComment.value = false;
   }
 }
 
@@ -453,6 +533,8 @@ section h4 {
   padding: var(--space-xs) var(--space-sm);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
+  margin-left: var(--space-sm);
+  border-left: 3px solid var(--color-border);
 }
 
 .comment header {
@@ -467,9 +549,90 @@ section h4 {
   font-size: var(--text-md);
 }
 
-.comment p {
-  margin: 0;
+.comment-actions {
+  display: flex;
+  gap: var(--space-2xs);
+  margin-left: auto;
+}
+
+.comment-action-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  padding: 0 var(--space-2xs);
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.comment:hover .comment-action-btn {
+  opacity: 1;
+}
+
+.comment-action-btn:hover {
+  color: var(--color-primary-text);
+}
+
+.comment-action-btn.danger:hover {
+  color: var(--color-danger);
+}
+
+.comment-edit-form {
+  margin-top: var(--space-xs);
+}
+
+.comment-edit-form textarea {
+  width: 100%;
+  min-height: 60px;
+  margin-bottom: var(--space-xs);
+}
+
+.comment-edit-actions {
+  display: flex;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+}
+
+/* Flatten heading sizes inside comment markdown so titles don't dominate */
+.comment-body.markdown-body h1,
+.comment-body.markdown-body h2,
+.comment-body.markdown-body h3,
+.comment-body.markdown-body h4,
+.comment-body.markdown-body h5,
+.comment-body.markdown-body h6 {
+  margin-top: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.comment-body.markdown-body h1 {
+  font-size: 1.15em;
+}
+.comment-body.markdown-body h2 {
+  font-size: 1.08em;
+}
+.comment-body.markdown-body h3 {
+  font-size: 1.02em;
+}
+.comment-body.markdown-body h4 {
+  font-size: 1em;
+}
+
+.comment-body {
+  display: flow-root;
   font-size: var(--text-md);
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.comment-body > :first-child {
+  margin-top: 0;
+}
+
+.comment-body > :last-child {
+  margin-bottom: 0;
 }
 
 .add-comment,
