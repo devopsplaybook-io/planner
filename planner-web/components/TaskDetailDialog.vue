@@ -892,8 +892,13 @@ section h4 {
   padding: var(--space-xs) var(--space-sm);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
+}
+
+.comment-body,
+.comment-edit-form {
   margin-left: var(--space-sm);
   border-left: 3px solid var(--color-border);
+  padding-left: var(--space-sm);
 }
 
 .comment header {
