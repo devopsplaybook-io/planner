@@ -26,7 +26,7 @@
               aria-label="Cancel"
               @click="cancelEdit"
             >
-              <i class="bi bi-x" />
+              <i class="bi bi-arrow-counterclockwise" />
             </button>
           </template>
           <button class="close-btn" aria-label="Close" @click="handleClose">
