@@ -6,6 +6,8 @@
 
 - **Project Management** - Create and manage multiple projects with custom statuses
 - **Task Tracking** - Tasks with title, description, checklists, comments, attachments, due dates, priorities, and labels
+- **Task Assignment** - Assign tasks to one or more users
+- **Smart Refresh** - Lists refresh when a dialog closes and open tasks are polled for changes; assignees receive a push notification when their task is updated by another user
 - **Note Taking** - Notes with title, description, comments, attachments, and labels
 - **Multiple Views** - Next (overdue/upcoming), Calendar view, and Kanban board
 - **Markdown Support** - Task, note, and project descriptions support markdown syntax
@@ -80,7 +82,7 @@ Planner can generate task recommendations using any OpenAI-compatible chat compl
 
 ## Web Push Notifications
 
-Planner sends browser push notifications for tasks due today or tomorrow. Notifications are enabled when `WEB_PUSH_ENABLED` is set to `true`. Users opt in from the Settings page.
+Planner sends browser push notifications for tasks due today or tomorrow, and to task assignees when their task is updated by another user (status change, comment, assignee, label or attachment change). Notifications are enabled when `WEB_PUSH_ENABLED` is set to `true`. Users opt in from the Settings page.
 
 VAPID keys are read from the environment when both `WEB_PUSH_VAPID_PUBLIC_KEY` and `WEB_PUSH_VAPID_PRIVATE_KEY` are set, otherwise they are loaded from `DATA_DIR/vapid-keys.json` and generated on first start. Providing them explicitly keeps the identity of the server across a lost volume and allows several replicas.
 
