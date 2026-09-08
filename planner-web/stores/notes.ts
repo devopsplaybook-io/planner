@@ -7,6 +7,7 @@ export interface NoteComment {
   userName?: string;
   text: string;
   dateCreated: string;
+  dateUpdated?: string;
 }
 
 export interface Note {
@@ -99,6 +100,20 @@ export const useNotesStore = defineStore("notes", {
           (c) => c.id !== commentId,
         );
       }
+    },
+
+    async updateComment(noteId: string, commentId: string, text: string) {
+      const res = await api.put(`/notes/${noteId}/comments/${commentId}`, { text });
+      const note = this.notes.find((n) => n.id === noteId);
+      if (note) {
+        const idx = note.comments.findIndex((c) => c.id === commentId);
+        if (idx >= 0) note.comments[idx] = res.data;
+      }
+      if (this.currentNote?.id === noteId) {
+        const idx = this.currentNote.comments.findIndex((c) => c.id === commentId);
+        if (idx >= 0) this.currentNote.comments[idx] = res.data;
+      }
+      return res.data;
     },
 
     async setLabels(noteId: string, labels: string[]) {

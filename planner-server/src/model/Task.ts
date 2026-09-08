@@ -11,6 +11,7 @@ export interface TaskComment {
   userName?: string;
   text: string;
   dateCreated: string;
+  dateUpdated?: string;
 }
 
 export interface TaskAttachment {

@@ -10,6 +10,8 @@ import {
   NotesDataUpdate,
   addNoteComment,
   deleteNoteComment,
+  getNoteComment,
+  updateNoteComment,
   clearNoteLabels,
   addNoteLabel,
   addNoteAttachment,
@@ -139,15 +141,46 @@ export class NotesRoutes {
     fastify.delete<{ Params: { id: string; commentId: string } }>(
       "/:id/comments/:commentId",
       async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
         try {
           await AuthMustBeAuthenticated(req, res);
         } catch {
           return;
         }
+        const comment = await getNoteComment(req.params.commentId);
+        if (!comment)
+          return res.status(404).send({ error: "Comment Not Found" });
+        if (comment.userId !== userSession.userId && userSession.role !== "admin") {
+          return res.status(403).send({ error: "Access Denied" });
+        }
         await deleteNoteComment(req.params.commentId);
         return res.status(201).send({});
       },
     );
+
+    interface PutNoteComment extends RequestGenericInterface {
+      Params: { id: string; commentId: string };
+      Body: { text: string };
+    }
+    fastify.put<PutNoteComment>("/:id/comments/:commentId", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      try {
+        await AuthMustBeAuthenticated(req, res);
+      } catch {
+        return;
+      }
+      const comment = await getNoteComment(req.params.commentId);
+      if (!comment)
+        return res.status(404).send({ error: "Comment Not Found" });
+      if (comment.userId !== userSession.userId && userSession.role !== "admin") {
+        return res.status(403).send({ error: "Access Denied" });
+      }
+      if (!req.body.text)
+        return res.status(400).send({ error: "Missing: text" });
+      await updateNoteComment(req.params.commentId, req.body.text);
+      const updated = await getNoteComment(req.params.commentId);
+      return res.status(200).send(updated);
+    });
 
     // ==================== LABELS ====================
     interface PostNoteLabel extends RequestGenericInterface {

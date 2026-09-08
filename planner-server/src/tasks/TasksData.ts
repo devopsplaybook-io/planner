@@ -124,6 +124,33 @@ export async function deleteComment(commentId: string): Promise<void> {
   ]);
 }
 
+export async function getComment(commentId: string): Promise<TaskComment | null> {
+  const rows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_COMMENT_BY_ID[DbUtilsGetType()],
+    [commentId],
+  );
+  if (rows.length === 0) return null;
+  return {
+    id: rows[0].id,
+    userId: rows[0].userId,
+    userName: rows[0].userName as string | undefined,
+    text: rows[0].text,
+    dateCreated: rows[0].dateCreated,
+    dateUpdated: rows[0].dateUpdated as string | undefined,
+  };
+}
+
+export async function updateComment(
+  commentId: string,
+  text: string,
+): Promise<void> {
+  await DbUtilsExecSQL(SQL_QUERIES.UPDATE_COMMENT[DbUtilsGetType()], [
+    text,
+    new Date().toISOString(),
+    commentId,
+  ]);
+}
+
 // ==================== LABELS ====================
 
 export async function addLabel(taskId: string, name: string): Promise<void> {
@@ -226,6 +253,7 @@ async function getComments(taskId: string): Promise<TaskComment[]> {
     userName: r.userName as string | undefined,
     text: r.text,
     dateCreated: r.dateCreated,
+    dateUpdated: r.dateUpdated as string | undefined,
   }));
 }
 
@@ -325,6 +353,18 @@ const SQL_QUERIES = {
   DELETE_COMMENT: {
     postgres: 'DELETE FROM task_comments WHERE "id" = $1',
     sqlite: "DELETE FROM task_comments WHERE id = ?",
+  },
+  GET_COMMENT_BY_ID: {
+    postgres:
+      'SELECT tc.*, u."name" AS "userName" FROM task_comments tc LEFT JOIN users u ON tc."userId" = u."id" WHERE tc."id" = $1',
+    sqlite:
+      "SELECT tc.*, u.name AS userName FROM task_comments tc LEFT JOIN users u ON tc.userId = u.id WHERE tc.id = ?",
+  },
+  UPDATE_COMMENT: {
+    postgres:
+      'UPDATE task_comments SET "text" = $1, "dateUpdated" = $2 WHERE "id" = $3',
+    sqlite:
+      "UPDATE task_comments SET text = ?, dateUpdated = ? WHERE id = ?",
   },
   GET_COMMENTS: {
     postgres:

@@ -12,6 +12,7 @@ export interface TaskComment {
   userName?: string;
   text: string;
   dateCreated: string;
+  dateUpdated?: string;
 }
 
 export interface TaskAssignee {
@@ -128,6 +129,20 @@ export const useTasksStore = defineStore("tasks", {
           (c) => c.id !== commentId,
         );
       }
+    },
+
+    async updateComment(taskId: string, commentId: string, text: string) {
+      const res = await api.put(`/tasks/${taskId}/comments/${commentId}`, { text });
+      const task = this.tasks.find((t) => t.id === taskId);
+      if (task) {
+        const idx = task.comments.findIndex((c) => c.id === commentId);
+        if (idx >= 0) task.comments[idx] = res.data;
+      }
+      if (this.currentTask?.id === taskId) {
+        const idx = this.currentTask.comments.findIndex((c) => c.id === commentId);
+        if (idx >= 0) this.currentTask.comments[idx] = res.data;
+      }
+      return res.data;
     },
 
     async addAssignee(taskId: string, userId: string) {
