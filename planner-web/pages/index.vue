@@ -292,6 +292,7 @@ section h2 {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: transparent;
+  color: var(--color-text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
