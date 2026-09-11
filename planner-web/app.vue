@@ -121,9 +121,9 @@ provide("toggleTheme", toggleTheme);
 
 #page-layout > header {
   height: var(--header-height, 3em);
+  padding: var(--space-xs) var(--space-sm) var(--space-md) var(--space-sm);
 }
 
-#page-layout > header,
 main {
   padding: var(--space-sm);
 }
