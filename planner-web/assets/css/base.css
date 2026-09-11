@@ -540,6 +540,19 @@ dialog pre {
   }
 }
 
+/* Desktop: dialogs get more room on wider screens */
+@media (min-width: 868px) {
+  dialog article {
+    width: min(90%, 1050px);
+  }
+}
+
+@media (min-width: 1400px) {
+  dialog article {
+    width: min(90%, 1280px);
+  }
+}
+
 /* ============================================
    Navigation
    ============================================ */
