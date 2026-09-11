@@ -540,6 +540,14 @@ dialog pre {
   }
 }
 
+/* 560px suits compact and tablet layouts; on the desktop breakpoint dialogs
+   get more room — the mobile-era cap feels cramped on wide viewports */
+@media (min-width: 868px) {
+  dialog article {
+    width: min(90%, 800px);
+  }
+}
+
 /* ============================================
    Navigation
    ============================================ */
