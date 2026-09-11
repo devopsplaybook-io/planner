@@ -120,7 +120,7 @@ provide("toggleTheme", toggleTheme);
    headers (e.g. .page-header) keep their natural height */
 
 #page-layout > header {
-  padding: var(--space-2xs) var(--space-sm) var(--space-xs) var(--space-sm);
+  padding: calc(var(--space-xs) / 2) var(--space-sm);
 }
 
 main {
