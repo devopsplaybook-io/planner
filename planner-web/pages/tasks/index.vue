@@ -66,6 +66,7 @@
 <script setup>
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
+const statusesStore = useStatusesStore();
 const router = useRouter();
 const route = useRoute();
 
@@ -79,32 +80,37 @@ const statuses = computed(() => {
     const project = projectsStore.projects.find(
       (p) => p.id === projectsStore.selectedProjectFilter,
     );
-    return project?.statuses || ["To Do", "In Progress", "Done"];
+    if (project?.statuses?.length) {
+      return project.statuses;
+    }
+    return fallbackStatuses();
   }
-  // Collect statuses from all projects preserving their defined order
-  const orderedStatuses = [];
-  const seen = new Set();
+  // All projects: follow the global status catalog, then append any
+  // statuses not covered (e.g. dangling task statuses) as a safety net
+  const ordered = [...statusesStore.catalog];
+  const seen = new Set(ordered);
   for (const project of projectsStore.projects) {
     if (project.statuses) {
       for (const status of project.statuses) {
         if (!seen.has(status)) {
           seen.add(status);
-          orderedStatuses.push(status);
+          ordered.push(status);
         }
       }
     }
   }
-  // Add any statuses from tasks not in any project's status list
   for (const task of tasksStore.tasks) {
     if (!seen.has(task.status)) {
       seen.add(task.status);
-      orderedStatuses.push(task.status);
+      ordered.push(task.status);
     }
   }
-  return orderedStatuses.length > 0
-    ? orderedStatuses
-    : ["To Do", "In Progress", "Done"];
+  return ordered.length > 0 ? ordered : fallbackStatuses();
 });
+
+function fallbackStatuses() {
+  return ["To Do", "In Progress", "Done"];
+}
 
 function getTasksByStatus(status) {
   return tasksStore.tasks.filter((t) => t.status === status);
@@ -162,7 +168,7 @@ async function fetchTasks() {
 
 onMounted(async () => {
   try {
-    await projectsStore.fetchAll();
+    await Promise.all([projectsStore.fetchAll(), statusesStore.fetchAll()]);
     await fetchTasks();
   } catch {
     // Handle error

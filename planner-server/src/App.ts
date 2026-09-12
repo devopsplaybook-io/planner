@@ -19,6 +19,8 @@ import { Project } from "./model/Project";
 import { TasksRoutes } from "./tasks/TasksRoutes";
 import { NotesRoutes } from "./notes/NotesRoutes";
 import { ViewsRoutes } from "./views/ViewsRoutes";
+import { StatusesRoutes } from "./statuses/StatusesRoutes";
+import { StatusesCatalogSeedIfEmpty } from "./statuses/StatusesData";
 import { RecommendationInit } from "./recommendation/Recommendation";
 import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
 import { NotificationsInit } from "./notifications/Notifications";
@@ -90,6 +92,7 @@ Promise.resolve().then(async () => {
   await DbUtilsInit(config);
   await AuthInit(config);
   await runMigrations();
+  await StatusesCatalogSeedIfEmpty();
   await RecommendationInit(config);
   await NotificationsInit(config);
 
@@ -186,6 +189,13 @@ Promise.resolve().then(async () => {
       await new ViewsRoutes().getRoutes(instance);
     },
     { prefix: "/api/views" },
+  );
+
+  await fastify.register(
+    async (instance) => {
+      await new StatusesRoutes().getRoutes(instance);
+    },
+    { prefix: "/api/statuses" },
   );
 
   await fastify.register(
