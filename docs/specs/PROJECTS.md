@@ -10,14 +10,16 @@ Projects are the top-level organizational unit.
 
 ## Statuses
 
-Each project can define its own set of statuses. By default:
+Statuses are defined and ordered globally by admins in the admin section (see [ADMIN.md](ADMIN.md)). The default catalog is:
 
 - [x] To Do
 - [x] In Progress
 - [x] Done
 
-- [x] Projects can define custom statuses except "Done", which is mandatory for all projects.
-  - [x] When the project is edited, the user can define the list of statuses
-  - [x] The statuses can be ordered but the last one is always "Done". Ordering can be done using drag and drop.
+- [x] Projects do not define statuses; they select which statuses from the global catalog they use.
+  - [x] When the project is edited, the user can select the statuses from the catalog (no free-text status creation and no per-project ordering).
+  - [x] "Done" is mandatory for all projects and cannot be un-selected.
+  - [x] A project must use at least 2 statuses.
+  - [x] The project's statuses are stored in the global catalog order.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-06-11_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-12_

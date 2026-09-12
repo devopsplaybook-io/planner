@@ -4,7 +4,8 @@
 
 ## Features
 
-- **Project Management** - Create and manage multiple projects with custom statuses
+- **Project Management** - Create and manage multiple projects and select which statuses they use
+- **Centralized Status Management** - Admins define and order the global status catalog from the admin section; the order is reflected across the Tasks board
 - **Task Tracking** - Tasks with title, description, checklists, comments, attachments, due dates, priorities, and labels
 - **Task Assignment** - Assign tasks to one or more users
 - **Smart Refresh** - Lists refresh when a dialog closes and open tasks are polled for changes; assignees receive a push notification when their task is updated by another user
@@ -127,9 +128,11 @@ planner/
 
 Planner exposes a RESTful API under the `/api/` prefix:
 
-| Endpoint        | Description           |
-| --------------- | --------------------- |
-| GET /api/status | Health check endpoint |
+| Endpoint             | Description                                             |
+| -------------------- | ------------------------------------------------------- |
+| GET /api/status      | Health check endpoint                                   |
+| GET /api/statuses    | Get the global, ordered status catalog (any user)       |
+| PUT /api/statuses    | Replace the global status catalog (admin only)          |
 
 Additional API endpoints for projects, tasks, notes, and users will be available as the implementation progresses.
 

@@ -1,6 +1,7 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { Project } from "../model/Project";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
+import { StatusesCatalogGet } from "../statuses/StatusesData";
 import {
   ProjectsDataAdd,
   ProjectsDataDelete,
@@ -11,7 +12,10 @@ import {
   addProjectUser,
 } from "./ProjectsData";
 
-export function validateStatuses(statuses: string[]): string | null {
+export function validateProjectStatusSelection(
+  statuses: string[],
+  catalog: string[],
+): string | null {
   if (!Array.isArray(statuses) || statuses.length < 2) {
     return "At least 2 statuses are required";
   }
@@ -21,10 +25,21 @@ export function validateStatuses(statuses: string[]): string | null {
   if (new Set(statuses).size !== statuses.length) {
     return "Duplicate statuses are not allowed";
   }
-  if (statuses[statuses.length - 1] !== "Done") {
-    return '"Done" must be the last status';
+  if (!statuses.includes("Done")) {
+    return '"Done" must be included';
+  }
+  const unknown = statuses.filter((s) => !catalog.includes(s));
+  if (unknown.length > 0) {
+    return `Unknown statuses: ${unknown.join(", ")}`;
   }
   return null;
+}
+
+export function normalizeStatusSelection(
+  statuses: string[],
+  catalog: string[],
+): string[] {
+  return catalog.filter((s) => statuses.includes(s));
 }
 
 export class ProjectsRoutes {
@@ -81,11 +96,15 @@ export class ProjectsRoutes {
         project.userAccess = req.body.userAccess;
       }
       if (req.body.statuses) {
-        const statusError = validateStatuses(req.body.statuses);
+        const catalog = await StatusesCatalogGet();
+        const statusError = validateProjectStatusSelection(
+          req.body.statuses,
+          catalog,
+        );
         if (statusError) {
           return res.status(400).send({ error: statusError });
         }
-        project.statuses = req.body.statuses;
+        project.statuses = normalizeStatusSelection(req.body.statuses, catalog);
       }
       await ProjectsDataAdd(project);
       return res.status(201).send(project.toTransportJson());
@@ -119,11 +138,15 @@ export class ProjectsRoutes {
         project.description = req.body.description;
       }
       if (req.body.statuses) {
-        const statusError = validateStatuses(req.body.statuses);
+        const catalog = await StatusesCatalogGet();
+        const statusError = validateProjectStatusSelection(
+          req.body.statuses,
+          catalog,
+        );
         if (statusError) {
           return res.status(400).send({ error: statusError });
         }
-        project.statuses = req.body.statuses;
+        project.statuses = normalizeStatusSelection(req.body.statuses, catalog);
       }
       if (req.body.visibility) {
         project.visibility = req.body.visibility;

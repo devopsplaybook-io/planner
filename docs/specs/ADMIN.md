@@ -1,0 +1,21 @@
+# Admin
+
+The admin section centralizes application-wide configuration. It is organized as one tab per configuration type.
+
+- [x] The admin section is accessible only to users with the admin role and presents one tab per configuration type.
+- [x] Users tab: user management (create users, change roles, delete users, manage API keys).
+
+## Statuses tab
+
+Statuses are defined, managed and ordered globally in the admin section. Projects do not create statuses; they select which statuses from the catalog they use (see [PROJECTS.md](PROJECTS.md)).
+
+- [x] The admin section has a "Statuses" tab where the global status catalog is managed.
+- [x] The status catalog is a single, cross-project, ordered list of status names.
+- [x] Only admins can edit the status catalog; the catalog itself is readable by all authenticated users.
+- [x] The catalog is saved on the server and reflected in the UI (Tasks kanban, project status selection).
+- [x] "Done" is mandatory: it is always part of the catalog and always the last status. It cannot be removed or reordered.
+- [x] Statuses can be added, removed and reordered (drag and drop).
+- [x] A status that is still used by at least one project cannot be removed from the catalog.
+- [x] On a fresh installation the catalog is seeded with: To Do, In Progress, Done.
+
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-12_

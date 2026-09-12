@@ -75,65 +75,35 @@
       <section>
         <h2>Statuses</h2>
         <p class="section-hint">
-          Drag to reorder. <strong>Done</strong> is always last and cannot be
-          removed.
+          Statuses are defined and ordered by admins in Admin &rarr; Statuses.
+          Select which ones this project uses. <strong>Done</strong> is
+          mandatory.
         </p>
-        <div class="status-editor">
+        <div class="status-selection">
           <div
-            v-for="(status, idx) in editableStatuses"
+            v-for="status in catalogStatuses"
             :key="status"
-            class="status-row"
-            :class="{
-              'is-dragging': dragStatusIdx === idx,
-              'is-done-row': status === 'Done',
-            }"
-            :draggable="status !== 'Done'"
-            @dragstart="onStatusDragStart($event, idx)"
-            @dragover.prevent="onStatusDragOver(idx)"
-            @dragenter.prevent="onStatusDragOver(idx)"
-            @drop="onStatusDrop(idx)"
-            @dragend="dragStatusIdx = null"
+            class="status-check-row"
+            :class="{ 'is-done-row': status === 'Done' }"
           >
-            <span class="drag-handle" v-if="status !== 'Done'">
-              <i class="bi bi-grip-vertical" />
-            </span>
-            <span class="status-row-badge" :class="statusBadgeClass(status)">{{
-              status
-            }}</span>
+            <label>
+              <input
+                type="checkbox"
+                :checked="selectedStatuses.includes(status)"
+                :disabled="status === 'Done'"
+                @change="toggleStatus(status)"
+              />
+              {{ status }}
+            </label>
             <span v-if="status === 'Done'" class="done-lock">
               <i class="bi bi-lock-fill" /> Mandatory
             </span>
-            <button
-              v-if="status !== 'Done'"
-              type="button"
-              class="small secondary remove-status-btn"
-              title="Remove status"
-              @click="removeStatus(idx)"
-            >
-              <i class="bi bi-x" />
-            </button>
-          </div>
-          <!-- Done row always shown even if somehow missing (safety) -->
-          <div
-            v-if="!editableStatuses.includes('Done')"
-            class="status-row is-done-row"
-          >
-            <span class="status-row-badge status-done">Done</span>
-            <span class="done-lock"
-              ><i class="bi bi-lock-fill" /> Mandatory</span
-            >
           </div>
         </div>
-        <div class="add-status-row">
-          <input
-            v-model="newStatusText"
-            type="text"
-            placeholder="New status name…"
-            @keyup.enter="addStatus"
-          />
-          <button type="button" class="small" @click="addStatus">
-            <i class="bi bi-plus" /> Add
-          </button>
+        <div v-if="unknownStatuses.length" class="status-warning">
+          <i class="bi bi-exclamation-triangle" />
+          Not in the catalog, will be removed on save:
+          {{ unknownStatuses.join(", ") }}
         </div>
         <div v-if="statusEditError" class="status-error">
           <i class="bi bi-exclamation-circle" /> {{ statusEditError }}
@@ -195,6 +165,7 @@ import api from "../../utils/api";
 
 const projectsStore = useProjectsStore();
 const tasksStore = useTasksStore();
+const statusesStore = useStatusesStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -212,12 +183,17 @@ const editVisibility = ref("public");
 const editUserAccess = ref([]);
 const availableUsers = ref([]);
 
-// --- Status editor state ---
-const editableStatuses = ref([]);
-const newStatusText = ref("");
-const dragStatusIdx = ref(null);
+// --- Status selection state ---
+const selectedStatuses = ref([]);
 const savingStatuses = ref(false);
 const statusEditError = ref("");
+
+const catalogStatuses = computed(() => statusesStore.catalog);
+const unknownStatuses = computed(() =>
+  (project.value?.statuses || []).filter(
+    (s) => !catalogStatuses.value.includes(s),
+  ),
+);
 
 function goBack() {
   const back = window.history.state?.back;
@@ -282,12 +258,13 @@ onMounted(async () => {
   try {
     await projectsStore.fetchById(route.params.id);
     await tasksStore.fetchAll(route.params.id);
+    await statusesStore.fetchAll();
     if (project.value) {
       editVisibility.value = project.value.visibility || "public";
       editUserAccess.value = [...(project.value.userAccess || [])];
-      editableStatuses.value = [
-        ...(project.value.statuses || ["To Do", "In Progress", "Done"]),
-      ];
+      selectedStatuses.value = (project.value.statuses || []).filter((s) =>
+        catalogStatuses.value.includes(s),
+      );
     }
     await fetchUsers();
   } catch {
@@ -310,76 +287,36 @@ async function deleteProject() {
   }
 }
 
-// --- Status editor functions ---
+// --- Status selection functions ---
 
-function statusBadgeClass(status) {
-  const key = status.toLowerCase().replace(/\s+/g, "-");
-  return `status-${key}`;
-}
-
-function addStatus() {
-  const text = newStatusText.value.trim();
-  if (!text) return;
+function toggleStatus(status) {
+  if (status === "Done") return;
   statusEditError.value = "";
-  if (text === "Done") {
-    statusEditError.value =
-      '"Done" is already included and cannot be duplicated.';
-    return;
-  }
-  if (editableStatuses.value.includes(text)) {
-    statusEditError.value = "This status already exists.";
-    return;
-  }
-  // Insert before "Done" (always last)
-  const doneIdx = editableStatuses.value.indexOf("Done");
-  if (doneIdx >= 0) {
-    editableStatuses.value.splice(doneIdx, 0, text);
+  const idx = selectedStatuses.value.indexOf(status);
+  if (idx >= 0) {
+    selectedStatuses.value.splice(idx, 1);
   } else {
-    editableStatuses.value.push(text);
-    editableStatuses.value.push("Done");
+    selectedStatuses.value.push(status);
   }
-  newStatusText.value = "";
-}
-
-function removeStatus(idx) {
-  if (editableStatuses.value[idx] === "Done") return;
-  statusEditError.value = "";
-  editableStatuses.value.splice(idx, 1);
-}
-
-function onStatusDragStart(event, idx) {
-  if (editableStatuses.value[idx] === "Done") return;
-  dragStatusIdx.value = idx;
-  event.dataTransfer.effectAllowed = "move";
-}
-
-function onStatusDragOver(_idx) {
-  // no-op, handled by prevent modifier
-}
-
-function onStatusDrop(targetIdx) {
-  const srcIdx = dragStatusIdx.value;
-  dragStatusIdx.value = null;
-  if (srcIdx === null || srcIdx === targetIdx) return;
-  if (editableStatuses.value[targetIdx] === "Done") return;
-  const item = editableStatuses.value.splice(srcIdx, 1)[0];
-  editableStatuses.value.splice(targetIdx, 0, item);
 }
 
 async function saveStatuses() {
   statusEditError.value = "";
-  const statuses = editableStatuses.value.filter(Boolean);
+  const statuses = selectedStatuses.value.filter(Boolean);
   if (!statuses.includes("Done")) {
     statuses.push("Done");
   }
   if (statuses.length < 2) {
     statusEditError.value =
-      'At least one custom status plus "Done" is required.';
+      'At least one status besides "Done" is required.';
     return;
   }
   savingStatuses.value = true;
   try {
-    await projectsStore.update(route.params.id, { statuses });
+    const updated = await projectsStore.update(route.params.id, { statuses });
+    selectedStatuses.value = (updated.statuses || []).filter((s) =>
+      catalogStatuses.value.includes(s),
+    );
   } catch (e) {
     statusEditError.value =
       e.response?.data?.error || "Failed to save statuses";
@@ -413,15 +350,15 @@ section {
   margin-bottom: var(--space-sm);
 }
 
-/* Status editor */
-.status-editor {
+/* Status selection */
+.status-selection {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-bottom: var(--space-sm);
 }
 
-.status-row {
+.status-check-row {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -429,70 +366,24 @@ section {
   background: var(--color-surface);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
-  transition:
-    background 0.12s,
-    box-shadow 0.12s;
-  user-select: none;
 }
 
-.status-row[draggable="true"] {
-  cursor: grab;
-}
-
-.status-row[draggable="true"]:active {
-  cursor: grabbing;
-}
-
-.status-row.is-dragging {
-  opacity: 0.4;
-  box-shadow: 0 0 0 2px var(--color-primary);
-}
-
-.status-row.is-done-row {
+.status-check-row.is-done-row {
   opacity: 0.75;
   border-style: dashed;
   background: transparent;
 }
 
-.drag-handle {
-  color: var(--color-text-muted);
+.status-check-row label {
   display: flex;
   align-items: center;
-  font-size: var(--text-lg);
-  flex-shrink: 0;
+  gap: var(--space-sm);
+  margin: 0;
+  cursor: pointer;
 }
 
-.status-row-badge {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-wider);
-  text-transform: uppercase;
-  padding: 0.1em 0.5em;
-  border-radius: var(--radius-full);
-  background: var(--color-text-muted);
-  color: #fff;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.status-row-badge.status-to-do {
-  background: var(--color-status-todo);
-}
-.status-row-badge.status-in-progress {
-  background: var(--color-status-progress);
-}
-.status-row-badge.status-done {
-  background: var(--color-status-done);
-}
-.status-row-badge.status-in-review,
-.status-row-badge.status-review {
-  background: var(--color-status-review);
-}
-.status-row-badge.status-blocked {
-  background: var(--color-status-blocked);
-}
-.status-row-badge.status-backlog {
-  background: var(--color-status-todo);
+.status-check-row label input:disabled {
+  cursor: not-allowed;
 }
 
 .done-lock {
@@ -504,22 +395,13 @@ section {
   margin-left: auto;
 }
 
-.remove-status-btn {
-  margin-left: auto;
-  padding: 0 var(--space-2xs) !important;
-  line-height: var(--leading-none);
-  font-size: var(--text-default) !important;
-}
-
-.add-status-row {
+.status-warning {
+  font-size: var(--text-sm);
+  color: var(--color-warning, #b58900);
   display: flex;
-  gap: var(--space-xs);
+  align-items: center;
+  gap: var(--space-2xs);
   margin-bottom: var(--space-sm);
-}
-
-.add-status-row input {
-  flex: 1;
-  margin: 0;
 }
 
 .status-error {
