@@ -162,6 +162,7 @@ import { marked } from "marked";
 
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
+const statusesStore = useStatusesStore();
 const recommendationStore = useRecommendationStore();
 const router = useRouter();
 const route = useRoute();
@@ -236,7 +237,10 @@ function openTask(task) {
 useDialogCloseRefresh("taskId", fetchDashboard);
 
 onMounted(async () => {
-  await projectsStore.fetchAll();
+  await Promise.all([
+    projectsStore.fetchAll(),
+    statusesStore.fetchAll(),
+  ]);
   await recommendationStore.fetchConfig();
   if (recommendationStore.isLlmEnabled) {
     await recommendationStore.fetchRecommendation();

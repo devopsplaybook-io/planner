@@ -15,6 +15,11 @@ export const useStatusesStore = defineStore("statuses", {
 
   getters: {
     catalogNames: (state): string[] => state.catalog.map((s) => s.name),
+    colorFor: (state) => {
+      const byName = new Map(state.catalog.map((s) => [s.name, s.color]));
+      return (name: string): string =>
+        (name && byName.get(name)) || DEFAULT_STATUS_COLOR;
+    },
   },
 
   actions: {

@@ -24,7 +24,17 @@
     <div v-if="loading" class="loading-indicator" />
 
     <div v-else class="kanban-board">
-      <div v-for="status in statuses" :key="status" class="kanban-column">
+      <div
+        v-for="status in statuses"
+        :key="status"
+        class="kanban-column"
+        :style="{
+          '--status-color': statusesStore.colorFor(status),
+          '--status-contrast': readableTextColor(
+            statusesStore.colorFor(status),
+          ),
+        }"
+      >
         <h3 class="column-header">
           {{ status }}
           <span v-if="status === 'Done'" class="column-hint">
@@ -67,6 +77,8 @@
 </template>
 
 <script setup>
+import { readableTextColor } from "../../utils/statusColor";
+
 const DONE_WINDOW_DAYS = 30;
 
 const tasksStore = useTasksStore();
@@ -218,7 +230,7 @@ useDialogCloseRefresh("taskId", fetchTasks);
   text-align: center;
   margin-bottom: var(--space-sm);
   padding-bottom: var(--space-xs);
-  border-bottom: 2px solid var(--color-primary);
+  border-bottom: 2px solid var(--status-color, var(--color-primary));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -229,8 +241,8 @@ useDialogCloseRefresh("taskId", fetchTasks);
 .column-count {
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  background: var(--color-primary);
-  color: var(--color-on-primary);
+  background: var(--status-color, var(--color-primary));
+  color: var(--status-contrast, var(--color-on-primary));
   border-radius: var(--radius-full);
   padding: 0 6px;
   line-height: var(--leading-loose);

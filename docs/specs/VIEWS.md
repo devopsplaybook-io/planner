@@ -14,16 +14,19 @@ Each view provides a different perspective on the same task data.
   - [x] Tasks without dates, ordered by priority
   - [x] The last 5 tasks marked as done
 - [x] The dashboard can be filtered by project or labels. By default all projects are displayed
+- [x] Task status labels on the dashboard use the color configured for the status in the admin Statuses tab
 
 ### Calendar View
 
 - [x] Displays tasks on a calendar based on their due dates.
 - [x] Allows drag-and-drop to reschedule tasks.
+- [x] Each task is displayed with the color configured for its status in the admin Statuses tab.
 
 ### Kanban View
 
 - [x] Organizes tasks into columns based on their status.
 - [x] Allows drag-and-drop to move tasks between statuses.
 - [x] Columns correspond to the project's defined statuses.
+- [x] Status labels (column headers and task status badges) use the color configured for the status in the admin Statuses tab.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-06-10_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-13_

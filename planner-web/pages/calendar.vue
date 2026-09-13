@@ -56,10 +56,8 @@
                 v-for="task in day.tasks"
                 :key="task.id"
                 class="day-task"
-                :class="[
-                  'priority-' + task.priority,
-                  { dragging: draggingTask?.id === task.id },
-                ]"
+                :class="{ dragging: draggingTask?.id === task.id }"
+                :style="dayTaskStyle(task)"
                 :title="task.title"
                 draggable="true"
                 @dragstart="onDragStart($event, task)"
@@ -82,8 +80,11 @@
 </template>
 
 <script setup>
+import { readableTextColor } from "../utils/statusColor";
+
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
+const statusesStore = useStatusesStore();
 const router = useRouter();
 const route = useRoute();
 
@@ -183,6 +184,11 @@ function getTasksForDate(date) {
   );
 }
 
+function dayTaskStyle(task) {
+  const color = statusesStore.colorFor(task.status);
+  return { background: color, color: readableTextColor(color) };
+}
+
 function prevMonth() {
   currentDate.value = new Date(
     currentDate.value.getFullYear(),
@@ -221,7 +227,7 @@ useDialogCloseRefresh("taskId", fetchTasks);
 
 onMounted(async () => {
   try {
-    await projectsStore.fetchAll();
+    await Promise.all([projectsStore.fetchAll(), statusesStore.fetchAll()]);
     await fetchTasks();
   } catch {
     // Handle error
@@ -388,7 +394,7 @@ async function onDrop(dateStr) {
   white-space: nowrap;
   max-width: 100%;
   font-size: var(--text-base);
-  background: var(--color-surface);
+  background: var(--color-text-muted);
 }
 
 .day-task.dragging {
@@ -397,16 +403,6 @@ async function onDrop(dateStr) {
 
 .day-task:hover {
   opacity: 0.8;
-}
-
-.priority-high {
-  border-left: 3px solid var(--color-danger);
-}
-.priority-medium {
-  border-left: 3px solid var(--color-primary);
-}
-.priority-low {
-  border-left: 3px solid var(--color-text-muted);
 }
 
 @media (max-width: 767px) {
