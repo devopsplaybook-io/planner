@@ -27,6 +27,9 @@
       <div v-for="status in statuses" :key="status" class="kanban-column">
         <h3 class="column-header">
           {{ status }}
+          <span v-if="status === 'Done'" class="column-hint">
+            last {{ DONE_WINDOW_DAYS }} days</span
+          >
           <span class="column-count">{{
             getTasksByStatus(status).length
           }}</span>
@@ -64,6 +67,8 @@
 </template>
 
 <script setup>
+const DONE_WINDOW_DAYS = 30;
+
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const statusesStore = useStatusesStore();
@@ -158,7 +163,12 @@ function onFilterChange(event) {
 async function fetchTasks() {
   loading.value = true;
   try {
-    await tasksStore.fetchAll(projectsStore.selectedProjectFilter || undefined);
+    const doneSince = new Date(
+      Date.now() - DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    await tasksStore.fetchAll(projectsStore.selectedProjectFilter || undefined, {
+      doneSince,
+    });
   } catch {
     // Handle error
   } finally {
@@ -224,6 +234,13 @@ useDialogCloseRefresh("taskId", fetchTasks);
   border-radius: var(--radius-full);
   padding: 0 6px;
   line-height: var(--leading-loose);
+}
+
+.column-hint {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .column-tasks {

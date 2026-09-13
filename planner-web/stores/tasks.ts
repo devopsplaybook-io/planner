@@ -49,8 +49,14 @@ export const useTasksStore = defineStore("tasks", {
   }),
 
   actions: {
-    async fetchAll(projectId?: string) {
-      const params = projectId ? { projectId } : {};
+    async fetchAll(projectId?: string, opts?: { doneSince?: string }) {
+      const params: Record<string, string> = {};
+      if (projectId) {
+        params.projectId = projectId;
+      }
+      if (opts?.doneSince) {
+        params.doneSince = opts.doneSince;
+      }
       const res = await api.get("/tasks", { params });
       this.tasks = res.data;
     },

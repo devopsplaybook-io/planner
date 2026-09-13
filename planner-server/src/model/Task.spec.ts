@@ -69,6 +69,26 @@ describe("Task model", () => {
       expect(Task.fromJson(null)).toBeNull();
     });
 
+    it("should restore dateCreated and dateUpdated from the row", () => {
+      const task = Task.fromJson({
+        projectId: "p1",
+        title: "Timestamps",
+        dateCreated: "2026-01-01T08:00:00.000Z",
+        dateUpdated: "2026-09-01T09:30:00.000Z",
+      });
+      expect(task.dateCreated).toBe("2026-01-01T08:00:00.000Z");
+      expect(task.dateUpdated).toBe("2026-09-01T09:30:00.000Z");
+    });
+
+    it("should keep constructor timestamps when the row omits them", () => {
+      const task = Task.fromJson({
+        projectId: "p1",
+        title: "No timestamps",
+      });
+      expect(task.dateCreated).toBeDefined();
+      expect(task.dateUpdated).toBeDefined();
+    });
+
     it("should parse assignees, comments, attachments, labels as arrays", () => {
       const comment: TaskComment = {
         id: "c1",
@@ -158,6 +178,18 @@ describe("Task model", () => {
       expect(json.attachments).toEqual(task.attachments);
       expect(json.labels).toEqual(task.labels);
       expect(json.dueDate).toBe("2026-07-01");
+    });
+
+    it("should round-trip stored timestamps through fromJson", () => {
+      const row = {
+        projectId: "p1",
+        title: "Round trip",
+        dateCreated: "2026-02-02T10:00:00.000Z",
+        dateUpdated: "2026-08-30T11:11:11.000Z",
+      };
+      const json = Task.fromJson(row).toTransportJson();
+      expect(json.dateCreated).toBe(row.dateCreated);
+      expect(json.dateUpdated).toBe(row.dateUpdated);
     });
   });
 });
