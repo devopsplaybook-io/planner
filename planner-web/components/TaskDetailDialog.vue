@@ -844,6 +844,10 @@ async function deleteAttachment(attachmentId) {
   padding: var(--space-sm);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
+  /* The UserMultiSelect dropdown overflows this section: without this,
+     the global `dialog article section` scroll rule (base.css) clips it */
+  overflow: visible;
+  max-height: none;
 }
 
 .meta-field {

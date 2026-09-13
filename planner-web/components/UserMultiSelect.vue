@@ -228,6 +228,9 @@ onBeforeUnmount(() => {
   height: auto;
 }
 
+/* Overflows this component's box by design — ancestors (up to the dialog)
+   must not clip it: see the overflow overrides in TaskDetailDialog.vue and
+   ProjectDetailDialog.vue that cancel the `dialog article section` rule */
 .ums-dropdown {
   position: absolute;
   top: 100%;

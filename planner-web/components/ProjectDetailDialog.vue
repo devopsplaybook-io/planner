@@ -76,7 +76,7 @@
         </section>
 
         <!-- Visibility (admin management) -->
-        <section v-if="authStore.isAdmin">
+        <section v-if="authStore.isAdmin" class="visibility-section">
           <h3>Visibility</h3>
           <div class="visibility-controls">
             <label class="radio-label">
@@ -449,6 +449,13 @@ section {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--space-md);
   margin-bottom: var(--space-sm);
+}
+
+/* The UserMultiSelect dropdown overflows this section: without this,
+   the global `dialog article section` scroll rule (base.css) clips it */
+.visibility-section {
+  overflow: visible;
+  max-height: none;
 }
 
 .radio-label {
