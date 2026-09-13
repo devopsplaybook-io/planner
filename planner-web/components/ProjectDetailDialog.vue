@@ -100,22 +100,12 @@
               <small>Only visible to selected users</small>
             </label>
           </div>
-          <div v-if="editVisibility === 'restricted'" class="user-access-list">
-            <div
-              v-for="user in availableUsers"
-              :key="user.id"
-              class="user-access-item"
-            >
-              <label>
-                <input
-                  type="checkbox"
-                  :checked="editUserAccess.includes(user.id)"
-                  @change="toggleUserAccess(user.id)"
-                />
-                {{ user.name }}
-              </label>
-            </div>
-          </div>
+          <UserMultiSelect
+            v-if="editVisibility === 'restricted'"
+            :model-value="editUserAccess"
+            :users="availableUsers"
+            @update:model-value="onUserAccessChange"
+          />
         </section>
 
         <!-- Statuses (admin management) -->
@@ -327,13 +317,8 @@ async function updateVisibility() {
   }
 }
 
-function toggleUserAccess(userId) {
-  const idx = editUserAccess.value.indexOf(userId);
-  if (idx >= 0) {
-    editUserAccess.value.splice(idx, 1);
-  } else {
-    editUserAccess.value.push(userId);
-  }
+function onUserAccessChange(ids) {
+  editUserAccess.value = ids;
   updateVisibility();
 }
 
@@ -485,22 +470,6 @@ section {
 .radio-label small {
   font-size: var(--text-xs);
   opacity: 0.7;
-}
-
-.user-access-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-  padding: var(--space-sm);
-  background: var(--color-surface);
-  border-radius: var(--radius-sm);
-}
-
-.user-access-item label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  cursor: pointer;
 }
 
 .status-selection {

@@ -97,22 +97,11 @@
           </div>
           <div class="meta-field">
             <strong>Assignees</strong>
-            <template v-if="editing">
-              <div v-if="users.length" class="assignee-picker-edit">
-                <label
-                  v-for="u in users"
-                  :key="u.id"
-                  class="assignee-option"
-                >
-                  <input
-                    v-model="editForm.assignees"
-                    type="checkbox"
-                    :value="u.id"
-                  />
-                  {{ u.name }}
-                </label>
-              </div>
-            </template>
+            <UserMultiSelect
+              v-if="editing"
+              v-model="editForm.assignees"
+              :users="users"
+            />
             <div v-else-if="task.assignees && task.assignees.length" class="tag-list">
               <span v-for="a in task.assignees" :key="a.userId" class="tag">{{
                 a.userName || a.userId
@@ -1069,24 +1058,6 @@ section h4 {
 
 .expand-btn:hover {
   color: var(--color-primary-hover);
-}
-
-.assignee-picker-edit {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.assignee-option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  cursor: pointer;
-  font-weight: var(--weight-normal);
-}
-
-.assignee-option input[type="checkbox"] {
-  margin: 0;
 }
 
 .text-muted {
