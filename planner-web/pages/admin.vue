@@ -26,6 +26,7 @@
       </div>
 
       <AdminUsersTab v-if="activeTab === 'users'" />
+      <AdminProjectsTab v-else-if="activeTab === 'projects'" />
       <AdminStatusesTab v-else-if="activeTab === 'statuses'" />
     </template>
   </div>
@@ -33,12 +34,34 @@
 
 <script setup>
 const authStore = useAuthStore();
+const route = useRoute();
+const router = useRouter();
 
 const tabs = [
   { id: "users", label: "Users" },
+  { id: "projects", label: "Projects" },
   { id: "statuses", label: "Statuses" },
 ];
-const activeTab = ref("users");
+const tabIds = tabs.map((t) => t.id);
+const activeTab = ref(
+  tabIds.includes(route.query.tab) ? route.query.tab : "users",
+);
+
+// Keep the selected tab in the URL so a refresh or returning to the page
+// via browser navigation restores it
+watch(activeTab, (tab) => {
+  router.replace({ path: route.path, query: { ...route.query, tab } });
+});
+
+// Follow URL changes to ?tab= (browser back/forward, shared links)
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (tabIds.includes(tab) && tab !== activeTab.value) {
+      activeTab.value = tab;
+    }
+  },
+);
 </script>
 
 <style scoped>

@@ -39,14 +39,6 @@
           <span class="nav-label">Notes</span></NuxtLink
         >
       </li>
-      <li>
-        <NuxtLink
-          to="/projects"
-          :class="activeRoute == '/projects' ? 'active' : 'inactive'"
-          ><i class="bi bi-folder"></i>
-          <span class="nav-label">Projects</span></NuxtLink
-        >
-      </li>
       <li v-if="authStore.isAdmin">
         <NuxtLink
           to="/admin"
