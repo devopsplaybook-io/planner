@@ -1,7 +1,10 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { Project } from "../model/Project";
 import { AuthGetUserSession, AuthMustBeAdmin } from "../users/Auth";
-import { StatusesCatalogGet } from "../statuses/StatusesData";
+import {
+  StatusCatalogEntry,
+  StatusesCatalogGet,
+} from "../statuses/StatusesData";
 import {
   ProjectsDataAdd,
   ProjectsDataDelete,
@@ -14,7 +17,7 @@ import {
 
 export function validateProjectStatusSelection(
   statuses: string[],
-  catalog: string[],
+  catalog: StatusCatalogEntry[],
 ): string | null {
   if (!Array.isArray(statuses) || statuses.length < 2) {
     return "At least 2 statuses are required";
@@ -28,7 +31,8 @@ export function validateProjectStatusSelection(
   if (!statuses.includes("Done")) {
     return '"Done" must be included';
   }
-  const unknown = statuses.filter((s) => !catalog.includes(s));
+  const catalogNames = catalog.map((s) => s.name);
+  const unknown = statuses.filter((s) => !catalogNames.includes(s));
   if (unknown.length > 0) {
     return `Unknown statuses: ${unknown.join(", ")}`;
   }
@@ -37,9 +41,11 @@ export function validateProjectStatusSelection(
 
 export function normalizeStatusSelection(
   statuses: string[],
-  catalog: string[],
+  catalog: StatusCatalogEntry[],
 ): string[] {
-  return catalog.filter((s) => statuses.includes(s));
+  return catalog
+    .filter((s) => statuses.includes(s.name))
+    .map((s) => s.name);
 }
 
 export class ProjectsRoutes {

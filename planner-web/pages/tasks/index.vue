@@ -92,7 +92,7 @@ const statuses = computed(() => {
   }
   // All projects: follow the global status catalog, then append any
   // statuses not covered (e.g. dangling task statuses) as a safety net
-  const ordered = [...statusesStore.catalog];
+  const ordered = [...statusesStore.catalogNames];
   const seen = new Set(ordered);
   for (const project of projectsStore.projects) {
     if (project.statuses) {

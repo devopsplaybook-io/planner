@@ -1,10 +1,21 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import api from "../utils/api";
 
+export interface StatusCatalogEntry {
+  name: string;
+  color: string;
+}
+
+export const DEFAULT_STATUS_COLOR = "#6b7280";
+
 export const useStatusesStore = defineStore("statuses", {
   state: () => ({
-    catalog: [] as string[],
+    catalog: [] as StatusCatalogEntry[],
   }),
+
+  getters: {
+    catalogNames: (state): string[] => state.catalog.map((s) => s.name),
+  },
 
   actions: {
     async fetchAll() {
@@ -13,7 +24,7 @@ export const useStatusesStore = defineStore("statuses", {
       return this.catalog;
     },
 
-    async save(statuses: string[]) {
+    async save(statuses: StatusCatalogEntry[]) {
       const res = await api.put("/statuses", { statuses });
       this.catalog = res.data.statuses || [];
       return this.catalog;

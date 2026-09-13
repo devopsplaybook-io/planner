@@ -5,7 +5,7 @@
 ## Features
 
 - **Project Management** - Admins create and manage multiple projects from the admin section and select which statuses they use
-- **Centralized Status Management** - Admins define and order the global status catalog from the admin section; the order is reflected across the Tasks board
+- **Centralized Status Management** - Admins define and order the global status catalog from the admin section, with a color per status chosen from a preset palette; the order is reflected across the Tasks board
 - **Task Tracking** - Tasks with title, description, checklists, comments, attachments, due dates, priorities, and labels
 - **Task Assignment** - Assign tasks to one or more users
 - **Smart Refresh** - Lists refresh when a dialog closes and open tasks are polled for changes; assignees receive a push notification when their task is updated by another user

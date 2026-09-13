@@ -27,5 +27,8 @@ Statuses are defined, managed and ordered globally in the admin section. Project
 - [x] Statuses can be added, removed and reordered (drag and drop).
 - [x] A status that is still used by at least one project cannot be removed from the catalog.
 - [x] On a fresh installation the catalog is seeded with: To Do, In Progress, Done.
+- [x] Every status has a color: color is mandatory and newly added statuses are gray by default.
+- [x] The admin chooses a status color from a simplified preset-swatch picker (main colors, a few shades per color).
+- [x] The exact hex color code of each status is stored server-side.
 
 _Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-13_

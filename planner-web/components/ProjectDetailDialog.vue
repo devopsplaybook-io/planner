@@ -237,7 +237,7 @@ const selectedStatuses = ref([]);
 const savingStatuses = ref(false);
 const statusEditError = ref("");
 
-const catalogStatuses = computed(() => statusesStore.catalog);
+const catalogStatuses = computed(() => statusesStore.catalogNames);
 const unknownStatuses = computed(() =>
   (project.value?.statuses || []).filter(
     (s) => !catalogStatuses.value.includes(s),
