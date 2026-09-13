@@ -1,6 +1,6 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { Project } from "../model/Project";
-import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
+import { AuthGetUserSession, AuthMustBeAdmin } from "../users/Auth";
 import { StatusesCatalogGet } from "../statuses/StatusesData";
 import {
   ProjectsDataAdd,
@@ -79,7 +79,7 @@ export class ProjectsRoutes {
     }
     fastify.post<PostProject>("/", async (req, res) => {
       try {
-        await AuthMustBeAuthenticated(req, res);
+        await AuthMustBeAdmin(req, res);
       } catch {
         return;
       }
@@ -123,7 +123,7 @@ export class ProjectsRoutes {
     }
     fastify.put<PutProject>("/:id", async (req, res) => {
       try {
-        await AuthMustBeAuthenticated(req, res);
+        await AuthMustBeAdmin(req, res);
       } catch {
         return;
       }
@@ -165,7 +165,7 @@ export class ProjectsRoutes {
     // ==================== DELETE ====================
     fastify.delete<{ Params: { id: string } }>("/:id", async (req, res) => {
       try {
-        await AuthMustBeAuthenticated(req, res);
+        await AuthMustBeAdmin(req, res);
       } catch {
         return;
       }

@@ -1,12 +1,9 @@
 <template>
-  <div class="projects-page">
-    <header class="page-header">
-      <hgroup>
-        <h1>Projects</h1>
-        <p>Manage your projects</p>
-      </hgroup>
-      <button class="fab-button" @click="showCreateDialog = true">
-        <i class="bi bi-plus-lg" />
+  <section>
+    <header class="section-header">
+      <h2>Projects</h2>
+      <button @click="showCreateDialog = true">
+        <i class="bi bi-plus-lg" /> Add Project
       </button>
     </header>
 
@@ -17,7 +14,7 @@
         v-for="project in projectsStore.projects"
         :key="project.id"
         :project="project"
-        @click="router.push(`/projects/${project.id}`)"
+        @click="openProject(project.id)"
       />
     </div>
 
@@ -65,11 +62,12 @@
         </form>
       </article>
     </dialog>
-  </div>
+  </section>
 </template>
 
 <script setup>
 const projectsStore = useProjectsStore();
+const route = useRoute();
 const router = useRouter();
 
 const loading = ref(true);
@@ -92,6 +90,15 @@ onMounted(async () => {
 // Project cards read from the store, but refresh on dialog close to catch
 // changes made by other users while the project dialog was open
 useDialogCloseRefresh("projectId", () => projectsStore.fetchAll());
+
+// Project detail opens in the global dialog via the ?projectId= query param,
+// so the URL can be shared and restored on refresh
+function openProject(id) {
+  router.replace({
+    path: route.path,
+    query: { ...route.query, projectId: id },
+  });
+}
 
 async function createProject() {
   creating.value = true;

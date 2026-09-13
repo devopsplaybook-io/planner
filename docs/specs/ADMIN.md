@@ -5,6 +5,16 @@ The admin section centralizes application-wide configuration. It is organized as
 - [x] The admin section is accessible only to users with the admin role and presents one tab per configuration type.
 - [x] Users tab: user management (create users, change roles, delete users, manage API keys).
 
+## Projects tab
+
+Projects are created and managed by admins in the admin section (see [PROJECTS.md](PROJECTS.md)).
+
+- [x] The admin section has a "Projects" tab where projects are created and managed.
+- [x] The tab order is: Users, Projects, Statuses.
+- [x] The selected tab is reflected in the URL (query parameter) and is kept when the page is refreshed or reached again through browser navigation.
+- [x] Project management covers: create, edit name and description, visibility and user access, status selection, delete.
+- [x] Creating, updating and deleting projects through the API requires the admin role; reading projects stays available to all authenticated users (project filters).
+
 ## Statuses tab
 
 Statuses are defined, managed and ordered globally in the admin section. Projects do not create statuses; they select which statuses from the catalog they use (see [PROJECTS.md](PROJECTS.md)).
@@ -18,4 +28,4 @@ Statuses are defined, managed and ordered globally in the admin section. Project
 - [x] A status that is still used by at least one project cannot be removed from the catalog.
 - [x] On a fresh installation the catalog is seeded with: To Do, In Progress, Done.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-12_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-13_

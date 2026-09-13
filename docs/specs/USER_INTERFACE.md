@@ -12,7 +12,7 @@ It is installable on mobile and desktop devices and works offline.
 
 - [x] There is a **left side menu** to switch between views
 - [x] On mobile, the menu auto-collapses to save screen space
-- [x] The menu provides access to: Projects, Tasks, Notes, Calendar, Kanban, and Settings
+- [x] The menu provides access to: Tasks, Notes, Calendar, Kanban, and Settings (projects are managed by admins in the admin section, see [ADMIN.md](ADMIN.md))
 - [x] Offline support (PWA configured with service worker, cache strategies)
 
 ### Project Selection
@@ -29,6 +29,7 @@ It is installable on mobile and desktop devices and works offline.
   - [x] When the detail is closed, the user is sent back to the previous page. If the previous page is not in the application, the user is sent to the page most related to the object
   - [x] From the detail a full edit mode can be triggered with more editing features
   - [x] When a Task, Note or Project is displayed, the URL reflects the object that is displayed and this URL can be shared and reused later or for other users to open the same object
+    - [x] Projects are managed by admins in the admin section; the admin URL reflects the selected tab and the displayed project (e.g. /admin?tab=projects&projectId=...)
 
 ### Tasks
 
@@ -36,4 +37,4 @@ It is installable on mobile and desktop devices and works offline.
   - [x] A Task Card: summary card displayed in all views
   - [x] A Task Detail: a dialog that displays the full task once the card is clicked
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-06-11_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-13_
