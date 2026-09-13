@@ -30,6 +30,7 @@ It is installable on mobile and desktop devices and works offline.
   - [x] From the detail a full edit mode can be triggered with more editing features
   - [x] When a Task, Note or Project is displayed, the URL reflects the object that is displayed and this URL can be shared and reused later or for other users to open the same object
     - [x] Projects are managed by admins in the admin section; the admin URL reflects the selected tab and the displayed project (e.g. /admin?tab=projects&projectId=...)
+- [x] A shared multi-user selection component (auto-complete box with removable chips) is used for task assignees and project user access, replacing per-user checkbox lists
 
 ### Tasks
 

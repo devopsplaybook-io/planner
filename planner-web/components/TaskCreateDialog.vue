@@ -48,21 +48,7 @@
         </label>
         <fieldset>
           <legend>Assignees</legend>
-          <div v-if="users.length" class="assignee-picker">
-            <label
-              v-for="u in users"
-              :key="u.id"
-              class="assignee-option"
-            >
-              <input
-                v-model="form.assignees"
-                type="checkbox"
-                :value="u.id"
-              />
-              {{ u.name }}
-            </label>
-          </div>
-          <small v-else class="text-muted">No users available</small>
+          <UserMultiSelect v-model="form.assignees" :users="users" />
         </fieldset>
         <fieldset>
           <legend>Checklist</legend>
@@ -197,27 +183,5 @@ async function createTask() {
 
 .checklist-input-row button {
   padding: 0.2em 0.5em;
-}
-
-.assignee-picker {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.assignee-option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  cursor: pointer;
-  font-weight: var(--weight-normal);
-}
-
-.assignee-option input[type="checkbox"] {
-  margin: 0;
-}
-
-.text-muted {
-  color: var(--color-text-muted);
 }
 </style>
