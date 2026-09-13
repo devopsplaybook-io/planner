@@ -3,7 +3,6 @@
     class="task-card"
     :class="[
       `priority-${task.priority}`,
-      `status-${statusClass}`,
       { 'is-done': task.status === 'Done', 'is-dragging': isDragging },
     ]"
     :draggable="draggable"
@@ -18,7 +17,9 @@
           <span class="task-icon"><i class="bi bi-kanban" /></span>
           <span class="task-title">{{ task.title }}</span>
         </div>
-        <span class="status-badge">{{ task.status }}</span>
+        <span class="status-badge" :style="statusBadgeStyle">{{
+          task.status
+        }}</span>
         <div class="card-meta">
           <small
             v-if="task.dueDate"
@@ -52,6 +53,8 @@
 </template>
 
 <script setup>
+import { readableTextColor } from "../utils/statusColor";
+
 const props = defineProps({
   task: { type: Object, required: true },
   draggable: { type: Boolean, default: false },
@@ -59,10 +62,13 @@ const props = defineProps({
 
 const emit = defineEmits(["click", "dragstart", "dragend"]);
 
+const statusesStore = useStatusesStore();
+
 const isDragging = ref(false);
 
-const statusClass = computed(() => {
-  return (props.task.status || "todo").toLowerCase().replace(/\s+/g, "-");
+const statusBadgeStyle = computed(() => {
+  const color = statusesStore.colorFor(props.task.status);
+  return { background: color, color: readableTextColor(color) };
 });
 
 function onDragStart(event) {
@@ -172,7 +178,7 @@ function onDragEnd(event) {
   flex: 1;
 }
 
-/* Status badge with distinct colors per status */
+/* Status badge, colored from the status catalog (see stores/statuses) */
 .status-badge {
   align-self: flex-start;
   font-size: var(--text-xs);
@@ -184,23 +190,6 @@ function onDragEnd(event) {
   background: var(--color-text-muted);
   color: #fff;
   white-space: nowrap;
-}
-
-.status-to-do .status-badge {
-  background: var(--color-status-todo);
-}
-.status-in-progress .status-badge {
-  background: var(--color-status-progress);
-}
-.status-done .status-badge {
-  background: var(--color-status-done);
-}
-.status-in-review .status-badge,
-.status-review .status-badge {
-  background: var(--color-status-review);
-}
-.status-blocked .status-badge {
-  background: var(--color-status-blocked);
 }
 
 .card-meta {

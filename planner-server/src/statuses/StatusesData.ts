@@ -5,7 +5,60 @@ import {
   DbUtilsQuerySQL,
 } from "../utils/DbUtils";
 
-export async function StatusesCatalogGet(): Promise<string[]> {
+export interface StatusCatalogEntry {
+  name: string;
+  color: string;
+}
+
+/** Color applied to statuses without an explicitly chosen one (gray). */
+export const DEFAULT_STATUS_COLOR = "#6b7280";
+
+/** Colors of the canonical statuses on a fresh installation. */
+const STATUS_SEED_COLORS: Record<string, string> = {
+  "To Do": "#3b82f6",
+  "In Progress": "#f59e0b",
+  Done: "#22c55e",
+};
+
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+export function isValidStatusColor(color: unknown): color is string {
+  return typeof color === "string" && HEX_COLOR_PATTERN.test(color);
+}
+
+/**
+ * Normalize raw stored JSON into the current catalog shape. Legacy entries
+ * (plain status names) and entries without a valid color get the default
+ * gray color, since colors are mandatory — no SQL migration needed, the
+ * normalized shape is re-persisted on the next admin save.
+ */
+export function normalizeStatusCatalog(parsed: unknown): StatusCatalogEntry[] {
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const entries: StatusCatalogEntry[] = [];
+  for (const entry of parsed) {
+    if (typeof entry === "string") {
+      if (entry.trim()) {
+        entries.push({ name: entry, color: DEFAULT_STATUS_COLOR });
+      }
+    } else if (
+      entry !== null &&
+      typeof entry === "object" &&
+      typeof (entry as { name?: unknown }).name === "string" &&
+      (entry as { name: string }).name.trim()
+    ) {
+      const { name, color } = entry as { name: string; color: unknown };
+      entries.push({
+        name,
+        color: isValidStatusColor(color) ? color : DEFAULT_STATUS_COLOR,
+      });
+    }
+  }
+  return entries;
+}
+
+export async function StatusesCatalogGet(): Promise<StatusCatalogEntry[]> {
   const rows = await DbUtilsQuerySQL(
     SQL_QUERIES.GET_STATUSES[DbUtilsGetType()],
     [],
@@ -14,17 +67,15 @@ export async function StatusesCatalogGet(): Promise<string[]> {
     return [];
   }
   try {
-    const parsed = JSON.parse(rows[0].statuses as string);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter((s) => typeof s === "string");
+    return normalizeStatusCatalog(JSON.parse(rows[0].statuses as string));
   } catch {
     return [];
   }
 }
 
-export async function StatusesCatalogSet(statuses: string[]): Promise<void> {
+export async function StatusesCatalogSet(
+  statuses: StatusCatalogEntry[],
+): Promise<void> {
   await DbUtilsExecSQL(SQL_QUERIES.UPSERT_STATUSES[DbUtilsGetType()], [
     JSON.stringify(statuses),
     new Date().toISOString(),
@@ -37,11 +88,16 @@ export async function StatusesCatalogSet(statuses: string[]): Promise<void> {
  * statuses already used by existing projects are preserved, and "Done" is
  * forced last: standard projects end up with To Do, In Progress, Done.
  */
-export function seedStatusOrder(projectStatusLists: string[][]): string[] {
-  const result: string[] = [];
+export function seedStatusOrder(
+  projectStatusLists: string[][],
+): StatusCatalogEntry[] {
+  const result: StatusCatalogEntry[] = [];
   const push = (name: string) => {
-    if (name && !result.includes(name)) {
-      result.push(name);
+    if (name && !result.some((s) => s.name === name)) {
+      result.push({
+        name,
+        color: STATUS_SEED_COLORS[name] ?? DEFAULT_STATUS_COLOR,
+      });
     }
   };
   push("To Do");

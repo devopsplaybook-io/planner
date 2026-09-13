@@ -29,7 +29,11 @@ jest.mock("./ProjectsData", () => ({
 }));
 
 jest.mock("../statuses/StatusesData", () => ({
-  StatusesCatalogGet: jest.fn(async () => ["To Do", "In Progress", "Done"]),
+  StatusesCatalogGet: jest.fn(async () => [
+    { name: "To Do", color: "#3b82f6" },
+    { name: "In Progress", color: "#f59e0b" },
+    { name: "Done", color: "#22c55e" },
+  ]),
 }));
 
 jest.mock("../users/Auth", () => ({
@@ -38,7 +42,13 @@ jest.mock("../users/Auth", () => ({
   AuthMustBeAdmin: jest.fn(),
 }));
 
-const CATALOG = ["Backlog", "To Do", "In Progress", "Review", "Done"];
+const CATALOG = [
+  { name: "Backlog", color: "#6b7280" },
+  { name: "To Do", color: "#3b82f6" },
+  { name: "In Progress", color: "#f59e0b" },
+  { name: "Review", color: "#a855f7" },
+  { name: "Done", color: "#22c55e" },
+];
 
 describe("validateProjectStatusSelection", () => {
   it("should return null for a valid selection from the catalog", () => {

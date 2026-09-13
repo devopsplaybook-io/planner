@@ -1,37 +1,54 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { ProjectsDataList } from "../projects/ProjectsData";
 import { AuthMustBeAdmin, AuthMustBeAuthenticated } from "../users/Auth";
-import { StatusesCatalogGet, StatusesCatalogSet } from "./StatusesData";
+import {
+  isValidStatusColor,
+  StatusCatalogEntry,
+  StatusesCatalogGet,
+  StatusesCatalogSet,
+} from "./StatusesData";
 
-export function validateStatusCatalog(statuses: string[]): string | null {
+export function validateStatusCatalog(
+  statuses: StatusCatalogEntry[],
+): string | null {
   if (!Array.isArray(statuses) || statuses.length < 2) {
     return "At least 2 statuses are required";
   }
-  if (statuses.some((s) => typeof s !== "string" || !s.trim())) {
-    return "All statuses must be non-empty strings";
+  const isNamedEntry = (s: unknown): s is StatusCatalogEntry =>
+    s !== null &&
+    typeof s === "object" &&
+    !Array.isArray(s) &&
+    typeof (s as { name?: unknown }).name === "string" &&
+    !!(s as { name: string }).name.trim();
+  if (!statuses.every(isNamedEntry)) {
+    return "All statuses must be objects with a non-empty name";
   }
-  if (new Set(statuses).size !== statuses.length) {
+  if (!statuses.every((s) => isValidStatusColor(s.color))) {
+    return "Each status color must be a valid hex color code (#RRGGBB)";
+  }
+  const names = statuses.map((s) => s.name);
+  if (new Set(names).size !== names.length) {
     return "Duplicate statuses are not allowed";
   }
-  if (!statuses.includes("Done")) {
+  if (!names.includes("Done")) {
     return '"Done" must be included';
   }
-  if (statuses[statuses.length - 1] !== "Done") {
+  if (names[names.length - 1] !== "Done") {
     return '"Done" must be the last status';
   }
   return null;
 }
 
 export function removedStatusesInUse(
-  current: string[],
-  next: string[],
+  current: StatusCatalogEntry[],
+  next: StatusCatalogEntry[],
   projectStatusLists: string[][],
 ): string[] {
-  const removed = current.filter((s) => !next.includes(s));
+  const removed = current.filter((s) => !next.some((n) => n.name === s.name));
   const inUse = new Set<string>();
   for (const list of projectStatusLists) {
     for (const status of list) {
-      if (removed.includes(status)) {
+      if (removed.some((s) => s.name === status)) {
         inUse.add(status);
       }
     }
@@ -53,7 +70,7 @@ export class StatusesRoutes {
 
     // ==================== REPLACE (Admin only) ====================
     interface PutStatuses extends RequestGenericInterface {
-      Body: { statuses: string[] };
+      Body: { statuses: StatusCatalogEntry[] };
     }
     fastify.put<PutStatuses>("/", async (req, res) => {
       try {
