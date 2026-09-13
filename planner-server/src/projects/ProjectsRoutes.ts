@@ -5,6 +5,7 @@ import {
   StatusCatalogEntry,
   StatusesCatalogGet,
 } from "../statuses/StatusesData";
+import { isProjectVisible } from "./ProjectVisibility";
 import {
   ProjectsDataAdd,
   ProjectsDataDelete,
@@ -56,7 +57,11 @@ export class ProjectsRoutes {
       if (!userSession.isAuthenticated) {
         return res.status(403).send({ error: "Access Denied" });
       }
-      const projects = await ProjectsDataList(userSession.userId);
+      // Admins bypass visibility and manage every project; other users only
+      // see public projects and restricted projects they are a member of.
+      const projects = await ProjectsDataList(
+        userSession.role === "admin" ? undefined : userSession.userId,
+      );
       return res.status(200).send(projects.map((p) => p.toTransportJson()));
     });
 
@@ -67,7 +72,7 @@ export class ProjectsRoutes {
         return res.status(403).send({ error: "Access Denied" });
       }
       const project = await ProjectsDataGet(req.params.id);
-      if (!project) {
+      if (!project || !isProjectVisible(project, userSession)) {
         return res.status(404).send({ error: "Project Not Found" });
       }
       return res.status(200).send(project.toTransportJson());

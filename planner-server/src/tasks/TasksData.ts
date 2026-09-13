@@ -4,6 +4,7 @@ import {
   DbUtilsQuerySQL,
   DbUtilsGetType,
 } from "../utils/DbUtils";
+import { visibleProjectsCondition } from "../projects/ProjectVisibility";
 
 export async function TasksDataGet(id: string): Promise<Task> {
   const rows = await DbUtilsQuerySQL(SQL_QUERIES.GET_TASK[DbUtilsGetType()], [
@@ -18,6 +19,8 @@ export async function TasksDataGet(id: string): Promise<Task> {
 export interface TaskListFilters {
   projectId?: string;
   doneSince?: string;
+  /** When set, restricts results to projects visible to this user (non-admin viewers). */
+  visibleTo?: { userId: string };
 }
 
 /**
@@ -45,6 +48,11 @@ export function buildListTasksQuery(
     );
     params.push("Done", filters.doneSince);
   }
+  if (filters.visibleTo) {
+    const visibility = visibleProjectsCondition(filters.visibleTo.userId, dbType);
+    conditions.push(visibility.sql);
+    params.push(...visibility.params);
+  }
   const whereClause =
     conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
   return {
@@ -54,13 +62,9 @@ export function buildListTasksQuery(
 }
 
 export async function TasksDataList(
-  projectId?: string,
-  doneSince?: string,
+  filters: TaskListFilters = {},
 ): Promise<Task[]> {
-  const { sql, params } = buildListTasksQuery({
-    projectId,
-    doneSince,
-  });
+  const { sql, params } = buildListTasksQuery(filters);
   const rows = await DbUtilsQuerySQL(sql, params);
   const tasks: Task[] = [];
   for (const row of rows) {

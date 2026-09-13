@@ -1,13 +1,20 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { v4 as uuidv4 } from "uuid";
 import { Note } from "../model/Note";
+import { UserSession } from "../model/UserSession";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
+import {
+  isProjectItemVisible,
+  isProjectVisible,
+} from "../projects/ProjectVisibility";
+import { ProjectsDataGet } from "../projects/ProjectsData";
 import {
   NotesDataAdd,
   NotesDataDelete,
   NotesDataGet,
   NotesDataList,
   NotesDataUpdate,
+  NoteListFilters,
   addNoteComment,
   deleteNoteComment,
   getNoteComment,
@@ -21,6 +28,25 @@ import {
 import * as fs from "fs-extra";
 import * as path from "path";
 
+/**
+ * Loads a note and returns null when it does not exist or sits in a project
+ * the user cannot see (admins bypass). Both cases answer 404 so restricted
+ * notes are not distinguishable from missing ones.
+ */
+async function getVisibleNote(
+  id: string,
+  userSession: UserSession,
+): Promise<Note> {
+  const note = await NotesDataGet(id);
+  if (!note) {
+    return null;
+  }
+  if (!(await isProjectItemVisible(note, userSession))) {
+    return null;
+  }
+  return note;
+}
+
 export class NotesRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
@@ -31,7 +57,13 @@ export class NotesRoutes {
         if (!userSession.isAuthenticated) {
           return res.status(403).send({ error: "Access Denied" });
         }
-        const notes = await NotesDataList(req.query.projectId);
+        const filters: NoteListFilters = {
+          projectId: req.query.projectId,
+        };
+        if (userSession.role !== "admin") {
+          filters.visibleTo = { userId: userSession.userId };
+        }
+        const notes = await NotesDataList(filters);
         return res.status(200).send(notes.map((n) => n.toTransportJson()));
       },
     );
@@ -42,7 +74,7 @@ export class NotesRoutes {
       if (!userSession.isAuthenticated) {
         return res.status(403).send({ error: "Access Denied" });
       }
-      const note = await NotesDataGet(req.params.id);
+      const note = await getVisibleNote(req.params.id, userSession);
       if (!note) {
         return res.status(404).send({ error: "Note Not Found" });
       }
@@ -64,10 +96,15 @@ export class NotesRoutes {
       } catch {
         return;
       }
+      const userSession = await AuthGetUserSession(req);
       if (!req.body.projectId)
         return res.status(400).send({ error: "Missing: projectId" });
       if (!req.body.title)
         return res.status(400).send({ error: "Missing: title" });
+      const project = await ProjectsDataGet(req.body.projectId);
+      if (!project || !isProjectVisible(project, userSession)) {
+        return res.status(404).send({ error: "Project Not Found" });
+      }
 
       const note = new Note();
       note.projectId = req.body.projectId;
@@ -92,7 +129,8 @@ export class NotesRoutes {
       } catch {
         return;
       }
-      const note = await NotesDataGet(req.params.id);
+      const userSession = await AuthGetUserSession(req);
+      const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
       if (req.body.title) note.title = req.body.title;
       if (req.body.description !== undefined)
@@ -108,7 +146,8 @@ export class NotesRoutes {
       } catch {
         return;
       }
-      const note = await NotesDataGet(req.params.id);
+      const userSession = await AuthGetUserSession(req);
+      const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
       await NotesDataDelete(req.params.id);
       return res.status(201).send({});
@@ -126,6 +165,8 @@ export class NotesRoutes {
         return;
       }
       const userSession = await AuthGetUserSession(req);
+      const note = await getVisibleNote(req.params.id, userSession);
+      if (!note) return res.status(404).send({ error: "Note Not Found" });
       if (!req.body.text)
         return res.status(400).send({ error: "Missing: text" });
       const comment = {
@@ -147,6 +188,8 @@ export class NotesRoutes {
         } catch {
           return;
         }
+        const note = await getVisibleNote(req.params.id, userSession);
+        if (!note) return res.status(404).send({ error: "Note Not Found" });
         const comment = await getNoteComment(req.params.commentId);
         if (!comment)
           return res.status(404).send({ error: "Comment Not Found" });
@@ -169,6 +212,8 @@ export class NotesRoutes {
       } catch {
         return;
       }
+      const note = await getVisibleNote(req.params.id, userSession);
+      if (!note) return res.status(404).send({ error: "Note Not Found" });
       const comment = await getNoteComment(req.params.commentId);
       if (!comment)
         return res.status(404).send({ error: "Comment Not Found" });
@@ -193,6 +238,9 @@ export class NotesRoutes {
       } catch {
         return;
       }
+      const userSession = await AuthGetUserSession(req);
+      const note = await getVisibleNote(req.params.id, userSession);
+      if (!note) return res.status(404).send({ error: "Note Not Found" });
       await clearNoteLabels(req.params.id);
       for (const label of req.body.labels) {
         await addNoteLabel(req.params.id, label);
@@ -209,7 +257,8 @@ export class NotesRoutes {
         } catch {
           return;
         }
-        const note = await NotesDataGet(req.params.id);
+        const userSession = await AuthGetUserSession(req);
+        const note = await getVisibleNote(req.params.id, userSession);
         if (!note) {
           return res.status(404).send({ error: "Note Not Found" });
         }
@@ -266,6 +315,9 @@ export class NotesRoutes {
       if (attachment.noteId !== req.params.id) {
         return res.status(404).send({ error: "Attachment Not Found" });
       }
+      if (!(await getVisibleNote(attachment.noteId, userSession))) {
+        return res.status(404).send({ error: "Attachment Not Found" });
+      }
       if (!(await fs.pathExists(attachment.filePath))) {
         return res.status(404).send({ error: "File Not Found" });
       }
@@ -308,11 +360,15 @@ export class NotesRoutes {
         } catch {
           return;
         }
+        const userSession = await AuthGetUserSession(req);
         const attachment = await getNoteAttachment(req.params.attachmentId);
         if (!attachment) {
           return res.status(404).send({ error: "Attachment Not Found" });
         }
         if (attachment.noteId !== req.params.id) {
+          return res.status(404).send({ error: "Attachment Not Found" });
+        }
+        if (!(await getVisibleNote(attachment.noteId, userSession))) {
           return res.status(404).send({ error: "Attachment Not Found" });
         }
         if (await fs.pathExists(attachment.filePath)) {

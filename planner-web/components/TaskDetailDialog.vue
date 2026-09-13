@@ -37,6 +37,10 @@
 
       <section v-if="loading" class="loading-indicator" />
 
+      <section v-else-if="notFound" class="task-not-found">
+        <p>This task is not available.</p>
+      </section>
+
       <template v-else-if="task">
         <!-- Status dropdown — always visible -->
         <section class="status-bar">
@@ -367,6 +371,7 @@ const authStore = useAuthStore();
 
 const task = computed(() => tasksStore.currentTask);
 const loading = ref(false);
+const notFound = ref(false);
 const newComment = ref("");
 const submitting = ref(false);
 const showDeleteConfirm = ref(false);
@@ -458,15 +463,23 @@ watch(
     if (newId) {
       loading.value = true;
       editing.value = false;
+      notFound.value = false;
       try {
         await tasksStore.fetchById(newId);
         await projectsStore.fetchAll();
-      } catch {
-        // Error fetching task
+      } catch (e) {
+        // The task is missing or sits in a restricted project the user
+        // cannot see (404): show a dedicated state instead of an empty body.
+        if (e?.response?.status === 404) {
+          notFound.value = true;
+          tasksStore.currentTask = null;
+        }
       } finally {
         loading.value = false;
       }
-      startTaskPolling();
+      if (!notFound.value) {
+        startTaskPolling();
+      }
     } else {
       tasksStore.currentTask = null;
     }
@@ -757,6 +770,12 @@ async function deleteAttachment(attachmentId) {
 </script>
 
 <style scoped>
+.task-not-found {
+  text-align: center;
+  color: var(--pico-muted-color);
+  padding: var(--space-md) 0;
+}
+
 .dialog-header {
   display: flex;
   justify-content: space-between;

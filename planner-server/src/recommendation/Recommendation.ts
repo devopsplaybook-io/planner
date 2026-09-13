@@ -249,7 +249,6 @@ interface UserRecommendationStats {
   userName: string;
   singleUserMode: boolean;
   totalAssigned: number;
-  totalUnassigned: number;
   totalDone: number;
   overdue: TaskStats[];
   inProgress: TaskStats[];
@@ -279,19 +278,17 @@ async function CollectStats(userId: string): Promise<UserRecommendationStats> {
   const singleUserMode =
     userCountRows.length > 0 && Number(userCountRows[0].count) <= 1;
 
+  // Recommendations only cover the user's own assigned tasks: unassigned or
+  // other users' tasks may live in restricted projects the user cannot see.
   let assignedTasks: TaskStats[];
-  let unassignedTasks: TaskStats[];
   let doneTasks: TaskStats[];
 
   if (singleUserMode) {
     // Single user: treat ALL tasks as theirs, ignore assignment
     assignedTasks = await getAllTasks(false);
-    unassignedTasks = [];
     doneTasks = await getAllTasks(true);
   } else {
-    // Multi-user: filter by assignment
     assignedTasks = await getTasksForUser(userId, false);
-    unassignedTasks = await getUnassignedTasks();
     doneTasks = await getTasksForUser(userId, true);
   }
 
@@ -331,14 +328,13 @@ async function CollectStats(userId: string): Promise<UserRecommendationStats> {
     avgCompletionDays = Math.round((totalDays / doneTasks.length) * 10) / 10;
   }
 
-  const allTasks = [...assignedTasks, ...unassignedTasks];
+  const allTasks = [...assignedTasks];
 
   return {
     userId,
     userName,
     singleUserMode,
     totalAssigned: assignedTasks.length,
-    totalUnassigned: unassignedTasks.length,
     totalDone: doneTasks.length,
     overdue,
     inProgress,
@@ -413,32 +409,6 @@ async function getAllTasks(doneOnly: boolean): Promise<TaskStats[]> {
   return tasks;
 }
 
-async function getUnassignedTasks(): Promise<TaskStats[]> {
-  const dbType = DbUtilsGetType();
-  const rows = await DbUtilsQuerySQL(
-    SQL_QUERIES.TASKS_UNASSIGNED_NOT_DONE[dbType],
-  );
-
-  const tasks: TaskStats[] = [];
-  for (const row of rows) {
-    const labelRows = await DbUtilsQuerySQL(SQL_QUERIES.GET_LABELS[dbType], [
-      row.id,
-    ]);
-    tasks.push({
-      id: row.id,
-      title: row.title,
-      status: row.status,
-      priority: row.priority,
-      dueDate: row.dueDate || undefined,
-      labels: labelRows.map((l) => l.name),
-      projectId: row.projectId,
-      dateCreated: row.dateCreated,
-      dateUpdated: row.dateUpdated,
-    });
-  }
-  return tasks;
-}
-
 // ── Prompt Builder ────────────────────────────────────────────────────────────
 
 function BuildPrompt(stats: UserRecommendationStats): string {
@@ -453,7 +423,6 @@ function BuildPrompt(stats: UserRecommendationStats): string {
     lines.push(`Total open tasks: ${stats.totalAssigned}`);
   } else {
     lines.push(`Total assigned tasks (not done): ${stats.totalAssigned}`);
-    lines.push(`Total unassigned tasks (not done): ${stats.totalUnassigned}`);
   }
   lines.push(`Total completed tasks: ${stats.totalDone}`);
   lines.push(
@@ -495,26 +464,6 @@ function BuildPrompt(stats: UserRecommendationStats): string {
     }
     if (stats.todo.length > 15) {
       lines.push(`  (${stats.todo.length - 15} more omitted)`);
-    }
-    lines.push("");
-  }
-
-  // Unassigned
-  if (stats.totalUnassigned > 0) {
-    lines.push(
-      `--- Unassigned Tasks (${stats.totalUnassigned} total, available to pick up) ---`,
-    );
-    for (const t of stats.tasks
-      .filter(
-        (task) =>
-          !stats.overdue.includes(task) &&
-          !stats.inProgress.includes(task) &&
-          !stats.todo.includes(task),
-      )
-      .slice(0, 10)) {
-      lines.push(
-        `  - [${t.id}] "${t.title}" (priority=${t.priority}, due=${t.dueDate || "none"})`,
-      );
     }
     lines.push("");
   }
@@ -572,14 +521,6 @@ const SQL_QUERIES = {
       "SELECT t.id, t.projectId, t.title, t.status, t.priority, t.dueDate, t.dateCreated, t.dateUpdated " +
       "FROM tasks t INNER JOIN task_assignees ta ON t.id = ta.taskId " +
       "WHERE ta.userId = ? AND t.status = 'Done'",
-  },
-  TASKS_UNASSIGNED_NOT_DONE: {
-    postgres:
-      'SELECT t.id, t."projectId", t.title, t.status, t.priority, t."dueDate", t."dateCreated", t."dateUpdated" ' +
-      "FROM tasks t WHERE t.id NOT IN (SELECT \"taskId\" FROM task_assignees) AND t.status != 'Done'",
-    sqlite:
-      "SELECT t.id, t.projectId, t.title, t.status, t.priority, t.dueDate, t.dateCreated, t.dateUpdated " +
-      "FROM tasks t WHERE t.id NOT IN (SELECT taskId FROM task_assignees) AND t.status != 'Done'",
   },
   COUNT_USERS: {
     postgres: "SELECT COUNT(*) AS count FROM users",

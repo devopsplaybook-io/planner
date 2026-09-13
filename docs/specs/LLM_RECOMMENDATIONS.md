@@ -8,7 +8,7 @@ The dashboard displays AI-generated recommendations for each user, providing ins
 
 - [x] The dashboard displays personalized recommendations for the authenticated user.
 - [x] Recommendations are calculated per user by the LLM:
-  - [x] The LLM receives as input all tasks assigned to the user, plus unassigned tasks that are not in a "Done" state.
+  - [x] The LLM receives as input the tasks assigned to the user that are not in a "Done" state (in single-user mode, all tasks are treated as assigned to the user); unassigned tasks are excluded so recommendations never surface tasks from projects the user cannot see.
   - [x] Recommendations are generated on a configurable schedule (cron expression defined in configuration).
   - [x] The recommendation feature can be enabled or disabled via configuration.
   - [x] The dashboard displays only the most recent recommendation for each user.
@@ -24,4 +24,4 @@ The dashboard displays AI-generated recommendations for each user, providing ins
 
 ## Implementation Status
 
-`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review:
+`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-09-13

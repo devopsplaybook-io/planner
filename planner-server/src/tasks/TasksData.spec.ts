@@ -66,3 +66,59 @@ describe("buildListTasksQuery", () => {
     expect(params).toEqual(["proj-1", "Done", "2026-08-14T00:00:00.000Z"]);
   });
 });
+
+describe("buildListTasksQuery visibility", () => {
+  it("should add no visibility clause when visibleTo is absent (admin)", () => {
+    const { sql, params } = buildListTasksQuery({}, "sqlite");
+    expect(sql).toBe("SELECT * FROM tasks ORDER BY dateCreated DESC");
+    expect(params).toEqual([]);
+  });
+
+  it("should restrict to visible projects when visibleTo is set", () => {
+    const { sql, params } = buildListTasksQuery(
+      { visibleTo: { userId: "user-1" } },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE (projectId IN (SELECT id FROM projects WHERE visibility = 'public') " +
+        "OR projectId IN (SELECT projectId FROM project_users WHERE userId = ?)) " +
+        "ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["user-1"]);
+  });
+
+  it("should quote identifiers for postgres in the visibility clause", () => {
+    const { sql } = buildListTasksQuery(
+      { visibleTo: { userId: "user-1" } },
+      "postgres",
+    );
+    expect(sql).toBe(
+      'SELECT * FROM tasks WHERE ("projectId" IN (SELECT "id" FROM "projects" WHERE "visibility" = \'public\') ' +
+        'OR "projectId" IN (SELECT "projectId" FROM "project_users" WHERE "userId" = ?)) ' +
+        'ORDER BY "dateCreated" DESC',
+    );
+  });
+
+  it("should combine projectId, doneSince and visibility in order", () => {
+    const { sql, params } = buildListTasksQuery(
+      {
+        projectId: "proj-1",
+        doneSince: "2026-08-14T00:00:00.000Z",
+        visibleTo: { userId: "user-1" },
+      },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE projectId = ? AND (status != ? OR dateUpdated >= ?) " +
+        "AND (projectId IN (SELECT id FROM projects WHERE visibility = 'public') " +
+        "OR projectId IN (SELECT projectId FROM project_users WHERE userId = ?)) " +
+        "ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual([
+      "proj-1",
+      "Done",
+      "2026-08-14T00:00:00.000Z",
+      "user-1",
+    ]);
+  });
+});

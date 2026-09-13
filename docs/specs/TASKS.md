@@ -20,4 +20,10 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Update: when a task is clicked, the task is displayed and the user can edit the task.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-12_
+## Visibility
+
+- [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.
+- [x] A task the user cannot see answers 404 on the task API, like a missing task.
+- [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user.
+
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-13_
