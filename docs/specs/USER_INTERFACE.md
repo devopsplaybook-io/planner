@@ -36,5 +36,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] A component must be created to represent a task. This component should display consistently all the main properties and actions on a task. This component must be used in all views
   - [x] A Task Card: summary card displayed in all views
   - [x] A Task Detail: a dialog that displays the full task once the card is clicked
+- [x] On the Tasks board, for non-Done statuses all tasks are shown
+- [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
 _Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-13_

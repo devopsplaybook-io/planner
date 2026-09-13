@@ -53,20 +53,42 @@ function notifyAssignees(
   });
 }
 
+/**
+ * Validates the optional doneSince query param (ISO 8601 timestamp).
+ * Returns undefined when absent/empty, the normalized ISO string when
+ * valid, and throws when the value cannot be parsed as a date. Pure so
+ * it can be unit-tested without the route layer.
+ */
+export function parseDoneSince(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  const date = new Date(value as string);
+  if (isNaN(date.getTime())) {
+    throw new Error("Invalid: doneSince (must be an ISO 8601 date)");
+  }
+  return date.toISOString();
+}
+
 export class TasksRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
-    fastify.get<{ Querystring: { projectId?: string } }>(
-      "/",
-      async (req, res) => {
-        const userSession = await AuthGetUserSession(req);
-        if (!userSession.isAuthenticated) {
-          return res.status(403).send({ error: "Access Denied" });
-        }
-        const tasks = await TasksDataList(req.query.projectId);
-        return res.status(200).send(tasks.map((t) => t.toTransportJson()));
-      },
-    );
+    fastify.get<{
+      Querystring: { projectId?: string; doneSince?: string };
+    }>("/", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(403).send({ error: "Access Denied" });
+      }
+      let doneSince: string | undefined;
+      try {
+        doneSince = parseDoneSince(req.query.doneSince);
+      } catch (error) {
+        return res.status(400).send({ error: (error as Error).message });
+      }
+      const tasks = await TasksDataList(req.query.projectId, doneSince);
+      return res.status(200).send(tasks.map((t) => t.toTransportJson()));
+    });
 
     // ==================== GET BY ID ====================
     fastify.get<{ Params: { id: string } }>("/:id", async (req, res) => {

@@ -15,16 +15,53 @@ export async function TasksDataGet(id: string): Promise<Task> {
   return enrichTask(rows[0]);
 }
 
-export async function TasksDataList(projectId?: string): Promise<Task[]> {
-  let rows: Record<string, unknown>[];
-  if (projectId) {
-    rows = await DbUtilsQuerySQL(
-      SQL_QUERIES.LIST_TASKS_BY_PROJECT[DbUtilsGetType()],
-      [projectId],
-    );
-  } else {
-    rows = await DbUtilsQuerySQL(SQL_QUERIES.LIST_TASKS[DbUtilsGetType()]);
+export interface TaskListFilters {
+  projectId?: string;
+  doneSince?: string;
+}
+
+/**
+ * Builds the task list query for the given filters. Pure so it can be
+ * unit-tested for both SQL dialects without a database. Placeholders use
+ * SQLite "?" style — DbUtilsQuerySQL converts them to $n for postgres.
+ */
+export function buildListTasksQuery(
+  filters: TaskListFilters,
+  dbType: "sqlite" | "postgres" = DbUtilsGetType(),
+): { sql: string; params: unknown[] } {
+  const quote = (name: string) =>
+    dbType === "postgres" ? `"${name}"` : name;
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (filters.projectId) {
+    conditions.push(`${quote("projectId")} = ?`);
+    params.push(filters.projectId);
   }
+  if (filters.doneSince) {
+    // Non-Done tasks always pass; Done tasks must have been updated since
+    // the cutoff (dateUpdated is always populated by INSERT/UPDATE/TOUCH)
+    conditions.push(
+      `(${quote("status")} != ? OR ${quote("dateUpdated")} >= ?)`,
+    );
+    params.push("Done", filters.doneSince);
+  }
+  const whereClause =
+    conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  return {
+    sql: `SELECT * FROM tasks${whereClause} ORDER BY ${quote("dateCreated")} DESC`,
+    params,
+  };
+}
+
+export async function TasksDataList(
+  projectId?: string,
+  doneSince?: string,
+): Promise<Task[]> {
+  const { sql, params } = buildListTasksQuery({
+    projectId,
+    doneSince,
+  });
+  const rows = await DbUtilsQuerySQL(sql, params);
   const tasks: Task[] = [];
   for (const row of rows) {
     tasks.push(await enrichTask(row));
@@ -299,15 +336,6 @@ const SQL_QUERIES = {
   GET_TASK: {
     postgres: 'SELECT * FROM tasks WHERE "id" = $1',
     sqlite: "SELECT * FROM tasks WHERE id = ?",
-  },
-  LIST_TASKS: {
-    postgres: "SELECT * FROM tasks ORDER BY dateCreated DESC",
-    sqlite: "SELECT * FROM tasks ORDER BY dateCreated DESC",
-  },
-  LIST_TASKS_BY_PROJECT: {
-    postgres:
-      'SELECT * FROM tasks WHERE "projectId" = $1 ORDER BY dateCreated DESC',
-    sqlite: "SELECT * FROM tasks WHERE projectId = ? ORDER BY dateCreated DESC",
   },
   INSERT_TASK: {
     postgres:

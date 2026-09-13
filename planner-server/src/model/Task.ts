@@ -41,6 +41,12 @@ export class Task {
     task.status = (json.status as string) || "To Do";
     task.priority = (json.priority as string) || "medium";
     task.dueDate = json.dueDate as string | undefined;
+    if (json.dateCreated) {
+      task.dateCreated = json.dateCreated as string;
+    }
+    if (json.dateUpdated) {
+      task.dateUpdated = json.dateUpdated as string;
+    }
     if (json.checklist) {
       try {
         task.checklist =
