@@ -13,6 +13,7 @@
       :task-id="route.query.taskId || null"
       @close="closeDialog('taskId')"
       @updated="onDialogUpdated"
+      @cloned="onTaskCloned"
     />
     <NoteDetailDialog
       :note-id="route.query.noteId || null"
@@ -49,6 +50,16 @@ function closeDialog(param) {
 function onDialogUpdated() {
   // no-op: stores are updated by the dialog itself;
   // list pages reactively update via computed properties.
+}
+
+/**
+ * Point the open task dialog at the freshly created clone.
+ */
+function onTaskCloned(newTaskId) {
+  router.replace({
+    path: route.path,
+    query: { ...route.query, taskId: newTaskId },
+  });
 }
 
 // Theme management

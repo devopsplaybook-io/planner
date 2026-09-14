@@ -29,6 +29,36 @@
               <i class="bi bi-arrow-counterclockwise" />
             </button>
           </template>
+          <details v-if="task" ref="advancedMenuEl" class="advanced-menu">
+            <summary class="secondary" role="button" aria-label="Advanced">
+              <i class="bi bi-three-dots" />
+            </summary>
+            <ul>
+              <li>
+                <a
+                  href="#"
+                  :aria-busy="cloning"
+                  @click.prevent="cloneTask"
+                >
+                  <i class="bi bi-copy" /> Clone Task
+                </a>
+              </li>
+              <li v-if="isImproveEnabled">
+                <a
+                  href="#"
+                  :aria-busy="improving"
+                  @click.prevent="improveTask"
+                >
+                  <i class="bi bi-stars" /> Improve with AI
+                </a>
+              </li>
+              <li>
+                <a href="#" class="danger-item" @click.prevent="openDeleteConfirm">
+                  <i class="bi bi-trash" /> Delete Task
+                </a>
+              </li>
+            </ul>
+          </details>
           <button class="close-btn" aria-label="Close" @click="handleClose">
             ×
           </button>
@@ -305,13 +335,6 @@
             <button type="submit" :aria-busy="submitting">Send</button>
           </form>
         </details>
-
-        <!-- Delete -->
-        <section>
-          <button class="contrast" @click="showDeleteConfirm = true">
-            <i class="bi bi-trash" /> Delete Task
-          </button>
-        </section>
       </template>
 
       <!-- Fullscreen Image Viewer -->
@@ -360,7 +383,7 @@ import api from "../utils/api";
 const props = defineProps({
   taskId: { type: String, default: null },
 });
-const emit = defineEmits(["close", "updated"]);
+const emit = defineEmits(["close", "updated", "cloned"]);
 
 // Modal dialog wiring: backdrop, focus trap, Escape to close
 const dialogEl = useModalDialog(() => !!props.taskId);
@@ -368,8 +391,10 @@ const dialogEl = useModalDialog(() => !!props.taskId);
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const authStore = useAuthStore();
+const recommendationStore = useRecommendationStore();
 
 const task = computed(() => tasksStore.currentTask);
+const isImproveEnabled = computed(() => recommendationStore.isImproveEnabled);
 const loading = ref(false);
 const notFound = ref(false);
 const newComment = ref("");
@@ -385,6 +410,9 @@ const savingChecklist = ref(false);
 const editing = ref(false);
 const saving = ref(false);
 const savingStatus = ref(false);
+const cloning = ref(false);
+const improving = ref(false);
+const advancedMenuEl = ref(null);
 const editForm = ref({
   title: "",
   description: "",
@@ -461,6 +489,8 @@ watch(
   async (newId) => {
     stopTaskPolling();
     if (newId) {
+      // The advanced menu needs the LLM config; fetch it when opening.
+      recommendationStore.fetchConfig();
       loading.value = true;
       editing.value = false;
       notFound.value = false;
@@ -715,6 +745,60 @@ async function addChecklistItem() {
   }
 }
 
+function closeAdvancedMenu() {
+  advancedMenuEl.value?.removeAttribute("open");
+}
+
+async function cloneTask() {
+  closeAdvancedMenu();
+  if (!task.value || cloning.value) return;
+  cloning.value = true;
+  try {
+    const newTask = await tasksStore.clone(props.taskId);
+    // Re-point the dialog at the clone via the taskId query param
+    emit("cloned", newTask.id);
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to clone task");
+  } finally {
+    cloning.value = false;
+  }
+}
+
+async function improveTask() {
+  closeAdvancedMenu();
+  if (!task.value || improving.value) return;
+  improving.value = true;
+  try {
+    const source = editing.value
+      ? {
+          title: editForm.value.title,
+          description: editForm.value.description,
+        }
+      : {
+          title: task.value.title,
+          description: task.value.description,
+        };
+    const improved = await tasksStore.improveText(
+      source.title,
+      source.description,
+    );
+    // Apply into the edit form for review; never saved silently
+    if (!editing.value) startEdit();
+    editForm.value.title = improved.title || editForm.value.title;
+    editForm.value.description =
+      improved.description || editForm.value.description;
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to improve task");
+  } finally {
+    improving.value = false;
+  }
+}
+
+function openDeleteConfirm() {
+  closeAdvancedMenu();
+  showDeleteConfirm.value = true;
+}
+
 async function deleteTask() {
   deleting.value = true;
   try {
@@ -801,6 +885,78 @@ async function deleteAttachment(attachmentId) {
   line-height: 1;
   min-width: auto;
   width: auto;
+}
+
+/* Advanced (…) dropdown menu in the header actions */
+.advanced-menu {
+  position: relative;
+}
+
+.advanced-menu summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25em 0.5em;
+  font-size: var(--text-lg);
+  line-height: 1;
+  min-width: auto;
+  width: auto;
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.advanced-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-menu summary:hover {
+  background: var(--color-surface-hover);
+}
+
+.advanced-menu ul {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 100;
+  min-width: max-content;
+  margin: 0;
+  padding: var(--space-2xs);
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.advanced-menu a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  white-space: nowrap;
+}
+
+.advanced-menu a:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+  text-decoration: none;
+}
+
+.advanced-menu .danger-item {
+  color: var(--color-danger);
+}
+
+.advanced-menu .danger-item:hover {
+  color: var(--color-danger-hover);
 }
 
 .close-btn {

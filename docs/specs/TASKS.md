@@ -20,10 +20,16 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Update: when a task is clicked, the task is displayed and the user can edit the task.
 
+[x] Advanced menu: the task dialog offers an advanced menu with Clone, Improve and Delete; delete is no longer a standalone button.
+
+[x] Clone: cloning a task creates a copy with all its info, including attachments and checklist, but not comments; the copy starts in the first status of the project and its dialog opens.
+
+[x] Improve: the LLM rewords the task title and description (fast mode, no reasoning) into the edit form for review; the action is only offered when the LLM settings are configured.
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.
 - [x] A task the user cannot see answers 404 on the task API, like a missing task.
 - [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-13_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-14_

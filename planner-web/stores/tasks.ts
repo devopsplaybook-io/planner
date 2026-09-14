@@ -112,6 +112,17 @@ export const useTasksStore = defineStore("tasks", {
       }
     },
 
+    async clone(id: string) {
+      const res = await api.post(`/tasks/${id}/clone`);
+      this.tasks.push(res.data);
+      return res.data;
+    },
+
+    async improveText(title: string, description: string) {
+      const res = await api.post("/tasks/improve", { title, description });
+      return res.data;
+    },
+
     async addComment(taskId: string, text: string) {
       const res = await api.post(`/tasks/${taskId}/comments`, { text });
       const taskIdx = this.tasks.findIndex((t) => t.id === taskId);

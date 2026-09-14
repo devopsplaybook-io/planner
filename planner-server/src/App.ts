@@ -23,6 +23,7 @@ import { StatusesRoutes } from "./statuses/StatusesRoutes";
 import { StatusesCatalogSeedIfEmpty } from "./statuses/StatusesData";
 import { RecommendationInit } from "./recommendation/Recommendation";
 import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
+import { TaskImproveInit } from "./tasks/TaskImprove";
 import { NotificationsInit } from "./notifications/Notifications";
 import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
 
@@ -94,6 +95,7 @@ Promise.resolve().then(async () => {
   await runMigrations();
   await StatusesCatalogSeedIfEmpty();
   await RecommendationInit(config);
+  await TaskImproveInit(config);
   await NotificationsInit(config);
 
   // Ensure a default project exists
@@ -145,6 +147,7 @@ Promise.resolve().then(async () => {
     return res.status(200).send({
       llmRecommendationEnabled:
         config.LLM_RECOMMENDATION_ENABLED && !!config.LLM_API_KEY,
+      llmImproveEnabled: !!config.LLM_API_KEY,
     });
   });
 

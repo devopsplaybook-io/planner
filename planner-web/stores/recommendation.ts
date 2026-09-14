@@ -18,6 +18,7 @@ export interface Recommendation {
 
 export interface AppConfig {
   llmRecommendationEnabled: boolean;
+  llmImproveEnabled: boolean;
 }
 
 export const useRecommendationStore = defineStore("recommendation", {
@@ -30,6 +31,7 @@ export const useRecommendationStore = defineStore("recommendation", {
 
   getters: {
     isLlmEnabled: (state) => state.config?.llmRecommendationEnabled ?? false,
+    isImproveEnabled: (state) => state.config?.llmImproveEnabled ?? false,
     hasRecommendation: (state) => !!state.recommendation?.generatedAt,
   },
 
@@ -39,7 +41,10 @@ export const useRecommendationStore = defineStore("recommendation", {
         const res = await api.get("/status/config");
         this.config = res.data;
       } catch {
-        this.config = { llmRecommendationEnabled: false };
+        this.config = {
+          llmRecommendationEnabled: false,
+          llmImproveEnabled: false,
+        };
       }
     },
 
