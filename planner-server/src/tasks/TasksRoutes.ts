@@ -1,9 +1,15 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { v4 as uuidv4 } from "uuid";
 import { Task } from "../model/Task";
+import { UserSession } from "../model/UserSession";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { UsersDataGet } from "../users/UsersData";
 import { NotificationsTaskUpdated } from "../notifications/Notifications";
+import {
+  isProjectItemVisible,
+  isProjectVisible,
+} from "../projects/ProjectVisibility";
+import { ProjectsDataGet } from "../projects/ProjectsData";
 import {
   TasksDataAdd,
   TasksDataDelete,
@@ -11,6 +17,7 @@ import {
   TasksDataList,
   TasksDataTouch,
   TasksDataUpdate,
+  TaskListFilters,
   addAssignee,
   removeAssignee,
   addComment,
@@ -70,6 +77,25 @@ export function parseDoneSince(value: unknown): string | undefined {
   return date.toISOString();
 }
 
+/**
+ * Loads a task and returns null when it does not exist or sits in a project
+ * the user cannot see (admins bypass). Both cases answer 404 so restricted
+ * tasks are not distinguishable from missing ones.
+ */
+async function getVisibleTask(
+  id: string,
+  userSession: UserSession,
+): Promise<Task> {
+  const task = await TasksDataGet(id);
+  if (!task) {
+    return null;
+  }
+  if (!(await isProjectItemVisible(task, userSession))) {
+    return null;
+  }
+  return task;
+}
+
 export class TasksRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
@@ -86,7 +112,14 @@ export class TasksRoutes {
       } catch (error) {
         return res.status(400).send({ error: (error as Error).message });
       }
-      const tasks = await TasksDataList(req.query.projectId, doneSince);
+      const filters: TaskListFilters = {
+        projectId: req.query.projectId,
+        doneSince,
+      };
+      if (userSession.role !== "admin") {
+        filters.visibleTo = { userId: userSession.userId };
+      }
+      const tasks = await TasksDataList(filters);
       return res.status(200).send(tasks.map((t) => t.toTransportJson()));
     });
 
@@ -96,7 +129,7 @@ export class TasksRoutes {
       if (!userSession.isAuthenticated) {
         return res.status(403).send({ error: "Access Denied" });
       }
-      const task = await TasksDataGet(req.params.id);
+      const task = await getVisibleTask(req.params.id, userSession);
       if (!task) {
         return res.status(404).send({ error: "Task Not Found" });
       }
@@ -128,6 +161,10 @@ export class TasksRoutes {
         return res.status(400).send({ error: "Missing: projectId" });
       if (!req.body.title)
         return res.status(400).send({ error: "Missing: title" });
+      const project = await ProjectsDataGet(req.body.projectId);
+      if (!project || !isProjectVisible(project, userSession)) {
+        return res.status(404).send({ error: "Project Not Found" });
+      }
 
       const task = new Task();
       task.projectId = req.body.projectId;
@@ -164,9 +201,9 @@ export class TasksRoutes {
       } catch {
         return;
       }
-      const task = await TasksDataGet(req.params.id);
-      if (!task) return res.status(404).send({ error: "Task Not Found" });
       const userSession = await AuthGetUserSession(req);
+      const task = await getVisibleTask(req.params.id, userSession);
+      if (!task) return res.status(404).send({ error: "Task Not Found" });
       const before = {
         title: task.title,
         description: task.description,
@@ -209,7 +246,8 @@ export class TasksRoutes {
       } catch {
         return;
       }
-      const task = await TasksDataGet(req.params.id);
+      const userSession = await AuthGetUserSession(req);
+      const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
       await TasksDataDelete(req.params.id);
       return res.status(201).send({});
@@ -227,7 +265,7 @@ export class TasksRoutes {
         return;
       }
       const userSession = await AuthGetUserSession(req);
-      const task = await TasksDataGet(req.params.id);
+      const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
       if (!req.body.text)
         return res.status(400).send({ error: "Missing: text" });
@@ -254,6 +292,9 @@ export class TasksRoutes {
         } catch {
           return;
         }
+        const task = await getVisibleTask(req.params.id, userSession);
+        if (!task)
+          return res.status(404).send({ error: "Task Not Found" });
         const comment = await getComment(req.params.commentId);
         if (!comment)
           return res.status(404).send({ error: "Comment Not Found" });
@@ -282,6 +323,9 @@ export class TasksRoutes {
       } catch {
         return;
       }
+      const task = await getVisibleTask(req.params.id, userSession);
+      if (!task)
+        return res.status(404).send({ error: "Task Not Found" });
       const comment = await getComment(req.params.commentId);
       if (!comment)
         return res.status(404).send({ error: "Comment Not Found" });
@@ -308,9 +352,11 @@ export class TasksRoutes {
       } catch {
         return;
       }
+      const userSession = await AuthGetUserSession(req);
+      const task = await getVisibleTask(req.params.id, userSession);
+      if (!task) return res.status(404).send({ error: "Task Not Found" });
       if (!req.body.userId)
         return res.status(400).send({ error: "Missing: userId" });
-      const userSession = await AuthGetUserSession(req);
       await addAssignee(req.params.id, req.body.userId);
       await TasksDataTouch(req.params.id);
       notifyAssignees(req.params.id, userSession.userId, "Assignees updated");
@@ -326,6 +372,8 @@ export class TasksRoutes {
           return;
         }
         const userSession = await AuthGetUserSession(req);
+        const task = await getVisibleTask(req.params.id, userSession);
+        if (!task) return res.status(404).send({ error: "Task Not Found" });
         await removeAssignee(req.params.id, req.params.userId);
         await TasksDataTouch(req.params.id);
         notifyAssignees(req.params.id, userSession.userId, "Assignees updated");
@@ -345,6 +393,8 @@ export class TasksRoutes {
         return;
       }
       const userSession = await AuthGetUserSession(req);
+      const task = await getVisibleTask(req.params.id, userSession);
+      if (!task) return res.status(404).send({ error: "Task Not Found" });
       await clearLabels(req.params.id);
       for (const label of req.body.labels) {
         await addLabel(req.params.id, label);
@@ -363,7 +413,8 @@ export class TasksRoutes {
         } catch {
           return;
         }
-        const task = await TasksDataGet(req.params.id);
+        const userSession = await AuthGetUserSession(req);
+        const task = await getVisibleTask(req.params.id, userSession);
         if (!task) {
           return res.status(404).send({ error: "Task Not Found" });
         }
@@ -396,7 +447,6 @@ export class TasksRoutes {
           attachmentId,
         );
         await TasksDataTouch(req.params.id);
-        const userSession = await AuthGetUserSession(req);
         notifyAssignees(req.params.id, userSession.userId, "Attachment added");
 
         return res.status(201).send({
@@ -421,6 +471,9 @@ export class TasksRoutes {
         return res.status(404).send({ error: "Attachment Not Found" });
       }
       if (attachment.taskId !== req.params.id) {
+        return res.status(404).send({ error: "Attachment Not Found" });
+      }
+      if (!(await getVisibleTask(attachment.taskId, userSession))) {
         return res.status(404).send({ error: "Attachment Not Found" });
       }
       if (!(await fs.pathExists(attachment.filePath))) {
@@ -465,6 +518,7 @@ export class TasksRoutes {
         } catch {
           return;
         }
+        const userSession = await AuthGetUserSession(req);
         const attachment = await getTaskAttachment(req.params.attachmentId);
         if (!attachment) {
           return res.status(404).send({ error: "Attachment Not Found" });
@@ -472,12 +526,14 @@ export class TasksRoutes {
         if (attachment.taskId !== req.params.id) {
           return res.status(404).send({ error: "Attachment Not Found" });
         }
+        if (!(await getVisibleTask(attachment.taskId, userSession))) {
+          return res.status(404).send({ error: "Attachment Not Found" });
+        }
         if (await fs.pathExists(attachment.filePath)) {
           await fs.remove(attachment.filePath);
         }
         await deleteTaskAttachment(req.params.attachmentId);
         await TasksDataTouch(attachment.taskId);
-        const userSession = await AuthGetUserSession(req);
         notifyAssignees(attachment.taskId, userSession.userId, "Attachment deleted");
         return res.status(201).send({});
       },

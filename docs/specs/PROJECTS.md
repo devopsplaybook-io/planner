@@ -8,6 +8,9 @@ Projects are the top-level organizational unit.
 ## Visibility
 
 - [x] Projects are visible to all users or restricted to specific users.
+- [x] Non-admin users see only the public projects and the restricted projects they are a member of; admins see all projects (Admin &rarr; Projects and the API).
+- [x] A restricted project the user cannot see answers 404 on the project details API, like a missing project.
+- [x] The visibility rule is enforced on every API that serves project content (tasks, notes, views/dashboard, recommendations) &mdash; see the specs of those features.
 
 ## Statuses
 

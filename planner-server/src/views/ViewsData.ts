@@ -1,4 +1,5 @@
 import { DbUtilsQuerySQL, DbUtilsGetType } from "../utils/DbUtils";
+import { visibleProjectsCondition } from "../projects/ProjectVisibility";
 
 export interface NextViewTask {
   id: string;
@@ -20,6 +21,8 @@ export interface NextViewData {
 export interface DashboardFilters {
   projectId?: string;
   labels?: string[];
+  /** When set, restricts results to projects visible to this user (non-admin viewers). */
+  visibleTo?: { userId: string };
 }
 
 function getSelectSql(): string {
@@ -70,6 +73,15 @@ export async function ViewsDataGetDashboard(
       `id IN (SELECT ${col("taskId")} FROM task_labels WHERE name IN (${placeholders}))`,
     );
     filterParams.push(...filters.labels);
+  }
+
+  if (filters?.visibleTo) {
+    const visibility = visibleProjectsCondition(
+      filters.visibleTo.userId,
+      DbUtilsGetType(),
+    );
+    filterConditions.push(visibility.sql);
+    filterParams.push(...visibility.params);
   }
 
   const filterClause =

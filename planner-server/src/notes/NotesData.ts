@@ -4,6 +4,7 @@ import {
   DbUtilsQuerySQL,
   DbUtilsGetType,
 } from "../utils/DbUtils";
+import { visibleProjectsCondition } from "../projects/ProjectVisibility";
 
 export async function NotesDataGet(id: string): Promise<Note> {
   const rows = await DbUtilsQuerySQL(SQL_QUERIES.GET_NOTE[DbUtilsGetType()], [
@@ -15,16 +16,47 @@ export async function NotesDataGet(id: string): Promise<Note> {
   return enrichNote(rows[0]);
 }
 
-export async function NotesDataList(projectId?: string): Promise<Note[]> {
-  let rows: Record<string, unknown>[];
-  if (projectId) {
-    rows = await DbUtilsQuerySQL(
-      SQL_QUERIES.LIST_NOTES_BY_PROJECT[DbUtilsGetType()],
-      [projectId],
-    );
-  } else {
-    rows = await DbUtilsQuerySQL(SQL_QUERIES.LIST_NOTES[DbUtilsGetType()]);
+export interface NoteListFilters {
+  projectId?: string;
+  /** When set, restricts results to projects visible to this user (non-admin viewers). */
+  visibleTo?: { userId: string };
+}
+
+/**
+ * Builds the note list query for the given filters. Pure so it can be
+ * unit-tested for both SQL dialects without a database. Placeholders use
+ * SQLite "?" style — DbUtilsQuerySQL converts them to $n for postgres.
+ */
+export function buildListNotesQuery(
+  filters: NoteListFilters,
+  dbType: "sqlite" | "postgres" = DbUtilsGetType(),
+): { sql: string; params: unknown[] } {
+  const quote = (name: string) =>
+    dbType === "postgres" ? `"${name}"` : name;
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (filters.projectId) {
+    conditions.push(`${quote("projectId")} = ?`);
+    params.push(filters.projectId);
   }
+  if (filters.visibleTo) {
+    const visibility = visibleProjectsCondition(filters.visibleTo.userId, dbType);
+    conditions.push(visibility.sql);
+    params.push(...visibility.params);
+  }
+  const whereClause =
+    conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  return {
+    sql: `SELECT * FROM notes${whereClause} ORDER BY ${quote("dateCreated")} DESC`,
+    params,
+  };
+}
+
+export async function NotesDataList(
+  filters: NoteListFilters = {},
+): Promise<Note[]> {
+  const { sql, params } = buildListNotesQuery(filters);
+  const rows = await DbUtilsQuerySQL(sql, params);
   const notes: Note[] = [];
   for (const row of rows) {
     notes.push(await enrichNote(row));
@@ -234,15 +266,6 @@ const SQL_QUERIES = {
   GET_NOTE: {
     postgres: 'SELECT * FROM notes WHERE "id" = $1',
     sqlite: "SELECT * FROM notes WHERE id = ?",
-  },
-  LIST_NOTES: {
-    postgres: "SELECT * FROM notes ORDER BY dateCreated DESC",
-    sqlite: "SELECT * FROM notes ORDER BY dateCreated DESC",
-  },
-  LIST_NOTES_BY_PROJECT: {
-    postgres:
-      'SELECT * FROM notes WHERE "projectId" = $1 ORDER BY dateCreated DESC',
-    sqlite: "SELECT * FROM notes WHERE projectId = ? ORDER BY dateCreated DESC",
   },
   INSERT_NOTE: {
     postgres:

@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { AuthGetUserSession } from "../users/Auth";
-import { ViewsDataGetDashboard } from "./ViewsData";
+import { DashboardFilters, ViewsDataGetDashboard } from "./ViewsData";
 
 export class ViewsRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
@@ -18,10 +18,14 @@ export class ViewsRoutes {
       const labels = req.query.labels
         ? req.query.labels.split(",").map((l) => l.trim())
         : undefined;
-      const data = await ViewsDataGetDashboard({
+      const filters: DashboardFilters = {
         projectId: req.query.projectId,
         labels,
-      });
+      };
+      if (userSession.role !== "admin") {
+        filters.visibleTo = { userId: userSession.userId };
+      }
+      const data = await ViewsDataGetDashboard(filters);
       return res.status(200).send(data);
     });
 
@@ -31,7 +35,11 @@ export class ViewsRoutes {
       if (!userSession.isAuthenticated) {
         return res.status(403).send({ error: "Access Denied" });
       }
-      const data = await ViewsDataGetDashboard();
+      const filters: DashboardFilters =
+        userSession.role !== "admin"
+          ? { visibleTo: { userId: userSession.userId } }
+          : {};
+      const data = await ViewsDataGetDashboard(filters);
       return res.status(200).send(data);
     });
   }

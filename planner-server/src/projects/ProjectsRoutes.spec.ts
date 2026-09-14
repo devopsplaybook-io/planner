@@ -276,6 +276,24 @@ describe("ProjectsRoutes admin enforcement", () => {
   });
 
   // ==================== READ (all authenticated users) ====================
+  it("should scope the project list to the user's projects for non-admins", async () => {
+    (ProjectsDataList as jest.Mock).mockResolvedValue([]);
+    await app.inject({ method: "GET", url: "/" });
+    expect(ProjectsDataList).toHaveBeenCalledWith("user-1");
+  });
+
+  it("should list all projects for admins (visibility bypass)", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: true,
+      userId: "admin-1",
+      userName: "Admin",
+      role: "admin",
+    });
+    (ProjectsDataList as jest.Mock).mockResolvedValue([]);
+    await app.inject({ method: "GET", url: "/" });
+    expect(ProjectsDataList).toHaveBeenCalledWith(undefined);
+  });
+
   it("should list projects for any authenticated user", async () => {
     const project = new Project();
     (ProjectsDataList as jest.Mock).mockResolvedValue([project]);
@@ -290,6 +308,43 @@ describe("ProjectsRoutes admin enforcement", () => {
     const res = await app.inject({ method: "GET", url: `/${project.id}` });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(project.toTransportJson());
+  });
+
+  it("should return 404 for a restricted project the user cannot see", async () => {
+    const project = new Project();
+    project.name = "Restricted";
+    project.visibility = "restricted";
+    project.userAccess = ["user-2"];
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({ method: "GET", url: `/${project.id}` });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("should return a restricted project to a member", async () => {
+    const project = new Project();
+    project.name = "Restricted";
+    project.visibility = "restricted";
+    project.userAccess = ["user-1"];
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({ method: "GET", url: `/${project.id}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(project.toTransportJson());
+  });
+
+  it("should return any project to an admin", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: true,
+      userId: "admin-1",
+      userName: "Admin",
+      role: "admin",
+    });
+    const project = new Project();
+    project.name = "Restricted";
+    project.visibility = "restricted";
+    project.userAccess = ["user-2"];
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({ method: "GET", url: `/${project.id}` });
+    expect(res.statusCode).toBe(200);
   });
 
   it("should return 404 for a missing project", async () => {

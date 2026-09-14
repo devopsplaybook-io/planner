@@ -15,6 +15,7 @@ Each view provides a different perspective on the same task data.
   - [x] The last 5 tasks marked as done
 - [x] The dashboard can be filtered by project or labels. By default all projects are displayed
 - [x] Task status labels on the dashboard use the color configured for the status in the admin Statuses tab
+- [x] The dashboard only includes tasks from projects visible to the current user (see [PROJECTS.md](PROJECTS.md)); admins see all tasks
 
 ### Calendar View
 
