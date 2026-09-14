@@ -1,11 +1,14 @@
 import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
 import { parseDoneSince, TasksRoutes } from "./TasksRoutes";
-import { TasksDataAdd, TasksDataDelete, TasksDataGet, TasksDataList, TasksDataUpdate, addAssignee, addComment, addLabel, clearLabels, removeAssignee } from "./TasksData";
+import { TasksDataAdd, TasksDataDelete, TasksDataGet, TasksDataList, TasksDataUpdate, addAssignee, addComment, addLabel, addTaskAttachment, clearLabels, removeAssignee } from "./TasksData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { ProjectsDataGet } from "../projects/ProjectsData";
+import { TaskImproveText } from "./TaskImprove";
 import { Task } from "../model/Task";
 import { Project } from "../model/Project";
+
+jest.mock("fs-extra");
 
 jest.mock("./TasksData", () => ({
   TasksDataAdd: jest.fn(),
@@ -25,6 +28,10 @@ jest.mock("./TasksData", () => ({
   addTaskAttachment: jest.fn(),
   deleteTaskAttachment: jest.fn(),
   getTaskAttachment: jest.fn(),
+}));
+
+jest.mock("./TaskImprove", () => ({
+  TaskImproveText: jest.fn(),
 }));
 
 jest.mock("../users/Auth", () => ({
@@ -291,5 +298,131 @@ describe("TasksRoutes project visibility", () => {
     });
     expect(res.statusCode).toBe(404);
     expect(removeAssignee).not.toHaveBeenCalled();
+  });
+
+  // ==================== CLONE ====================
+  it("should clone a task into the first status of its project", async () => {
+    const project = makeProject("public", []);
+    project.statuses = ["Backlog", "In Progress", "Done"];
+    const task = makeTask(project);
+    task.title = "Source";
+    task.description = "Desc";
+    task.priority = "high";
+    task.dueDate = "2026-10-01";
+    task.status = "Done";
+    task.labels = ["bug"];
+    task.assignees = [{ userId: "user-2" }];
+    task.checklist = [{ text: "step", done: true }];
+    task.comments = [
+      {
+        id: "c1",
+        userId: "user-1",
+        text: "hi",
+        dateCreated: "2026-09-01T00:00:00.000Z",
+      },
+    ];
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+
+    const res = await app.inject({ method: "POST", url: `/${task.id}/clone` });
+
+    expect(res.statusCode).toBe(201);
+    expect(TasksDataAdd).toHaveBeenCalledTimes(1);
+    const clone = (TasksDataAdd as jest.Mock).mock.calls[0][0] as Task;
+    expect(clone.id).not.toBe(task.id);
+    expect(clone.status).toBe("Backlog");
+    expect(clone.title).toBe("Source");
+    expect(clone.description).toBe("Desc");
+    expect(clone.priority).toBe("high");
+    expect(clone.dueDate).toBe("2026-10-01");
+    expect(clone.labels).toEqual(["bug"]);
+    expect(clone.assignees).toEqual([{ userId: "user-2" }]);
+    expect(clone.checklist).toEqual([{ text: "step", done: true }]);
+    expect(clone.comments).toEqual([]);
+  });
+
+  it("should answer the clone response with the copied attachments", async () => {
+    const project = makeProject("public", []);
+    const task = makeTask(project);
+    task.attachments = [
+      {
+        id: "att-1",
+        fileName: "spec.pdf",
+        filePath: "/data/attachments/tasks/att-1.pdf",
+        dateCreated: "2026-09-01T00:00:00.000Z",
+      },
+    ];
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+
+    const res = await app.inject({ method: "POST", url: `/${task.id}/clone` });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.attachments).toHaveLength(1);
+    expect(body.attachments[0].fileName).toBe("spec.pdf");
+    expect(body.attachments[0].filePath).toContain("/data/attachments/tasks/");
+    expect(addTaskAttachment).toHaveBeenCalledTimes(1);
+  });
+
+  it("should reject cloning a task the user cannot see", async () => {
+    const task = makeTask(hiddenProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(hiddenProject);
+    const res = await app.inject({ method: "POST", url: `/${task.id}/clone` });
+    expect(res.statusCode).toBe(404);
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  // ==================== IMPROVE ====================
+  it("should return the improved text", async () => {
+    (TaskImproveText as jest.Mock).mockResolvedValue({
+      title: "Better title",
+      description: "Better description",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/improve",
+      payload: { title: "Old", description: "Old description" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      title: "Better title",
+      description: "Better description",
+    });
+    expect(TaskImproveText).toHaveBeenCalledWith("Old", "Old description");
+  });
+
+  it("should reject improve with an empty title and description", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/improve",
+      payload: { title: "  ", description: "" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(TaskImproveText).not.toHaveBeenCalled();
+  });
+
+  it("should answer 502 when the LLM response cannot be used", async () => {
+    (TaskImproveText as jest.Mock).mockResolvedValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/improve",
+      payload: { title: "Old", description: "Old description" },
+    });
+    expect(res.statusCode).toBe(502);
+  });
+
+  it("should answer 502 when the LLM request fails", async () => {
+    (TaskImproveText as jest.Mock).mockRejectedValue(new Error("boom"));
+    const res = await app.inject({
+      method: "POST",
+      url: "/improve",
+      payload: { title: "Old", description: "Old description" },
+    });
+    expect(res.statusCode).toBe(502);
   });
 });

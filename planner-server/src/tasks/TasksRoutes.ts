@@ -32,6 +32,8 @@ import {
 } from "./TasksData";
 import * as fs from "fs-extra";
 import * as path from "path";
+import { buildAttachmentCopyPath, cloneTaskFrom } from "./TasksClone";
+import { TaskImproveText } from "./TaskImprove";
 
 /**
  * Fire-and-forget push notification to the task assignees (excluding the
@@ -181,6 +183,83 @@ export class TasksRoutes {
       if (req.body.checklist) task.checklist = req.body.checklist;
       await TasksDataAdd(task);
       return res.status(201).send(task.toTransportJson());
+    });
+
+    // ==================== CLONE ====================
+    fastify.post<{ Params: { id: string } }>("/:id/clone", async (req, res) => {
+      try {
+        await AuthMustBeAuthenticated(req, res);
+      } catch {
+        return;
+      }
+      const userSession = await AuthGetUserSession(req);
+      const task = await getVisibleTask(req.params.id, userSession);
+      if (!task) return res.status(404).send({ error: "Task Not Found" });
+
+      // A clone is fresh work: it starts in the first status of the project
+      const project = await ProjectsDataGet(task.projectId);
+      const clone = cloneTaskFrom(task, project?.statuses?.[0]);
+      await TasksDataAdd(clone);
+
+      // Copy the attachment files: the browser only knows ids, not contents
+      const copiedAttachments = [];
+      for (const attachment of task.attachments || []) {
+        if (!(await fs.pathExists(attachment.filePath))) {
+          continue;
+        }
+        const attachmentId = uuidv4();
+        const copyPath = buildAttachmentCopyPath(
+          attachment.filePath,
+          attachmentId,
+        );
+        await fs.copy(attachment.filePath, copyPath);
+        await addTaskAttachment(
+          clone.id,
+          attachment.fileName,
+          copyPath,
+          attachmentId,
+        );
+        copiedAttachments.push({
+          id: attachmentId,
+          fileName: attachment.fileName,
+          filePath: copyPath,
+          dateCreated: new Date().toISOString(),
+        });
+      }
+      clone.attachments = copiedAttachments;
+
+      return res.status(201).send(clone.toTransportJson());
+    });
+
+    // ==================== IMPROVE (LLM) ====================
+    interface PostImprove extends RequestGenericInterface {
+      Body: { title?: string; description?: string };
+    }
+    fastify.post<PostImprove>("/improve", async (req, res) => {
+      try {
+        await AuthMustBeAuthenticated(req, res);
+      } catch {
+        return;
+      }
+      const title = (req.body.title || "").trim();
+      const description = (req.body.description || "").trim();
+      if (!title && !description) {
+        return res.status(400).send({ error: "Missing: title or description" });
+      }
+      let improved;
+      try {
+        improved = await TaskImproveText(title, description);
+      } catch {
+        return res
+          .status(502)
+          .send({ error: "Improve failed: the LLM request did not succeed" });
+      }
+      if (!improved) {
+        return res
+          .status(502)
+          .send({ error: "Improve failed: the LLM response could not be used" });
+      }
+      return res.status(200).send(improved);
     });
 
     // ==================== UPDATE ====================
