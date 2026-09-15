@@ -42,65 +42,69 @@
       </div>
 
       <div v-else class="timeline">
-        <div class="timeline-axis">
-          <div class="axis-label" />
-          <div class="axis-track">
-            <span
-              v-for="tick in ticks"
-              :key="tick.time"
-              class="axis-tick"
-              :style="{ left: tick.pct + '%' }"
-            >
-              {{ tick.label }}
-            </span>
-            <span
-              v-if="nowPct !== null"
-              class="axis-now"
-              :style="{ left: nowPct + '%' }"
-            >
-              now
-            </span>
-          </div>
-        </div>
-
-        <div class="timeline-rows">
-          <div class="grid-overlay">
-            <span
-              v-for="tick in ticks"
-              :key="tick.time"
-              class="grid-line"
-              :style="{ left: tick.pct + '%' }"
-            />
-            <span
-              v-if="nowPct !== null"
-              class="now-line"
-              :style="{ left: nowPct + '%' }"
-            />
-          </div>
-
-          <div v-for="row in rows" :key="row.task.id" class="timeline-row">
-            <div class="row-label">
-              <button class="row-title" @click="openTask(row.task)">
-                {{ row.task.title }}
-              </button>
+        <!-- Wrapper carries the span-driven min-width so axis, rows and the
+             absolute grid overlay all share one track width -->
+        <div class="timeline-inner" :style="{ '--months': monthCount }">
+          <div class="timeline-axis">
+            <div class="axis-label" />
+            <div class="axis-track">
               <span
-                v-if="assigneeNames(row.task)"
-                class="row-assignees"
-                :title="assigneeNames(row.task)"
+                v-for="tick in ticks"
+                :key="tick.time"
+                class="axis-tick"
+                :style="{ left: tick.pct + '%' }"
               >
-                <i class="bi bi-people" /> {{ assigneeNames(row.task) }}
+                {{ tick.label }}
+              </span>
+              <span
+                v-if="nowPct !== null"
+                class="axis-now"
+                :style="{ left: nowPct + '%' }"
+              >
+                now
               </span>
             </div>
-            <div class="row-track">
-              <button
-                class="task-bar"
-                :class="{ ongoing: !row.isDone }"
-                :style="barStyle(row)"
-                :title="barTitle(row)"
-                @click="openTask(row.task)"
-              >
-                <span class="bar-text">{{ barText(row) }}</span>
-              </button>
+          </div>
+
+          <div class="timeline-rows">
+            <div class="grid-overlay">
+              <span
+                v-for="tick in ticks"
+                :key="tick.time"
+                class="grid-line"
+                :style="{ left: tick.pct + '%' }"
+              />
+              <span
+                v-if="nowPct !== null"
+                class="now-line"
+                :style="{ left: nowPct + '%' }"
+              />
+            </div>
+
+            <div v-for="row in rows" :key="row.task.id" class="timeline-row">
+              <div class="row-label">
+                <button class="row-title" @click="openTask(row.task)">
+                  {{ row.task.title }}
+                </button>
+                <span
+                  v-if="assigneeNames(row.task)"
+                  class="row-assignees"
+                  :title="assigneeNames(row.task)"
+                >
+                  <i class="bi bi-people" /> {{ assigneeNames(row.task) }}
+                </span>
+              </div>
+              <div class="row-track">
+                <button
+                  class="task-bar"
+                  :class="{ ongoing: !row.isDone }"
+                  :style="barStyle(row)"
+                  :title="barTitle(row)"
+                  @click="openTask(row.task)"
+                >
+                  <span class="bar-text">{{ barText(row) }}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -173,7 +177,7 @@ const rows = computed(() => {
       };
     })
     .sort(
-      (a, b) => new Date(b.task.dateCreated) - new Date(a.task.dateCreated),
+      (a, b) => new Date(a.task.dateCreated) - new Date(b.task.dateCreated),
     );
 });
 
@@ -204,6 +208,23 @@ const ticks = computed(() => {
     ...tick,
     pct: ((tick.time - start) / span) * 100,
   }));
+});
+
+// Months covered by the domain: drives the Gantt min-width so every month
+// gets at least --min-month-w of horizontal track
+const monthCount = computed(() => {
+  const { start, end } = domain.value;
+  const cursor = new Date(start);
+  cursor.setDate(1);
+  cursor.setHours(0, 0, 0, 0);
+  let count = 0;
+  for (;;) {
+    const time = cursor.getTime();
+    if (time > end) break;
+    count++;
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return Math.max(count, 1);
 });
 
 const nowPct = computed(() => {
@@ -364,25 +385,41 @@ useDialogCloseRefresh("taskId", fetchHistory);
 
 .timeline {
   --label-w: 220px;
+  --min-month-w: 100px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
-  overflow: hidden;
+  /* Only the Gantt scrolls horizontally; the label column below stays put */
+  overflow-x: auto;
 }
 
+/* Wrapper, not a grid minmax: the absolutely-positioned grid overlay sizes
+   to its container, so axis, rows and gridlines must share one width */
+.timeline-inner {
+  min-width: calc(var(--label-w) + var(--months, 1) * var(--min-month-w));
+}
+
+/* Flex, not grid: a sticky grid item is clamped to its grid area (the label
+   cell itself), while a flex item can slide within the full-width row */
 .timeline-axis {
-  display: grid;
-  grid-template-columns: var(--label-w) 1fr;
+  display: flex;
   border-bottom: 1px solid var(--color-border);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
 .axis-label {
+  flex: 0 0 var(--label-w);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-surface);
   border-right: 1px solid var(--color-border);
 }
 
 .axis-track {
+  flex: 1;
+  min-width: 0;
   position: relative;
   height: 28px;
 }
@@ -435,8 +472,7 @@ useDialogCloseRefresh("taskId", fetchHistory);
 }
 
 .timeline-row {
-  display: grid;
-  grid-template-columns: var(--label-w) 1fr;
+  display: flex;
   min-height: 44px;
   border-bottom: 1px solid var(--color-border);
 }
@@ -446,13 +482,17 @@ useDialogCloseRefresh("taskId", fetchHistory);
 }
 
 .row-label {
+  flex: 0 0 var(--label-w);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   padding: var(--space-xs) var(--space-sm);
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 2px;
-  min-width: 0;
 }
 
 .row-title {
@@ -486,6 +526,8 @@ useDialogCloseRefresh("taskId", fetchHistory);
 }
 
 .row-track {
+  flex: 1;
+  min-width: 0;
   position: relative;
 }
 

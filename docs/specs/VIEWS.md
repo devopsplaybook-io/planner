@@ -16,7 +16,7 @@ Each view provides a different perspective on the same task data.
 - [x] The dashboard can be filtered by project or labels. By default all projects are displayed
 - [x] Task status labels on the dashboard use the color configured for the status in the admin Statuses tab
 - [x] The dashboard only includes tasks from projects visible to the current user (see [PROJECTS.md](PROJECTS.md)); admins see all tasks
-- [x] Each dashboard section gets an internal vertical scrollbar when its task list is taller than the device height
+- [x] Each dashboard section gets an internal vertical scrollbar when its task list is taller than the device height; the cards keep their natural height — the list scrolls instead of being compressed
 
 ### History View
 
@@ -25,6 +25,9 @@ Each view provides a different perspective on the same task data.
 - [x] Each bar shows the task title and its assignees, and uses the color configured for the task status in the admin Statuses tab
 - [x] The timeline can be filtered by project; the filter is applied client-side
 - [x] The top 10 assignees of the filtered tasks are shown at the top of the page
+- [x] The timeline rows are sorted from oldest to newest (by creation date)
+- [x] The Gantt area scrolls horizontally (the label column stays fixed) while the page itself never scrolls sideways
+- [x] The Gantt width depends on the timeline span: each month of the domain gets a minimum horizontal width, so short spans fill the available width and long spans become scrollable
 - [x] The History page is computed client-side from the existing tasks API (no server-side changes); a loading indicator is shown while fetching
 
 ### Calendar View

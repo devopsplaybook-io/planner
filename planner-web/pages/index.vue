@@ -307,13 +307,19 @@ section h2 {
 
 /* Each section's list scrolls internally when it grows taller than the
    device height, so one long section can't push the others (and the
-   History link) out of reach */
+   History link) out of reach. flex-shrink: 0 keeps cards at their natural
+   height: TaskCard has overflow: hidden, so a flex child with default
+   flex-shrink would be squashed to a sliver instead of overflowing */
 .task-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
   max-height: calc(var(--app-height, 100dvh) - 180px);
   overflow-y: auto;
+}
+
+.task-list > * {
+  flex-shrink: 0;
 }
 
 .section-hint {
