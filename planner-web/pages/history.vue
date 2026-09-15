@@ -91,7 +91,10 @@
                   class="row-assignees"
                   :title="assigneeNames(row.task)"
                 >
-                  <i class="bi bi-people" /> {{ assigneeNames(row.task) }}
+                  <i class="bi bi-people" />
+                  <span class="assignee-text">
+                    {{ assigneeNames(row.task) }}
+                  </span>
                 </span>
               </div>
               <div class="row-track">
@@ -384,7 +387,11 @@ useDialogCloseRefresh("taskId", fetchHistory);
 }
 
 .timeline {
-  --label-w: 220px;
+  /* Every task-name cell shares one width, capped at 30% of the timeline's
+     visible width (container-query units measure .timeline itself, not the
+     wider scrollable inner track) */
+  container-type: inline-size;
+  --label-w: min(220px, 30cqw);
   --min-month-w: 100px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -410,6 +417,10 @@ useDialogCloseRefresh("taskId", fetchHistory);
 
 .axis-label {
   flex: 0 0 var(--label-w);
+  /* min-width: 0 — a flex item's automatic minimum is its content width,
+     which would blow every label out to its own title length instead of
+     keeping one uniform column width */
+  min-width: 0;
   position: sticky;
   left: 0;
   z-index: 1;
@@ -483,6 +494,7 @@ useDialogCloseRefresh("taskId", fetchHistory);
 
 .row-label {
   flex: 0 0 var(--label-w);
+  min-width: 0;
   position: sticky;
   left: 0;
   z-index: 1;
@@ -496,6 +508,11 @@ useDialogCloseRefresh("taskId", fetchHistory);
 }
 
 .row-title {
+  /* The global design system makes every button an inline-flex container
+     with justify-content: center, which centers the title text and clips it
+     on both sides — text-overflow never applies in flex layout. A block
+     button restores left alignment and the ellipsis. */
+  display: block;
   background: none;
   border: none;
   padding: 0;
@@ -521,8 +538,16 @@ useDialogCloseRefresh("taskId", fetchHistory);
   align-items: center;
   gap: var(--space-2xs);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.row-assignees > i {
+  flex-shrink: 0;
+}
+
+.assignee-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .row-track {
@@ -577,11 +602,5 @@ useDialogCloseRefresh("taskId", fetchHistory);
   text-align: center;
   padding: var(--space-xl);
   color: var(--color-text-muted);
-}
-
-@media (max-width: 767px) {
-  .timeline {
-    --label-w: 120px;
-  }
 }
 </style>

@@ -305,13 +305,14 @@ async function fetchDashboard() {
     const doneSince = new Date(
       Date.now() - DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
     ).toISOString();
-    await Promise.all([
+    const [dashboard] = await Promise.all([
       tasksStore.fetchDashboard(params),
       tasksStore.fetchAll(
         projectsStore.selectedProjectFilter || undefined,
         { doneSince },
       ),
     ]);
+    dashboardData.value = dashboard;
   } catch {
     // Handle error silently
   } finally {

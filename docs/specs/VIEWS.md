@@ -31,6 +31,7 @@ Each view provides a different perspective on the same task data.
 - [x] The timeline rows are sorted from oldest to newest (by creation date)
 - [x] The Gantt area scrolls horizontally (the label column stays fixed) while the page itself never scrolls sideways
 - [x] The Gantt width depends on the timeline span: each month of the domain gets a minimum horizontal width, so short spans fill the available width and long spans become scrollable
+- [x] The task-name column has the same width for every row and never exceeds 30% of the timeline's width; long titles and assignee lists are truncated with an ellipsis
 - [x] The History page is computed client-side from the existing tasks API (no server-side changes); a loading indicator is shown while fetching
 
 ### Calendar View
