@@ -1017,7 +1017,7 @@ async function deleteAttachment(attachmentId) {
 }
 
 .edit-section {
-  margin-bottom: var(--space-md);
+  margin-bottom: var(--space-sm);
 }
 
 .edit-section label {
@@ -1037,9 +1037,10 @@ async function deleteAttachment(attachmentId) {
 .meta-section {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-  padding: var(--space-sm);
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+  padding: var(--space-2xs) var(--space-sm);
+  font-size: var(--text-base);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
   /* The UserMultiSelect dropdown overflows this section: without this,
@@ -1048,10 +1049,16 @@ async function deleteAttachment(attachmentId) {
   max-height: none;
 }
 
+.meta-section .tag {
+  /* Cancel the section's smaller font-size so tag pills keep their
+     original em-based size (main.css sets .tag { font-size: var(--text-base) }) */
+  font-size: 1em;
+}
+
 .meta-field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+  gap: var(--space-2xs);
 }
 
 .meta-field select,
