@@ -26,10 +26,12 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Improve: the LLM rewords the task title and description (fast mode, no reasoning) into the edit form for review; the action is only offered when the LLM settings are configured.
 
+[x] Project change: when a task is opened in edit mode, the project can be changed; the target project must be visible to the user; when the current status is not used by the target project, it resets to the target project's first status.
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.
 - [x] A task the user cannot see answers 404 on the task API, like a missing task.
-- [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user.
+- [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-14_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-15_

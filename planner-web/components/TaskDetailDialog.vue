@@ -114,6 +114,19 @@
         <!-- Meta Info -->
         <section class="meta-section">
           <div class="meta-field">
+            <strong>Project</strong>
+            <select v-if="editing" v-model="editForm.projectId">
+              <option
+                v-for="p in projectsStore.projects"
+                :key="p.id"
+                :value="p.id"
+              >
+                {{ p.name }}
+              </option>
+            </select>
+            <span v-else>{{ projectName || task.projectId }}</span>
+          </div>
+          <div class="meta-field">
             <strong>Priority</strong>
             <select v-if="editing" v-model="editForm.priority">
               <option value="low">Low</option>
@@ -419,6 +432,7 @@ const editForm = ref({
   priority: "",
   dueDate: "",
   assignees: [],
+  projectId: "",
 });
 const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
@@ -448,6 +462,13 @@ const availableStatuses = computed(() => {
     (p) => p.id === task.value.projectId,
   );
   return project?.statuses || ["To Do", "In Progress", "Done"];
+});
+
+const projectName = computed(() => {
+  const project = projectsStore.projects.find(
+    (p) => p.id === task.value?.projectId,
+  );
+  return project?.name || "";
 });
 
 // While the dialog is open, poll the task so changes made by other users
@@ -593,6 +614,7 @@ function startEdit() {
     priority: task.value.priority,
     dueDate: task.value.dueDate || "",
     assignees: (task.value.assignees || []).map((a) => a.userId),
+    projectId: task.value.projectId,
   };
   editing.value = true;
   // Fetch users for the assignee picker
@@ -621,6 +643,7 @@ async function saveEdit() {
       description: editForm.value.description,
       priority: editForm.value.priority,
       dueDate: editForm.value.dueDate || null,
+      projectId: editForm.value.projectId,
     });
     // Update assignees separately
     const currentAssignees = (task.value.assignees || []).map((a) => a.userId);

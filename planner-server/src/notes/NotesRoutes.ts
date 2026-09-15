@@ -121,7 +121,7 @@ export class NotesRoutes {
     // ==================== UPDATE ====================
     interface PutNote extends RequestGenericInterface {
       Params: { id: string };
-      Body: { title?: string; description?: string };
+      Body: { title?: string; description?: string; projectId?: string };
     }
     fastify.put<PutNote>("/:id", async (req, res) => {
       try {
@@ -135,6 +135,13 @@ export class NotesRoutes {
       if (req.body.title) note.title = req.body.title;
       if (req.body.description !== undefined)
         note.description = req.body.description;
+      if (req.body.projectId && req.body.projectId !== note.projectId) {
+        const project = await ProjectsDataGet(req.body.projectId);
+        if (!project || !isProjectVisible(project, userSession)) {
+          return res.status(404).send({ error: "Project Not Found" });
+        }
+        note.projectId = req.body.projectId;
+      }
       await NotesDataUpdate(note);
       return res.status(201).send(note.toTransportJson());
     });
