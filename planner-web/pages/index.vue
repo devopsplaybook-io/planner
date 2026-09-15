@@ -123,11 +123,14 @@
         </div>
       </section>
 
-      <section v-if="dashboardData.recentlyDone.length > 0">
-        <h2><i class="bi bi-check-circle" /> Recently Done</h2>
+      <section v-if="recentlyDone.length > 0">
+        <h2>
+          <i class="bi bi-check-circle" /> Recently Done
+          <span class="section-hint">last {{ DONE_WINDOW_DAYS }} days</span>
+        </h2>
         <div class="task-list">
           <TaskCard
-            v-for="task in dashboardData.recentlyDone"
+            v-for="task in recentlyDone"
             :key="task.id"
             :task="task"
             @click="openTask(task)"
@@ -140,12 +143,18 @@
           dashboardData.overdue.length === 0 &&
           dashboardData.upcoming.length === 0 &&
           dashboardData.noDate.length === 0 &&
-          dashboardData.recentlyDone.length === 0
+          recentlyDone.length === 0
         "
         class="empty-state"
       >
         <i class="bi bi-check-circle" />
         <p>All caught up! No tasks need immediate attention.</p>
+      </div>
+
+      <div class="history-link">
+        <NuxtLink to="/history">
+          <i class="bi bi-clock-history" /> History
+        </NuxtLink>
       </div>
     </template>
   </div>
@@ -160,6 +169,8 @@
 <script setup>
 import { marked } from "marked";
 
+const DONE_WINDOW_DAYS = 30;
+
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const statusesStore = useStatusesStore();
@@ -173,8 +184,20 @@ const dashboardData = ref({
   overdue: [],
   upcoming: [],
   noDate: [],
-  recentlyDone: [],
 });
+
+// Like the kanban board: all Done tasks updated within the last 30 days.
+// The server (doneSince) already limits Done tasks to the window, so a
+// client-side status filter is enough.
+const recentlyDone = computed(() =>
+  tasksStore.tasks
+    .filter((t) => t.status === "Done")
+    .sort(
+      (a, b) =>
+        new Date(b.dateUpdated || b.dateCreated) -
+        new Date(a.dateUpdated || a.dateCreated),
+    ),
+);
 
 function renderMarkdown(text) {
   if (!text) return "";
@@ -217,7 +240,16 @@ async function fetchDashboard() {
     if (projectsStore.selectedProjectFilter) {
       params.projectId = projectsStore.selectedProjectFilter;
     }
-    dashboardData.value = await tasksStore.fetchDashboard(params);
+    const doneSince = new Date(
+      Date.now() - DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    await Promise.all([
+      tasksStore.fetchDashboard(params),
+      tasksStore.fetchAll(
+        projectsStore.selectedProjectFilter || undefined,
+        { doneSince },
+      ),
+    ]);
   } catch {
     // Handle error silently
   } finally {
@@ -273,10 +305,39 @@ section h2 {
   gap: var(--space-xs);
 }
 
+/* Each section's list scrolls internally when it grows taller than the
+   device height, so one long section can't push the others (and the
+   History link) out of reach */
 .task-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
+  max-height: calc(var(--app-height, 100dvh) - 180px);
+  overflow-y: auto;
+}
+
+.section-hint {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  color: var(--color-text-muted);
+}
+
+.history-link {
+  text-align: center;
+  margin: var(--space-xl) 0 var(--space-lg);
+}
+
+.history-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: var(--weight-medium);
+}
+
+.history-link a:hover {
+  text-decoration: underline;
 }
 
 .recommendation-section {
