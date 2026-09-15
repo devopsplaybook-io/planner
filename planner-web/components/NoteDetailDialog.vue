@@ -61,6 +61,23 @@
           </label>
         </section>
 
+        <!-- Meta Info -->
+        <section class="meta-section">
+          <div class="meta-field">
+            <strong>Project</strong>
+            <select v-if="editing" v-model="editForm.projectId">
+              <option
+                v-for="p in projectsStore.projects"
+                :key="p.id"
+                :value="p.id"
+              >
+                {{ p.name }}
+              </option>
+            </select>
+            <span v-else>{{ projectName || note.projectId }}</span>
+          </div>
+        </section>
+
         <!-- Labels -->
         <section v-if="note.labels && note.labels.length">
           <h4>Labels</h4>
@@ -258,6 +275,7 @@ const emit = defineEmits(["close", "updated"]);
 const dialogEl = useModalDialog(() => !!props.noteId);
 
 const notesStore = useNotesStore();
+const projectsStore = useProjectsStore();
 const authStore = useAuthStore();
 
 const note = computed(() => notesStore.currentNote);
@@ -272,7 +290,7 @@ const deletingAttachmentId = ref("");
 const fileInput = ref(null);
 const editing = ref(false);
 const saving = ref(false);
-const editForm = ref({ title: "", description: "" });
+const editForm = ref({ title: "", description: "", projectId: "" });
 const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
 // Comment edit/delete state
@@ -280,6 +298,13 @@ const deletingCommentId = ref("");
 const editingCommentId = ref("");
 const editingCommentText = ref("");
 const savingComment = ref(false);
+
+const projectName = computed(() => {
+  const project = projectsStore.projects.find(
+    (p) => p.id === note.value?.projectId,
+  );
+  return project?.name || "";
+});
 
 watch(
   () => props.noteId,
@@ -315,8 +340,11 @@ function startEdit() {
   editForm.value = {
     title: note.value.title,
     description: note.value.description,
+    projectId: note.value.projectId,
   };
   editing.value = true;
+  // Fetch projects for the project picker
+  projectsStore.fetchAll();
 }
 
 function cancelEdit() {
@@ -330,6 +358,7 @@ async function saveEdit() {
     await notesStore.update(props.noteId, {
       title: editForm.value.title,
       description: editForm.value.description,
+      projectId: editForm.value.projectId,
     });
     editing.value = false;
     emit("updated");
@@ -502,6 +531,30 @@ async function deleteAttachment(attachmentId) {
 
 .edit-section textarea {
   min-height: 60px;
+}
+
+.meta-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  /* The select dropdown overflows this section: without this, the global
+     `dialog article section` scroll rule (base.css) clips it */
+  overflow: visible;
+  max-height: none;
+}
+
+.meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.meta-field select {
+  margin: 0;
 }
 
 section {

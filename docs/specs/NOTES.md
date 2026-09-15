@@ -12,10 +12,16 @@ exactly one project and has the following attributes:
 | [x] Labels      | Zero, one, or multiple labels for categorization |
 | [x] Project     | The project the note belongs to (exactly one)    |
 
+## Management of Notes
+
+[x] Update: when a note is clicked, the note is displayed and the user can edit the note.
+
+[x] Project change: when a note is opened in edit mode, the project can be changed; the target project must be visible to the user.
+
 ## Visibility
 
 - [x] Notes inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see notes from public projects or restricted projects they are a member of; admins see all notes.
 - [x] A note the user cannot see answers 404 on the note API, like a missing note.
-- [x] Creating a note requires the target project to be visible to the user; updating, deleting and interacting with a note (comments, labels, attachments) requires the note to be visible to the user.
+- [x] Creating a note requires the target project to be visible to the user; updating, deleting and interacting with a note (comments, labels, attachments) requires the note to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-13_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-15_
