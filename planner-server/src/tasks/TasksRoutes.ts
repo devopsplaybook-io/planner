@@ -102,7 +102,7 @@ export class TasksRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
     fastify.get<{
-      Querystring: { projectId?: string; doneSince?: string };
+      Querystring: { projectId?: string; doneSince?: string; q?: string };
     }>("/", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
@@ -117,6 +117,7 @@ export class TasksRoutes {
       const filters: TaskListFilters = {
         projectId: req.query.projectId,
         doneSince,
+        q: req.query.q?.trim() || undefined,
       };
       if (userSession.role !== "admin") {
         filters.visibleTo = { userId: userSession.userId };
