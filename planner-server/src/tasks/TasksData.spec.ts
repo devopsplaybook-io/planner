@@ -67,6 +67,66 @@ describe("buildListTasksQuery", () => {
   });
 });
 
+describe("buildListTasksQuery search (q)", () => {
+  it("should match title or description case-insensitively (sqlite)", () => {
+    const { sql, params } = buildListTasksQuery({ q: "report" }, "sqlite");
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\') ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["%report%", "%report%"]);
+  });
+
+  it("should use ILIKE for postgres", () => {
+    const { sql, params } = buildListTasksQuery({ q: "report" }, "postgres");
+    expect(sql).toBe(
+      'SELECT * FROM tasks WHERE ("title" ILIKE ? ESCAPE \'\\\' OR "description" ILIKE ? ESCAPE \'\\\') ORDER BY "dateCreated" DESC',
+    );
+    expect(params).toEqual(["%report%", "%report%"]);
+  });
+
+  it("should trim the search term", () => {
+    const { params } = buildListTasksQuery({ q: "  report  " }, "sqlite");
+    expect(params).toEqual(["%report%", "%report%"]);
+  });
+
+  it("should escape LIKE wildcards and the escape character in q", () => {
+    const { params } = buildListTasksQuery({ q: "50%_off\\" }, "sqlite");
+    expect(params).toEqual(["%50\\%\\_off\\\\%", "%50\\%\\_off\\\\%"]);
+  });
+
+  it("should combine q with projectId and doneSince", () => {
+    const { sql, params } = buildListTasksQuery(
+      {
+        projectId: "proj-1",
+        doneSince: "2026-08-14T00:00:00.000Z",
+        q: "report",
+      },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE projectId = ? AND (status != ? OR dateUpdated >= ?) " +
+        "AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\') ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual([
+      "proj-1",
+      "Done",
+      "2026-08-14T00:00:00.000Z",
+      "%report%",
+      "%report%",
+    ]);
+  });
+
+  it("should ignore an empty or whitespace-only q", () => {
+    expect(buildListTasksQuery({ q: "" }, "sqlite").sql).toBe(
+      "SELECT * FROM tasks ORDER BY dateCreated DESC",
+    );
+    expect(buildListTasksQuery({ q: "   " }, "sqlite").sql).toBe(
+      "SELECT * FROM tasks ORDER BY dateCreated DESC",
+    );
+    expect(buildListTasksQuery({ q: "" }, "sqlite").params).toEqual([]);
+  });
+});
+
 describe("buildListTasksQuery visibility", () => {
   it("should add no visibility clause when visibleTo is absent (admin)", () => {
     const { sql, params } = buildListTasksQuery({}, "sqlite");

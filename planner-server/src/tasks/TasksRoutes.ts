@@ -1,6 +1,7 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { v4 as uuidv4 } from "uuid";
 import { Task } from "../model/Task";
+import { Project } from "../model/Project";
 import { UserSession } from "../model/UserSession";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { UsersDataGet } from "../users/UsersData";
@@ -102,7 +103,7 @@ export class TasksRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
     fastify.get<{
-      Querystring: { projectId?: string; doneSince?: string };
+      Querystring: { projectId?: string; doneSince?: string; q?: string };
     }>("/", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
@@ -117,6 +118,7 @@ export class TasksRoutes {
       const filters: TaskListFilters = {
         projectId: req.query.projectId,
         doneSince,
+        q: req.query.q?.trim() || undefined,
       };
       if (userSession.role !== "admin") {
         filters.visibleTo = { userId: userSession.userId };
@@ -272,6 +274,7 @@ export class TasksRoutes {
         priority?: string;
         dueDate?: string;
         checklist?: { text: string; done: boolean }[];
+        projectId?: string;
       };
     }
     fastify.put<PutTask>("/:id", async (req, res) => {
@@ -290,6 +293,7 @@ export class TasksRoutes {
         priority: task.priority,
         dueDate: task.dueDate || "",
         checklist: JSON.stringify(task.checklist),
+        projectId: task.projectId,
       };
       if (req.body.title) task.title = req.body.title;
       if (req.body.description !== undefined)
@@ -298,6 +302,20 @@ export class TasksRoutes {
       if (req.body.priority) task.priority = req.body.priority;
       if (req.body.dueDate !== undefined) task.dueDate = req.body.dueDate;
       if (req.body.checklist) task.checklist = req.body.checklist;
+      let movedToProject: Project = null;
+      if (req.body.projectId && req.body.projectId !== task.projectId) {
+        const project = await ProjectsDataGet(req.body.projectId);
+        if (!project || !isProjectVisible(project, userSession)) {
+          return res.status(404).send({ error: "Project Not Found" });
+        }
+        movedToProject = project;
+        task.projectId = req.body.projectId;
+        // The status belongs to the source project's catalog: a status the
+        // target project does not use falls back to its first status
+        if (!project.statuses.includes(task.status)) {
+          task.status = project.statuses[0];
+        }
+      }
       await TasksDataUpdate(task);
       const changes: string[] = [];
       if (task.title !== before.title) changes.push("title");
@@ -308,6 +326,7 @@ export class TasksRoutes {
       if ((task.dueDate || "") !== before.dueDate) changes.push("due date");
       if (JSON.stringify(task.checklist) !== before.checklist)
         changes.push("checklist");
+      if (movedToProject) changes.push(`project: ${movedToProject.name}`);
       if (changes.length > 0) {
         notifyAssignees(
           req.params.id,

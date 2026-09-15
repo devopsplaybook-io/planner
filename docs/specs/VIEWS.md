@@ -14,6 +14,9 @@ Each view provides a different perspective on the same task data.
   - [x] Tasks without dates, ordered by priority
   - [x] The tasks marked as Done within the past 30 days (same window as the Kanban board)
 - [x] The dashboard can be filtered by project or labels. By default all projects are displayed
+- [x] The dashboard has a search input that filters tasks dynamically while typing (debounced)
+- [x] The search covers all tasks, including tasks marked as done
+- [x] Search results respect the current project filter and are shown while the search term is active
 - [x] Task status labels on the dashboard use the color configured for the status in the admin Statuses tab
 - [x] The dashboard only includes tasks from projects visible to the current user (see [PROJECTS.md](PROJECTS.md)); admins see all tasks
 - [x] Each dashboard section gets an internal vertical scrollbar when its task list is taller than the device height; the cards keep their natural height — the list scrolls instead of being compressed

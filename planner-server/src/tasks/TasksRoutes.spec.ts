@@ -161,6 +161,26 @@ describe("TasksRoutes project visibility", () => {
     expect(TasksDataList).not.toHaveBeenCalled();
   });
 
+  it("should forward a search term to the data layer", async () => {
+    await app.inject({ method: "GET", url: "/?q=report" });
+    expect(TasksDataList).toHaveBeenCalledWith({
+      projectId: undefined,
+      doneSince: undefined,
+      q: "report",
+      visibleTo: { userId: "user-1" },
+    });
+  });
+
+  it("should ignore a whitespace-only search term", async () => {
+    await app.inject({ method: "GET", url: "/?q=%20%20" });
+    expect(TasksDataList).toHaveBeenCalledWith({
+      projectId: undefined,
+      doneSince: undefined,
+      q: undefined,
+      visibleTo: { userId: "user-1" },
+    });
+  });
+
   // ==================== GET BY ID ====================
   it("should return a task from a public project", async () => {
     const task = makeTask(publicProject);
@@ -245,6 +265,132 @@ describe("TasksRoutes project visibility", () => {
     const res = await app.inject({ method: "DELETE", url: `/${task.id}` });
     expect(res.statusCode).toBe(404);
     expect(TasksDataDelete).not.toHaveBeenCalled();
+  });
+
+  // ==================== PROJECT CHANGE ====================
+  it("should move a task to a visible target project", async () => {
+    const from = makeProject("public", []);
+    const to = makeProject("public", []);
+    to.name = "Target";
+    const task = makeTask(from);
+    task.status = "To Do";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === to.id ? to : from,
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { projectId: to.id },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(task.projectId).toBe(to.id);
+    expect(task.status).toBe("To Do");
+    expect(TasksDataUpdate).toHaveBeenCalledWith(task);
+    expect(res.json()).toMatchObject({ projectId: to.id });
+  });
+
+  it("should reset the status to the target project's first status when the target does not use it", async () => {
+    const from = makeProject("public", []);
+    const to = makeProject("public", []);
+    to.name = "Target";
+    to.statuses = ["Backlog", "Blocked", "Done"];
+    const task = makeTask(from);
+    task.status = "In Progress";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === to.id ? to : from,
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { projectId: to.id },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(task.projectId).toBe(to.id);
+    expect(task.status).toBe("Backlog");
+  });
+
+  it("should keep the status when the target project uses it", async () => {
+    const from = makeProject("public", []);
+    const to = makeProject("public", []);
+    to.statuses = ["Backlog", "In Progress", "Done"];
+    const task = makeTask(from);
+    task.status = "In Progress";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === to.id ? to : from,
+    );
+
+    await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { projectId: to.id },
+    });
+
+    expect(task.status).toBe("In Progress");
+  });
+
+  it("should reject moving a task to a project the user cannot see", async () => {
+    const from = makeProject("public", []);
+    const task = makeTask(from);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === hiddenProject.id ? hiddenProject : from,
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { projectId: hiddenProject.id },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: "Project Not Found" });
+    expect(TasksDataUpdate).not.toHaveBeenCalled();
+    expect(task.projectId).toBe(from.id);
+  });
+
+  it("should reject moving a task to a missing project", async () => {
+    const from = makeProject("public", []);
+    const task = makeTask(from);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === "missing" ? null : from,
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { projectId: "missing" },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(TasksDataUpdate).not.toHaveBeenCalled();
+    expect(task.projectId).toBe(from.id);
+  });
+
+  it("should treat a project change to the current project as a no-op", async () => {
+    const from = makeProject("public", []);
+    const task = makeTask(from);
+    task.title = "Original";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(from);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { projectId: from.id, title: "Renamed" },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(task.projectId).toBe(from.id);
+    expect(task.title).toBe("Renamed");
+    expect(TasksDataUpdate).toHaveBeenCalledTimes(1);
   });
 
   // ==================== SUB-RESOURCES ====================
