@@ -19,6 +19,8 @@ export async function TasksDataGet(id: string): Promise<Task> {
 export interface TaskListFilters {
   projectId?: string;
   doneSince?: string;
+  /** Case-insensitive substring matched against title and description. */
+  q?: string;
   /** When set, restricts results to projects visible to this user (non-admin viewers). */
   visibleTo?: { userId: string };
 }
@@ -47,6 +49,18 @@ export function buildListTasksQuery(
       `(${quote("status")} != ? OR ${quote("dateUpdated")} >= ?)`,
     );
     params.push("Done", filters.doneSince);
+  }
+  const term = filters.q?.trim();
+  if (term) {
+    // LIKE is case-insensitive for ASCII in sqlite; postgres needs ILIKE.
+    // User-supplied wildcards and the escape character are neutralized so
+    // they match literally.
+    const like = dbType === "postgres" ? "ILIKE" : "LIKE";
+    const pattern = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+    conditions.push(
+      `(${quote("title")} ${like} ? ESCAPE '\\' OR ${quote("description")} ${like} ? ESCAPE '\\')`,
+    );
+    params.push(pattern, pattern);
   }
   if (filters.visibleTo) {
     const visibility = visibleProjectsCondition(filters.visibleTo.userId, dbType);

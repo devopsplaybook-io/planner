@@ -71,6 +71,11 @@ export const useTasksStore = defineStore("tasks", {
       return res.data;
     },
 
+    async searchTasks(params?: { projectId?: string; q?: string }) {
+      const res = await api.get("/tasks", { params });
+      return res.data;
+    },
+
     async fetchById(id: string) {
       const res = await api.get(`/tasks/${id}`);
       this.currentTask = res.data;

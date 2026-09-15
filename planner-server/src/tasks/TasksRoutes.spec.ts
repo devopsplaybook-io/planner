@@ -161,6 +161,26 @@ describe("TasksRoutes project visibility", () => {
     expect(TasksDataList).not.toHaveBeenCalled();
   });
 
+  it("should forward a search term to the data layer", async () => {
+    await app.inject({ method: "GET", url: "/?q=report" });
+    expect(TasksDataList).toHaveBeenCalledWith({
+      projectId: undefined,
+      doneSince: undefined,
+      q: "report",
+      visibleTo: { userId: "user-1" },
+    });
+  });
+
+  it("should ignore a whitespace-only search term", async () => {
+    await app.inject({ method: "GET", url: "/?q=%20%20" });
+    expect(TasksDataList).toHaveBeenCalledWith({
+      projectId: undefined,
+      doneSince: undefined,
+      q: undefined,
+      visibleTo: { userId: "user-1" },
+    });
+  });
+
   // ==================== GET BY ID ====================
   it("should return a task from a public project", async () => {
     const task = makeTask(publicProject);
