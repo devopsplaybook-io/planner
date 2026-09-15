@@ -114,6 +114,19 @@
         <!-- Meta Info -->
         <section class="meta-section">
           <div class="meta-field">
+            <strong>Project</strong>
+            <select v-if="editing" v-model="editForm.projectId">
+              <option
+                v-for="p in projectsStore.projects"
+                :key="p.id"
+                :value="p.id"
+              >
+                {{ p.name }}
+              </option>
+            </select>
+            <span v-else>{{ projectName || task.projectId }}</span>
+          </div>
+          <div class="meta-field">
             <strong>Priority</strong>
             <select v-if="editing" v-model="editForm.priority">
               <option value="low">Low</option>
@@ -419,6 +432,7 @@ const editForm = ref({
   priority: "",
   dueDate: "",
   assignees: [],
+  projectId: "",
 });
 const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
@@ -448,6 +462,13 @@ const availableStatuses = computed(() => {
     (p) => p.id === task.value.projectId,
   );
   return project?.statuses || ["To Do", "In Progress", "Done"];
+});
+
+const projectName = computed(() => {
+  const project = projectsStore.projects.find(
+    (p) => p.id === task.value?.projectId,
+  );
+  return project?.name || "";
 });
 
 // While the dialog is open, poll the task so changes made by other users
@@ -593,6 +614,7 @@ function startEdit() {
     priority: task.value.priority,
     dueDate: task.value.dueDate || "",
     assignees: (task.value.assignees || []).map((a) => a.userId),
+    projectId: task.value.projectId,
   };
   editing.value = true;
   // Fetch users for the assignee picker
@@ -621,6 +643,7 @@ async function saveEdit() {
       description: editForm.value.description,
       priority: editForm.value.priority,
       dueDate: editForm.value.dueDate || null,
+      projectId: editForm.value.projectId,
     });
     // Update assignees separately
     const currentAssignees = (task.value.assignees || []).map((a) => a.userId);
@@ -994,7 +1017,7 @@ async function deleteAttachment(attachmentId) {
 }
 
 .edit-section {
-  margin-bottom: var(--space-md);
+  margin-bottom: var(--space-sm);
 }
 
 .edit-section label {
@@ -1014,9 +1037,10 @@ async function deleteAttachment(attachmentId) {
 .meta-section {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-  padding: var(--space-sm);
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+  padding: var(--space-2xs) var(--space-sm);
+  font-size: var(--text-base);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
   /* The UserMultiSelect dropdown overflows this section: without this,
@@ -1025,10 +1049,16 @@ async function deleteAttachment(attachmentId) {
   max-height: none;
 }
 
+.meta-section .tag {
+  /* Cancel the section's smaller font-size so tag pills keep their
+     original em-based size (main.css sets .tag { font-size: var(--text-base) }) */
+  font-size: 1em;
+}
+
 .meta-field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+  gap: var(--space-2xs);
 }
 
 .meta-field select,

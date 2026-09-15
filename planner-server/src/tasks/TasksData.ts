@@ -118,6 +118,7 @@ export async function TasksDataUpdate(task: Task): Promise<void> {
     task.dueDate || null,
     JSON.stringify(task.checklist),
     task.dateUpdated,
+    task.projectId,
     task.id,
   ]);
 }
@@ -363,9 +364,9 @@ const SQL_QUERIES = {
   },
   UPDATE_TASK: {
     postgres:
-      'UPDATE tasks SET "title" = $1, "description" = $2, "status" = $3, "priority" = $4, "dueDate" = $5, "checklist" = $6, "dateUpdated" = $7 WHERE "id" = $8',
+      'UPDATE tasks SET "title" = $1, "description" = $2, "status" = $3, "priority" = $4, "dueDate" = $5, "checklist" = $6, "dateUpdated" = $7, "projectId" = $8 WHERE "id" = $9',
     sqlite:
-      "UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, dueDate = ?, checklist = ?, dateUpdated = ? WHERE id = ?",
+      "UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, dueDate = ?, checklist = ?, dateUpdated = ?, projectId = ? WHERE id = ?",
   },
   TOUCH_TASK: {
     postgres: 'UPDATE tasks SET "dateUpdated" = $1 WHERE "id" = $2',

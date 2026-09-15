@@ -81,6 +81,7 @@ export async function NotesDataUpdate(note: Note): Promise<void> {
     note.title,
     note.description,
     note.dateUpdated,
+    note.projectId,
     note.id,
   ]);
 }
@@ -275,9 +276,9 @@ const SQL_QUERIES = {
   },
   UPDATE_NOTE: {
     postgres:
-      'UPDATE notes SET "title" = $1, "description" = $2, "dateUpdated" = $3 WHERE "id" = $4',
+      'UPDATE notes SET "title" = $1, "description" = $2, "dateUpdated" = $3, "projectId" = $4 WHERE "id" = $5',
     sqlite:
-      "UPDATE notes SET title = ?, description = ?, dateUpdated = ? WHERE id = ?",
+      "UPDATE notes SET title = ?, description = ?, dateUpdated = ?, projectId = ? WHERE id = ?",
   },
   DELETE_NOTE: {
     postgres: 'DELETE FROM notes WHERE "id" = $1',

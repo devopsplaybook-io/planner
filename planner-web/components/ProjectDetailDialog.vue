@@ -459,6 +459,7 @@ section {
 }
 
 .radio-label {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.2em;
@@ -468,10 +469,25 @@ section {
   border-radius: var(--radius-sm);
 }
 
+/* The cards act as toggle buttons: hide the native radio circle but keep
+   the input focusable for keyboard and screen readers */
+.radio-label input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
 .radio-label:has(input:checked) {
   border-color: var(--color-primary);
   background: var(--color-primary);
   color: var(--color-on-primary);
+}
+
+.radio-label:has(input:focus-visible) {
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .radio-label small {
