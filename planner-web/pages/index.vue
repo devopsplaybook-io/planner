@@ -350,6 +350,9 @@ onMounted(async () => {
 .dashboard {
   max-width: 800px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .header-controls {
@@ -394,6 +397,14 @@ section {
   margin-bottom: var(--space-lg);
 }
 
+/* The section is the percentage bridge: it caps at 90% of the dashboard
+   area and its task-list scrolls internally when the tasks exceed that */
+.dashboard > section {
+  max-height: 90%;
+  display: flex;
+  flex-direction: column;
+}
+
 section h2 {
   font-size: var(--text-lg);
   margin-bottom: var(--space-sm);
@@ -402,16 +413,17 @@ section h2 {
   gap: var(--space-xs);
 }
 
-/* Each section's list scrolls internally when it grows taller than the
-   device height, so one long section can't push the others (and the
-   History link) out of reach. flex-shrink: 0 keeps cards at their natural
-   height: TaskCard has overflow: hidden, so a flex child with default
+/* Each section's list scrolls internally once the section reaches its 90%
+   cap, so one long section can't push the others (and the History link)
+   out of reach. flex-shrink: 0 keeps cards at their natural height:
+   TaskCard has overflow: hidden, so a flex child with default
    flex-shrink would be squashed to a sliver instead of overflowing */
 .task-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
-  max-height: calc(var(--app-height, 100dvh) - 180px);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
