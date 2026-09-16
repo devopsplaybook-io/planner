@@ -6,15 +6,11 @@
         <p>Kanban board</p>
       </hgroup>
       <div class="header-controls">
-        <select
-          :value="projectsStore.selectedProjectFilter"
-          @change="onFilterChange"
-        >
-          <option value="">All projects</option>
-          <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
-            {{ p.name }}
-          </option>
-        </select>
+        <ProjectSelect
+          :model-value="projectsStore.selectedProjectFilter"
+          all-label="All projects"
+          @update:model-value="onFilterChange"
+        />
         <button class="fab-button" @click="showCreateDialog = true">
           <i class="bi bi-plus-lg" />
         </button>
@@ -167,8 +163,8 @@ function openTask(task) {
   });
 }
 
-function onFilterChange(event) {
-  projectsStore.setProjectFilter(event.target.value);
+function onFilterChange(projectId) {
+  projectsStore.setProjectFilter(projectId);
   fetchTasks();
 }
 

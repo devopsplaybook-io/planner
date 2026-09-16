@@ -6,15 +6,12 @@
         <p>Task timeline over time</p>
       </hgroup>
       <div class="header-controls">
-        <select
-          :value="projectsStore.selectedProjectFilter"
-          @change="onFilterChange"
-        >
-          <option value="">All projects</option>
-          <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
-            {{ p.name }}
-          </option>
-        </select>
+        <ProjectSelect
+          :model-value="projectsStore.selectedProjectFilter"
+          all-label="All projects"
+          include-archived
+          @update:model-value="onFilterChange"
+        />
       </div>
     </header>
 
@@ -306,8 +303,8 @@ function assigneeNames(task) {
     .join(", ");
 }
 
-function onFilterChange(event) {
-  projectsStore.setProjectFilter(event.target.value);
+function onFilterChange(projectId) {
+  projectsStore.setProjectFilter(projectId);
 }
 
 function openTask(task) {

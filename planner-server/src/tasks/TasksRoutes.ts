@@ -99,6 +99,19 @@ async function getVisibleTask(
   return task;
 }
 
+/**
+ * Error message when the project is archived, null when it is active (or
+ * missing — callers answer 404 for missing projects themselves). Archived
+ * projects are read-only for tasks: create, clone, update and every
+ * sub-resource mutation are blocked; reads stay allowed.
+ */
+async function archivedProjectError(
+  projectId: string,
+): Promise<string | null> {
+  const project = await ProjectsDataGet(projectId);
+  return project?.archived ? "Project is archived" : null;
+}
+
 export class TasksRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
@@ -169,6 +182,9 @@ export class TasksRoutes {
       if (!project || !isProjectVisible(project, userSession)) {
         return res.status(404).send({ error: "Project Not Found" });
       }
+      if (project.archived) {
+        return res.status(400).send({ error: "Project is archived" });
+      }
 
       const task = new Task();
       task.projectId = req.body.projectId;
@@ -197,9 +213,11 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
-
       // A clone is fresh work: it starts in the first status of the project
       const project = await ProjectsDataGet(task.projectId);
+      if (project?.archived) {
+        return res.status(400).send({ error: "Project is archived" });
+      }
       const clone = cloneTaskFrom(task, project?.statuses?.[0]);
       await TasksDataAdd(clone);
 
@@ -286,6 +304,10 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
+      const archivedError = await archivedProjectError(task.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
       const before = {
         title: task.title,
         description: task.description,
@@ -307,6 +329,9 @@ export class TasksRoutes {
         const project = await ProjectsDataGet(req.body.projectId);
         if (!project || !isProjectVisible(project, userSession)) {
           return res.status(404).send({ error: "Project Not Found" });
+        }
+        if (project.archived) {
+          return res.status(400).send({ error: "Project is archived" });
         }
         movedToProject = project;
         task.projectId = req.body.projectId;
@@ -365,6 +390,10 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
+      const archivedError = await archivedProjectError(task.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
       if (!req.body.text)
         return res.status(400).send({ error: "Missing: text" });
       const user = await UsersDataGet(userSession.userId);
@@ -393,6 +422,10 @@ export class TasksRoutes {
         const task = await getVisibleTask(req.params.id, userSession);
         if (!task)
           return res.status(404).send({ error: "Task Not Found" });
+        const archivedError = await archivedProjectError(task.projectId);
+        if (archivedError) {
+          return res.status(400).send({ error: archivedError });
+        }
         const comment = await getComment(req.params.commentId);
         if (!comment)
           return res.status(404).send({ error: "Comment Not Found" });
@@ -424,6 +457,10 @@ export class TasksRoutes {
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task)
         return res.status(404).send({ error: "Task Not Found" });
+      const archivedError = await archivedProjectError(task.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
       const comment = await getComment(req.params.commentId);
       if (!comment)
         return res.status(404).send({ error: "Comment Not Found" });
@@ -453,6 +490,10 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
+      const archivedError = await archivedProjectError(task.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
       if (!req.body.userId)
         return res.status(400).send({ error: "Missing: userId" });
       await addAssignee(req.params.id, req.body.userId);
@@ -472,6 +513,10 @@ export class TasksRoutes {
         const userSession = await AuthGetUserSession(req);
         const task = await getVisibleTask(req.params.id, userSession);
         if (!task) return res.status(404).send({ error: "Task Not Found" });
+        const archivedError = await archivedProjectError(task.projectId);
+        if (archivedError) {
+          return res.status(400).send({ error: archivedError });
+        }
         await removeAssignee(req.params.id, req.params.userId);
         await TasksDataTouch(req.params.id);
         notifyAssignees(req.params.id, userSession.userId, "Assignees updated");
@@ -493,6 +538,10 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
+      const archivedError = await archivedProjectError(task.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
       await clearLabels(req.params.id);
       for (const label of req.body.labels) {
         await addLabel(req.params.id, label);
@@ -515,6 +564,10 @@ export class TasksRoutes {
         const task = await getVisibleTask(req.params.id, userSession);
         if (!task) {
           return res.status(404).send({ error: "Task Not Found" });
+        }
+        const archivedError = await archivedProjectError(task.projectId);
+        if (archivedError) {
+          return res.status(400).send({ error: archivedError });
         }
 
         const data = await req.file();
@@ -624,8 +677,15 @@ export class TasksRoutes {
         if (attachment.taskId !== req.params.id) {
           return res.status(404).send({ error: "Attachment Not Found" });
         }
-        if (!(await getVisibleTask(attachment.taskId, userSession))) {
+        const visibleTask = await getVisibleTask(attachment.taskId, userSession);
+        if (!visibleTask) {
           return res.status(404).send({ error: "Attachment Not Found" });
+        }
+        const archivedError = await archivedProjectError(
+          visibleTask.projectId,
+        );
+        if (archivedError) {
+          return res.status(400).send({ error: archivedError });
         }
         if (await fs.pathExists(attachment.filePath)) {
           await fs.remove(attachment.filePath);

@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
 import { parseDoneSince, TasksRoutes } from "./TasksRoutes";
-import { TasksDataAdd, TasksDataDelete, TasksDataGet, TasksDataList, TasksDataUpdate, addAssignee, addComment, addLabel, addTaskAttachment, clearLabels, removeAssignee } from "./TasksData";
+import { TasksDataAdd, TasksDataDelete, TasksDataGet, TasksDataList, TasksDataUpdate, addAssignee, addComment, addLabel, addTaskAttachment, clearLabels, deleteTaskAttachment, getTaskAttachment, removeAssignee } from "./TasksData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { ProjectsDataGet } from "../projects/ProjectsData";
 import { TaskImproveText } from "./TaskImprove";
@@ -570,5 +570,175 @@ describe("TasksRoutes project visibility", () => {
       payload: { title: "Old", description: "Old description" },
     });
     expect(res.statusCode).toBe(502);
+  });
+});
+
+describe("TasksRoutes archived project guard", () => {
+  let app: FastifyInstance;
+
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const archivedProject = new Project();
+  archivedProject.name = "Archived";
+  archivedProject.archived = true;
+
+  const activeProject = new Project();
+  activeProject.name = "Active";
+
+  function makeTask(project: Project): Task {
+    const task = new Task();
+    task.projectId = project.id;
+    task.title = "Task";
+    return task;
+  }
+
+  beforeAll(async () => {
+    app = Fastify();
+    await new TasksRoutes().getRoutes(app);
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (AuthMustBeAuthenticated as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("should reject creating a task in an archived project", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: archivedProject.id, title: "New" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should reject cloning a task from an archived project", async () => {
+    const task = makeTask(archivedProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({ method: "POST", url: `/${task.id}/clone` });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should reject updating a task in an archived project", async () => {
+    const task = makeTask(archivedProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { title: "Changed" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(TasksDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should reject moving a task into an archived project", async () => {
+    const task = makeTask(activeProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockImplementation(
+      async (id: string) => (id === archivedProject.id ? archivedProject : activeProject),
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { projectId: archivedProject.id },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(TasksDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should reject adding a comment to a task in an archived project", async () => {
+    const task = makeTask(archivedProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/comments`,
+      payload: { text: "Hello" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(addComment).not.toHaveBeenCalled();
+  });
+
+  it("should reject adding an assignee to a task in an archived project", async () => {
+    const task = makeTask(archivedProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/assignees`,
+      payload: { userId: "user-2" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(addAssignee).not.toHaveBeenCalled();
+  });
+
+  it("should reject updating the labels of a task in an archived project", async () => {
+    const task = makeTask(archivedProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/labels`,
+      payload: { labels: ["urgent"] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(clearLabels).not.toHaveBeenCalled();
+  });
+
+  it("should still read a task in an archived project", async () => {
+    const task = makeTask(archivedProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({ method: "GET", url: `/${task.id}` });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("should reject deleting an attachment of a task in an archived project", async () => {
+    const task = makeTask(archivedProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    (getTaskAttachment as jest.Mock).mockResolvedValue({
+      id: "att-1",
+      fileName: "f.pdf",
+      filePath: "/data/attachments/tasks/att-1.pdf",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+      taskId: task.id,
+    });
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/${task.id}/attachments/att-1`,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(deleteTaskAttachment).not.toHaveBeenCalled();
+  });
+
+  it("should still delete a task in an archived project", async () => {
+    const task = makeTask(archivedProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({ method: "DELETE", url: `/${task.id}` });
+    expect(res.statusCode).toBe(201);
+    expect(TasksDataDelete).toHaveBeenCalledWith(task.id);
   });
 });

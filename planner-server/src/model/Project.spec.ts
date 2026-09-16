@@ -13,6 +13,7 @@ describe("Project model", () => {
       expect(project.id).toBeDefined();
       expect(project.description).toBe("");
       expect(project.isDefault).toBe(false);
+      expect(project.archived).toBe(false);
       expect(project.statuses).toEqual(DEFAULT_STATUSES);
       expect(project.dateCreated).toBeDefined();
     });
@@ -61,6 +62,18 @@ describe("Project model", () => {
       const p2 = Project.fromJson({ name: "n", isDefault: false });
       expect(p2.isDefault).toBe(false);
     });
+
+    it("should treat archived as true only for true or 1", () => {
+      expect(Project.fromJson({ name: "n" }).archived).toBe(false);
+      expect(Project.fromJson({ name: "n", archived: false }).archived).toBe(
+        false,
+      );
+      expect(Project.fromJson({ name: "n", archived: true }).archived).toBe(
+        true,
+      );
+      expect(Project.fromJson({ name: "n", archived: 1 }).archived).toBe(true);
+      expect(Project.fromJson({ name: "n", archived: 0 }).archived).toBe(false);
+    });
   });
 
   describe("toJson", () => {
@@ -93,6 +106,13 @@ describe("Project model", () => {
       project.statuses = ["A", "B", "C"];
       const json = project.toTransportJson();
       expect(json.statuses).toEqual(["A", "B", "C"]);
+    });
+
+    it("should expose the archived flag as a boolean", () => {
+      const project = new Project();
+      expect(project.toTransportJson().archived).toBe(false);
+      project.archived = true;
+      expect(project.toTransportJson().archived).toBe(true);
     });
   });
 });

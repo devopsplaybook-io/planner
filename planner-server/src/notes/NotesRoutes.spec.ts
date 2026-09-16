@@ -320,3 +320,148 @@ describe("NotesRoutes project visibility", () => {
     expect(deleteNoteAttachment).not.toHaveBeenCalled();
   });
 });
+
+describe("NotesRoutes archived project guard", () => {
+  let app: FastifyInstance;
+
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const archivedProject = new Project();
+  archivedProject.name = "Archived";
+  archivedProject.archived = true;
+
+  const activeProject = new Project();
+  activeProject.name = "Active";
+
+  function makeNote(project: Project): Note {
+    const note = new Note();
+    note.projectId = project.id;
+    note.title = "Note";
+    return note;
+  }
+
+  beforeAll(async () => {
+    app = Fastify();
+    await new NotesRoutes().getRoutes(app);
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (AuthMustBeAuthenticated as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("should reject creating a note in an archived project", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: archivedProject.id, title: "New" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(NotesDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should reject updating a note in an archived project", async () => {
+    const note = makeNote(archivedProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${note.id}`,
+      payload: { title: "Changed" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(NotesDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should reject moving a note into an archived project", async () => {
+    const note = makeNote(activeProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockImplementation(
+      async (id: string) => (id === archivedProject.id ? archivedProject : activeProject),
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${note.id}`,
+      payload: { projectId: archivedProject.id },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(NotesDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should reject adding a comment to a note in an archived project", async () => {
+    const note = makeNote(archivedProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${note.id}/comments`,
+      payload: { text: "Hello" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(addNoteComment).not.toHaveBeenCalled();
+  });
+
+  it("should reject updating the labels of a note in an archived project", async () => {
+    const note = makeNote(archivedProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${note.id}/labels`,
+      payload: { labels: ["important"] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(clearNoteLabels).not.toHaveBeenCalled();
+  });
+
+  it("should still read a note in an archived project", async () => {
+    const note = makeNote(archivedProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({ method: "GET", url: `/${note.id}` });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("should reject deleting an attachment of a note in an archived project", async () => {
+    const note = makeNote(archivedProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    (getNoteAttachment as jest.Mock).mockResolvedValue({
+      id: "att-1",
+      fileName: "f.pdf",
+      filePath: "/data/attachments/notes/att-1.pdf",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+      noteId: note.id,
+    });
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/${note.id}/attachments/att-1`,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(deleteNoteAttachment).not.toHaveBeenCalled();
+  });
+
+  it("should still delete a note in an archived project", async () => {
+    const note = makeNote(archivedProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+    const res = await app.inject({ method: "DELETE", url: `/${note.id}` });
+    expect(res.statusCode).toBe(201);
+    expect(NotesDataDelete).toHaveBeenCalledWith(note.id);
+  });
+});

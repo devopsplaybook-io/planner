@@ -16,15 +16,11 @@
             aria-label="Search tasks"
           />
         </div>
-        <select
-          :value="projectsStore.selectedProjectFilter"
-          @change="onFilterChange"
-        >
-          <option value="">All projects</option>
-          <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
-            {{ p.name }}
-          </option>
-        </select>
+        <ProjectSelect
+          :model-value="projectsStore.selectedProjectFilter"
+          all-label="All projects"
+          @update:model-value="onFilterChange"
+        />
         <button class="fab-button" @click="showCreateDialog = true">
           <i class="bi bi-plus-lg" />
         </button>
@@ -289,8 +285,8 @@ async function regenerate() {
   await recommendationStore.regenerateRecommendation();
 }
 
-function onFilterChange(event) {
-  projectsStore.setProjectFilter(event.target.value);
+function onFilterChange(projectId) {
+  projectsStore.setProjectFilter(projectId);
   fetchDashboard();
   runSearch();
 }

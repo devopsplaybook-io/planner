@@ -43,6 +43,7 @@ export async function ProjectsDataAdd(project: Project): Promise<void> {
     project.name,
     project.description,
     project.isDefault ? 1 : 0,
+    project.archived ? 1 : 0,
     project.visibility,
     JSON.stringify(project.statuses),
     project.dateCreated,
@@ -57,10 +58,26 @@ export async function ProjectsDataUpdate(project: Project): Promise<void> {
     project.name,
     project.description,
     project.isDefault ? 1 : 0,
+    project.archived ? 1 : 0,
     project.visibility,
     JSON.stringify(project.statuses),
     project.id,
   ]);
+}
+
+/**
+ * Number of tasks in the project that are not Done. A project can only be
+ * archived when every task is Done; "Done" is mandatory in every project's
+ * status selection, so status != 'Done' means not done.
+ */
+export async function ProjectsDataCountOpenTasks(
+  projectId: string,
+): Promise<number> {
+  const rows = await DbUtilsQuerySQL(
+    SQL_QUERIES.COUNT_OPEN_TASKS[DbUtilsGetType()],
+    [projectId],
+  );
+  return Number(rows[0]?.count || 0);
 }
 
 // ==================== PROJECT USERS ====================
@@ -144,20 +161,26 @@ const SQL_QUERIES = {
     sqlite: "SELECT * FROM projects WHERE id = ?",
   },
   LIST_PROJECTS: {
-    postgres: "SELECT * FROM projects ORDER BY name",
-    sqlite: "SELECT * FROM projects ORDER BY name",
+    postgres: 'SELECT * FROM projects ORDER BY "archived" ASC, "name" ASC',
+    sqlite: "SELECT * FROM projects ORDER BY archived ASC, name ASC",
   },
   INSERT_PROJECT: {
     postgres:
-      'INSERT INTO projects ("id", "name", "description", "isDefault", "visibility", "statuses", "dateCreated") VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      'INSERT INTO projects ("id", "name", "description", "isDefault", "archived", "visibility", "statuses", "dateCreated") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
     sqlite:
-      "INSERT INTO projects (id, name, description, isDefault, visibility, statuses, dateCreated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO projects (id, name, description, isDefault, archived, visibility, statuses, dateCreated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
   },
   UPDATE_PROJECT: {
     postgres:
-      'UPDATE projects SET "name" = $1, "description" = $2, "isDefault" = $3, "visibility" = $4, "statuses" = $5 WHERE "id" = $6',
+      'UPDATE projects SET "name" = $1, "description" = $2, "isDefault" = $3, "archived" = $4, "visibility" = $5, "statuses" = $6 WHERE "id" = $7',
     sqlite:
-      "UPDATE projects SET name = ?, description = ?, isDefault = ?, visibility = ?, statuses = ? WHERE id = ?",
+      "UPDATE projects SET name = ?, description = ?, isDefault = ?, archived = ?, visibility = ?, statuses = ? WHERE id = ?",
+  },
+  COUNT_OPEN_TASKS: {
+    postgres:
+      'SELECT COUNT(*) AS "count" FROM tasks WHERE "projectId" = $1 AND "status" != \'Done\'',
+    sqlite:
+      "SELECT COUNT(*) AS count FROM tasks WHERE projectId = ? AND status != 'Done'",
   },
   DELETE_PROJECT: {
     postgres: 'DELETE FROM projects WHERE "id" = $1',
@@ -214,9 +237,9 @@ const SQL_QUERIES = {
       "DELETE FROM note_attachments WHERE noteId IN (SELECT id FROM notes WHERE projectId = ?)",
   },
   LIST_VISIBLE_PROJECTS: {
-    postgres: `SELECT * FROM projects WHERE "visibility" = 'public' OR "id" IN (SELECT "projectId" FROM project_users WHERE "userId" = $1) ORDER BY name`,
+    postgres: `SELECT * FROM projects WHERE "visibility" = 'public' OR "id" IN (SELECT "projectId" FROM project_users WHERE "userId" = $1) ORDER BY "archived" ASC, "name" ASC`,
     sqlite:
-      "SELECT * FROM projects WHERE visibility = 'public' OR id IN (SELECT projectId FROM project_users WHERE userId = ?) ORDER BY name",
+      "SELECT * FROM projects WHERE visibility = 'public' OR id IN (SELECT projectId FROM project_users WHERE userId = ?) ORDER BY archived ASC, name ASC",
   },
   INSERT_PROJECT_USER: {
     postgres:
