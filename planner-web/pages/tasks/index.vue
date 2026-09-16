@@ -153,7 +153,7 @@ async function onDrop(event, newStatus) {
   }
   try {
     await tasksStore.update(dragTask.value.id, { status: newStatus });
-    await fetchTasks();
+    await fetchTasks({ silent: true });
   } catch {
     // Handle error
   }
@@ -172,8 +172,12 @@ function onFilterChange(event) {
   fetchTasks();
 }
 
-async function fetchTasks() {
-  loading.value = true;
+// silent: refresh in place (no loading indicator) so the list stays mounted
+// and the scroll position is preserved
+async function fetchTasks({ silent = false } = {}) {
+  if (!silent) {
+    loading.value = true;
+  }
   try {
     const doneSince = new Date(
       Date.now() - DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
@@ -184,7 +188,9 @@ async function fetchTasks() {
   } catch {
     // Handle error
   } finally {
-    loading.value = false;
+    if (!silent) {
+      loading.value = false;
+    }
   }
 }
 
@@ -198,7 +204,7 @@ onMounted(async () => {
 });
 
 // Refresh list when task dialog closes
-useDialogCloseRefresh("taskId", fetchTasks);
+useDialogCloseRefresh("taskId", () => fetchTasks({ silent: true }));
 </script>
 
 <style scoped>

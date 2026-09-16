@@ -295,8 +295,12 @@ function onFilterChange(event) {
   runSearch();
 }
 
-async function fetchDashboard() {
-  loading.value = true;
+// silent: refresh in place (no loading indicator) so the view stays mounted
+// and the scroll position is preserved
+async function fetchDashboard({ silent = false } = {}) {
+  if (!silent) {
+    loading.value = true;
+  }
   try {
     const params = {};
     if (projectsStore.selectedProjectFilter) {
@@ -316,7 +320,9 @@ async function fetchDashboard() {
   } catch {
     // Handle error silently
   } finally {
-    loading.value = false;
+    if (!silent) {
+      loading.value = false;
+    }
   }
 }
 
@@ -329,7 +335,7 @@ function openTask(task) {
 
 // Dashboard data is a local snapshot (not a store computed), so refresh it
 // when the task dialog closes: the dialog may have changed the task
-useDialogCloseRefresh("taskId", fetchDashboard);
+useDialogCloseRefresh("taskId", () => fetchDashboard({ silent: true }));
 
 onMounted(async () => {
   await Promise.all([

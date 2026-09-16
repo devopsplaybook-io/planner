@@ -31,6 +31,7 @@ It is installable on mobile and desktop devices and works offline.
   - [x] When a Task, Note or Project is displayed, the URL reflects the object that is displayed and this URL can be shared and reused later or for other users to open the same object
     - [x] Projects are managed by admins in the admin section; the admin URL reflects the selected tab and the displayed project (e.g. /admin?tab=projects&projectId=...)
 - [x] A shared multi-user selection component (auto-complete box with removable chips) is used for task assignees and project user access, replacing per-user checkbox lists
+- [x] When a Task, Note or Project detail dialog is closed, the view behind it refreshes its data in place: the list is not unmounted and the user's scroll position is preserved (the full loading indicator is only shown on initial load)
 
 ### Tasks
 
@@ -40,4 +41,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-13_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-16_

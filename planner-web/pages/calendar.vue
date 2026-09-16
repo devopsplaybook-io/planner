@@ -205,14 +205,20 @@ function nextMonth() {
   );
 }
 
-async function fetchTasks() {
-  loading.value = true;
+// silent: refresh in place (no loading indicator) so the calendar stays
+// mounted and the scroll position is preserved
+async function fetchTasks({ silent = false } = {}) {
+  if (!silent) {
+    loading.value = true;
+  }
   try {
     await tasksStore.fetchAll(projectsStore.selectedProjectFilter || undefined);
   } catch {
     // Handle error
   } finally {
-    loading.value = false;
+    if (!silent) {
+      loading.value = false;
+    }
   }
 }
 
@@ -223,7 +229,7 @@ function onFilterChange(event) {
 
 // Refresh the calendar when the task dialog closes: tasks may have moved
 // between days
-useDialogCloseRefresh("taskId", fetchTasks);
+useDialogCloseRefresh("taskId", () => fetchTasks({ silent: true }));
 
 onMounted(async () => {
   try {
