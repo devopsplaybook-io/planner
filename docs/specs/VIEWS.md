@@ -18,6 +18,7 @@ Each view provides a different perspective on the same task data.
 - [x] The search covers all tasks, including tasks marked as done
 - [x] Search results respect the current project filter and are shown while the search term is active
 - [x] Task status labels on the dashboard use the color configured for the status in the admin Statuses tab
+- [x] Each task card shows the project name next to the status badge on a single line; when both are too long to fit together they are truncated with an ellipsis (full text on hover)
 - [x] The dashboard only includes tasks from projects visible to the current user (see [PROJECTS.md](PROJECTS.md)); admins see all tasks
 - [x] Each dashboard section gets an internal vertical scrollbar when its task list is taller than the device height; the cards keep their natural height — the list scrolls instead of being compressed
 
@@ -46,5 +47,6 @@ Each view provides a different perspective on the same task data.
 - [x] Allows drag-and-drop to move tasks between statuses.
 - [x] Columns correspond to the project's defined statuses.
 - [x] Status labels (column headers and task status badges) use the color configured for the status in the admin Statuses tab.
+- [x] Each task card shows the project name next to the status badge on a single line; when both are too long to fit together they are truncated with an ellipsis (full text on hover).
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-15_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-16_
