@@ -52,6 +52,16 @@
                   <i class="bi bi-stars" /> Improve with AI
                 </a>
               </li>
+              <li v-if="canCancelTask">
+                <a
+                  href="#"
+                  class="danger-item"
+                  :aria-busy="cancelling"
+                  @click.prevent="openCancelConfirm"
+                >
+                  <i class="bi bi-x-circle" /> Cancel Task
+                </a>
+              </li>
               <li>
                 <a href="#" class="danger-item" @click.prevent="openDeleteConfirm">
                   <i class="bi bi-trash" /> Delete Task
@@ -377,6 +387,29 @@
           </footer>
         </article>
       </dialog>
+
+      <!-- Cancel Confirmation -->
+      <dialog
+        ref="cancelDialogEl"
+        class="inner-dialog"
+        @close="showCancelConfirm = false"
+      >
+        <article>
+          <header><h3>Cancel Task</h3></header>
+          <p>
+            Are you sure you want to cancel "{{ task?.title }}"? It will be
+            moved to Done and its title suffixed with " [cancelled]".
+          </p>
+          <footer class="dialog-footer">
+            <button class="secondary" @click="showCancelConfirm = false">
+              Keep Task
+            </button>
+            <button class="contrast" :aria-busy="cancelling" @click="cancelTask">
+              Cancel Task
+            </button>
+          </footer>
+        </article>
+      </dialog>
     </article>
   </dialog>
 </template>
@@ -407,6 +440,9 @@ const submitting = ref(false);
 const showDeleteConfirm = ref(false);
 const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
+const showCancelConfirm = ref(false);
+const cancelDialogEl = useModalDialog(() => showCancelConfirm.value);
+const cancelling = ref(false);
 const uploading = ref(false);
 const deletingAttachmentId = ref("");
 const fileInput = ref(null);
@@ -461,6 +497,18 @@ const projectName = computed(() => {
     (p) => p.id === task.value?.projectId,
   );
   return project?.name || "";
+});
+
+// Cancelling moves the task to Done and renames it, so hide the action for
+// tasks already in Done and for tasks in archived projects, where the
+// server rejects any task update ("Project is archived").
+const canCancelTask = computed(() => {
+  if (!task.value) return false;
+  if (task.value.status === "Done") return false;
+  const project = projectsStore.projects.find(
+    (p) => p.id === task.value.projectId,
+  );
+  return !project?.archived;
 });
 
 // While the dialog is open, poll the task so changes made by other users
@@ -812,6 +860,32 @@ async function improveTask() {
 function openDeleteConfirm() {
   closeAdvancedMenu();
   showDeleteConfirm.value = true;
+}
+
+function openCancelConfirm() {
+  closeAdvancedMenu();
+  showCancelConfirm.value = true;
+}
+
+async function cancelTask() {
+  if (!task.value || cancelling.value) return;
+  cancelling.value = true;
+  try {
+    const suffix = " [cancelled]";
+    const newTitle = task.value.title.endsWith(suffix)
+      ? task.value.title
+      : task.value.title + suffix;
+    await tasksStore.update(props.taskId, {
+      status: "Done",
+      title: newTitle,
+    });
+    showCancelConfirm.value = false;
+    emit("updated");
+  } catch (e) {
+    alert(e.response?.data?.error || "Failed to cancel task");
+  } finally {
+    cancelling.value = false;
+  }
 }
 
 async function deleteTask() {

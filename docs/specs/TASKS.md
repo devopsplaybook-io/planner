@@ -30,6 +30,8 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Archived projects (see [PROJECTS.md](PROJECTS.md)) are read-only: tasks in them cannot be created, cloned or updated (including comments, assignees, labels, attachments) and tasks cannot be moved into them; deleting a task is still allowed.
 
+[x] Cancel: the task dialog advanced menu offers Cancel; cancelling moves the task to Done and appends " [cancelled]" to its title; the action is confirmed before applying; it is not offered for Done tasks or tasks in archived projects.
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.
