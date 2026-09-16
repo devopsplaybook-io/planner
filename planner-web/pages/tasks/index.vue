@@ -204,6 +204,12 @@ useDialogCloseRefresh("taskId", () => fetchTasks({ silent: true }));
 </script>
 
 <style scoped>
+.kanban-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .header-controls {
   display: flex;
   gap: var(--space-sm);
@@ -215,6 +221,8 @@ useDialogCloseRefresh("taskId", () => fetchTasks({ silent: true }));
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: var(--space-md);
   overflow-x: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .kanban-column {
@@ -222,6 +230,9 @@ useDialogCloseRefresh("taskId", () => fetchTasks({ silent: true }));
   border-radius: var(--radius-md);
   padding: var(--space-sm);
   min-height: 200px;
+  max-height: 90%;
+  display: flex;
+  flex-direction: column;
 }
 
 .column-header {
@@ -261,10 +272,19 @@ useDialogCloseRefresh("taskId", () => fetchTasks({ silent: true }));
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
-  min-height: 60px;
   border-radius: var(--radius-sm);
   transition: background 0.15s ease;
   padding: 2px;
+  flex: 1 1 auto;
+  min-height: 60px;
+  overflow-y: auto;
+}
+
+/* flex-shrink: 0 keeps cards at their natural height so the list scrolls
+   inside the capped column instead of squashing the cards (same pattern
+   as the dashboard task-list) */
+.column-tasks > * {
+  flex-shrink: 0;
 }
 
 .column-tasks.drag-over {
