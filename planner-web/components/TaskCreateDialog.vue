@@ -8,15 +8,7 @@
       <form @submit.prevent="createTask">
         <label>
           Project
-          <select v-model="form.projectId" required>
-            <option
-              v-for="p in projectsStore.projects"
-              :key="p.id"
-              :value="p.id"
-            >
-              {{ p.name }}
-            </option>
-          </select>
+          <ProjectSelect v-model="form.projectId" />
         </label>
         <label>
           Title
@@ -108,11 +100,18 @@ const users = ref([]);
 const creating = ref(false);
 
 function defaultProjectId() {
-  return (
-    projectsStore.selectedProjectFilter ||
-    projectsStore.defaultProject?.id ||
-    (projectsStore.projects.length > 0 ? projectsStore.projects[0].id : "")
-  );
+  // Archived projects cannot receive tasks: a stored filter pointing at one
+  // falls back to the default project, then to the first active project
+  const stored = projectsStore.selectedProjectFilter;
+  if (projectsStore.activeProjects.some((p) => p.id === stored)) {
+    return stored;
+  }
+  const def = projectsStore.defaultProject;
+  if (def && !def.archived) {
+    return def.id;
+  }
+  const active = projectsStore.activeProjects;
+  return active.length > 0 ? active[0].id : "";
 }
 
 const form = ref({

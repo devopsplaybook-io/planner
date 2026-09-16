@@ -115,15 +115,7 @@
         <section class="meta-section">
           <div class="meta-field">
             <strong>Project</strong>
-            <select v-if="editing" v-model="editForm.projectId">
-              <option
-                v-for="p in projectsStore.projects"
-                :key="p.id"
-                :value="p.id"
-              >
-                {{ p.name }}
-              </option>
-            </select>
+            <ProjectSelect v-if="editing" v-model="editForm.projectId" />
             <span v-else>{{ projectName || task.projectId }}</span>
           </div>
           <div class="meta-field">

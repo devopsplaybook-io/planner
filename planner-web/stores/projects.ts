@@ -6,6 +6,7 @@ export interface Project {
   name: string;
   description: string;
   isDefault: boolean;
+  archived: boolean;
   visibility: string;
   userAccess: string[];
   statuses: string[];
@@ -23,6 +24,7 @@ export const useProjectsStore = defineStore("projects", {
 
   getters: {
     defaultProject: (state) => state.projects.find((p) => p.isDefault) || null,
+    activeProjects: (state) => state.projects.filter((p) => !p.archived),
   },
 
   actions: {

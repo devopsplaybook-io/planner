@@ -12,6 +12,7 @@ import {
   ProjectsDataGet,
   ProjectsDataList,
   ProjectsDataUpdate,
+  ProjectsDataCountOpenTasks,
   clearProjectUsers,
   addProjectUser,
 } from "./ProjectsData";
@@ -130,6 +131,7 @@ export class ProjectsRoutes {
         statuses?: string[];
         visibility?: string;
         userAccess?: string[];
+        archived?: boolean;
       };
     }
     fastify.put<PutProject>("/:id", async (req, res) => {
@@ -141,6 +143,30 @@ export class ProjectsRoutes {
       const project = await ProjectsDataGet(req.params.id);
       if (!project) {
         return res.status(404).send({ error: "Project Not Found" });
+      }
+      // Archived projects are frozen: only the archived flag itself may
+      // change (un-archiving). Every other edit is rejected.
+      const hasMetadataChanges =
+        req.body.name !== undefined ||
+        req.body.description !== undefined ||
+        req.body.statuses !== undefined ||
+        req.body.visibility !== undefined ||
+        req.body.userAccess !== undefined;
+      if (project.archived && hasMetadataChanges) {
+        return res
+          .status(400)
+          .send({ error: "Archived projects cannot be updated" });
+      }
+      if (req.body.archived === true && !project.archived) {
+        const openTasks = await ProjectsDataCountOpenTasks(project.id);
+        if (openTasks > 0) {
+          return res.status(400).send({
+            error: `Cannot archive: ${openTasks} task(s) are not Done`,
+          });
+        }
+        project.archived = true;
+      } else if (req.body.archived === false) {
+        project.archived = false;
       }
       if (req.body.name) {
         project.name = req.body.name;

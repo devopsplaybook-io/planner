@@ -9,6 +9,9 @@
         </div>
         <div class="badge-group">
           <span v-if="project.isDefault" class="badge">Default</span>
+          <span v-if="project.archived" class="badge badge-archived">
+            Archived</span
+          >
           <span
             v-if="project.visibility === 'restricted'"
             class="badge badge-restricted"
@@ -58,6 +61,11 @@ defineEmits(["click"]);
 .badge-restricted {
   background: var(--color-danger);
   color: #fff;
+}
+
+.badge-archived {
+  background: var(--color-text-muted);
+  color: var(--color-surface, #fff);
 }
 
 .card-desc {

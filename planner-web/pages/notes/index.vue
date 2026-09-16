@@ -6,15 +6,11 @@
         <p>Free-form notes</p>
       </hgroup>
       <div class="header-controls">
-        <select
-          :value="projectsStore.selectedProjectFilter"
-          @change="onFilterChange"
-        >
-          <option value="">All projects</option>
-          <option v-for="p in projectsStore.projects" :key="p.id" :value="p.id">
-            {{ p.name }}
-          </option>
-        </select>
+        <ProjectSelect
+          :model-value="projectsStore.selectedProjectFilter"
+          all-label="All projects"
+          @update:model-value="onFilterChange"
+        />
         <button class="fab-button" @click="showCreateDialog = true">
           <i class="bi bi-plus-lg" />
         </button>
@@ -49,15 +45,7 @@
         <form @submit.prevent="createNote">
           <label>
             Project
-            <select v-model="newNote.projectId" required>
-              <option
-                v-for="p in projectsStore.projects"
-                :key="p.id"
-                :value="p.id"
-              >
-                {{ p.name }}
-              </option>
-            </select>
+            <ProjectSelect v-model="newNote.projectId" />
           </label>
           <label>
             Title
@@ -112,8 +100,8 @@ const filteredNotes = computed(() => {
   );
 });
 
-function onFilterChange(event) {
-  projectsStore.setProjectFilter(event.target.value);
+function onFilterChange(projectId) {
+  projectsStore.setProjectFilter(projectId);
 }
 
 function openNote(note) {
@@ -126,9 +114,12 @@ function openNote(note) {
 onMounted(async () => {
   try {
     await projectsStore.fetchAll();
-    if (projectsStore.projects.length > 0) {
+    // Archived projects cannot receive notes: default to the default
+    // project when active, then to the first active project
+    if (projectsStore.activeProjects.length > 0) {
+      const def = projectsStore.defaultProject;
       newNote.value.projectId =
-        projectsStore.defaultProject?.id || projectsStore.projects[0].id;
+        def && !def.archived ? def.id : projectsStore.activeProjects[0].id;
     }
     await notesStore.fetchAll();
   } catch {

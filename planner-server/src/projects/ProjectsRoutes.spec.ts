@@ -12,6 +12,7 @@ import {
   ProjectsDataGet,
   ProjectsDataList,
   ProjectsDataUpdate,
+  ProjectsDataCountOpenTasks,
   clearProjectUsers,
   addProjectUser,
 } from "./ProjectsData";
@@ -24,6 +25,7 @@ jest.mock("./ProjectsData", () => ({
   ProjectsDataGet: jest.fn(),
   ProjectsDataList: jest.fn(),
   ProjectsDataUpdate: jest.fn(),
+  ProjectsDataCountOpenTasks: jest.fn(),
   clearProjectUsers: jest.fn(),
   addProjectUser: jest.fn(),
 }));
@@ -236,6 +238,83 @@ describe("ProjectsRoutes admin enforcement", () => {
       payload: { name: "Renamed" },
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  // ==================== ARCHIVE ====================
+  it("should refuse to archive a project with tasks that are not Done", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const project = new Project();
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (ProjectsDataCountOpenTasks as jest.Mock).mockResolvedValue(2);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${project.id}`,
+      payload: { archived: true },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("2 task(s) are not Done");
+    expect(project.archived).toBe(false);
+    expect(ProjectsDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should archive a project when all its tasks are Done", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const project = new Project();
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (ProjectsDataCountOpenTasks as jest.Mock).mockResolvedValue(0);
+    (ProjectsDataUpdate as jest.Mock).mockResolvedValue(undefined);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${project.id}`,
+      payload: { archived: true },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(project.archived).toBe(true);
+    expect(res.json().archived).toBe(true);
+    expect(ProjectsDataUpdate).toHaveBeenCalledWith(project);
+  });
+
+  it("should allow un-archiving a project", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const project = new Project();
+    project.archived = true;
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (ProjectsDataUpdate as jest.Mock).mockResolvedValue(undefined);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${project.id}`,
+      payload: { archived: false },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(project.archived).toBe(false);
+    expect(res.json().archived).toBe(false);
+    expect(ProjectsDataCountOpenTasks).not.toHaveBeenCalled();
+  });
+
+  it("should reject every other update while the project is archived", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const project = new Project();
+    project.archived = true;
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const payloads = [
+      { name: "Renamed" },
+      { description: "New description" },
+      { statuses: ["To Do", "Done"] },
+      { visibility: "restricted" },
+      { userAccess: ["user-1"] },
+      { archived: false, name: "Renamed while un-archiving" },
+    ];
+    for (const payload of payloads) {
+      const res = await app.inject({
+        method: "PUT",
+        url: `/${project.id}`,
+        payload,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe("Archived projects cannot be updated");
+    }
+    expect(clearProjectUsers).not.toHaveBeenCalled();
+    expect(ProjectsDataUpdate).not.toHaveBeenCalled();
   });
 
   // ==================== DELETE ====================

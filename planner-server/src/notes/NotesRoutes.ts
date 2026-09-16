@@ -47,6 +47,19 @@ async function getVisibleNote(
   return note;
 }
 
+/**
+ * Error message when the project is archived, null when it is active (or
+ * missing — callers answer 404 for missing projects themselves). Archived
+ * projects are read-only for notes: create, update and every sub-resource
+ * mutation are blocked; reads stay allowed.
+ */
+async function archivedProjectError(
+  projectId: string,
+): Promise<string | null> {
+  const project = await ProjectsDataGet(projectId);
+  return project?.archived ? "Project is archived" : null;
+}
+
 export class NotesRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
@@ -105,6 +118,9 @@ export class NotesRoutes {
       if (!project || !isProjectVisible(project, userSession)) {
         return res.status(404).send({ error: "Project Not Found" });
       }
+      if (project.archived) {
+        return res.status(400).send({ error: "Project is archived" });
+      }
 
       const note = new Note();
       note.projectId = req.body.projectId;
@@ -132,6 +148,10 @@ export class NotesRoutes {
       const userSession = await AuthGetUserSession(req);
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
+      const archivedError = await archivedProjectError(note.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
       if (req.body.title) note.title = req.body.title;
       if (req.body.description !== undefined)
         note.description = req.body.description;
@@ -139,6 +159,9 @@ export class NotesRoutes {
         const project = await ProjectsDataGet(req.body.projectId);
         if (!project || !isProjectVisible(project, userSession)) {
           return res.status(404).send({ error: "Project Not Found" });
+        }
+        if (project.archived) {
+          return res.status(400).send({ error: "Project is archived" });
         }
         note.projectId = req.body.projectId;
       }
@@ -174,6 +197,10 @@ export class NotesRoutes {
       const userSession = await AuthGetUserSession(req);
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
+      const archivedError = await archivedProjectError(note.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
       if (!req.body.text)
         return res.status(400).send({ error: "Missing: text" });
       const comment = {
@@ -197,6 +224,10 @@ export class NotesRoutes {
         }
         const note = await getVisibleNote(req.params.id, userSession);
         if (!note) return res.status(404).send({ error: "Note Not Found" });
+        const archivedError = await archivedProjectError(note.projectId);
+        if (archivedError) {
+          return res.status(400).send({ error: archivedError });
+        }
         const comment = await getNoteComment(req.params.commentId);
         if (!comment)
           return res.status(404).send({ error: "Comment Not Found" });
@@ -221,6 +252,10 @@ export class NotesRoutes {
       }
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
+      const archivedError = await archivedProjectError(note.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
       const comment = await getNoteComment(req.params.commentId);
       if (!comment)
         return res.status(404).send({ error: "Comment Not Found" });
@@ -248,6 +283,10 @@ export class NotesRoutes {
       const userSession = await AuthGetUserSession(req);
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
+      const archivedError = await archivedProjectError(note.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
       await clearNoteLabels(req.params.id);
       for (const label of req.body.labels) {
         await addNoteLabel(req.params.id, label);
@@ -268,6 +307,10 @@ export class NotesRoutes {
         const note = await getVisibleNote(req.params.id, userSession);
         if (!note) {
           return res.status(404).send({ error: "Note Not Found" });
+        }
+        const archivedError = await archivedProjectError(note.projectId);
+        if (archivedError) {
+          return res.status(400).send({ error: archivedError });
         }
 
         const data = await req.file();
@@ -375,8 +418,15 @@ export class NotesRoutes {
         if (attachment.noteId !== req.params.id) {
           return res.status(404).send({ error: "Attachment Not Found" });
         }
-        if (!(await getVisibleNote(attachment.noteId, userSession))) {
+        const visibleNote = await getVisibleNote(attachment.noteId, userSession);
+        if (!visibleNote) {
           return res.status(404).send({ error: "Attachment Not Found" });
+        }
+        const archivedError = await archivedProjectError(
+          visibleNote.projectId,
+        );
+        if (archivedError) {
+          return res.status(400).send({ error: archivedError });
         }
         if (await fs.pathExists(attachment.filePath)) {
           await fs.remove(attachment.filePath);

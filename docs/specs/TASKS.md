@@ -28,10 +28,12 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Project change: when a task is opened in edit mode, the project can be changed; the target project must be visible to the user; when the current status is not used by the target project, it resets to the target project's first status.
 
+[x] Archived projects (see [PROJECTS.md](PROJECTS.md)) are read-only: tasks in them cannot be created, cloned or updated (including comments, assignees, labels, attachments) and tasks cannot be moved into them; deleting a task is still allowed.
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.
 - [x] A task the user cannot see answers 404 on the task API, like a missing task.
 - [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-15_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-16_

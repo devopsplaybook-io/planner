@@ -4,8 +4,10 @@
       <header class="dialog-header">
         <h3>Project Details</h3>
         <div class="dialog-actions">
+          <!-- Rendered even when no project is selected (dialog is mounted
+               app-wide), so project can be null here -->
           <button
-            v-if="!editing && authStore.isAdmin"
+            v-if="!editing && authStore.isAdmin && !project?.archived"
             class="secondary"
             @click="startEdit"
           >
@@ -41,6 +43,9 @@
             <h2 v-else>
               {{ project.name }}
               <span v-if="project.isDefault" class="badge">Default project</span>
+              <span v-if="project.archived" class="badge badge-archived">
+                Archived</span
+              >
             </h2>
           </label>
           <label>
@@ -84,6 +89,7 @@
                 v-model="editVisibility"
                 type="radio"
                 value="public"
+                :disabled="project.archived"
                 @change="updateVisibility"
               />
               Public
@@ -94,6 +100,7 @@
                 v-model="editVisibility"
                 type="radio"
                 value="restricted"
+                :disabled="project.archived"
                 @change="updateVisibility"
               />
               Restricted
@@ -101,15 +108,50 @@
             </label>
           </div>
           <UserMultiSelect
-            v-if="editVisibility === 'restricted'"
+            v-if="editVisibility === 'restricted' && !project.archived"
             :model-value="editUserAccess"
             :users="availableUsers"
             @update:model-value="onUserAccessChange"
           />
         </section>
 
+        <!-- Status: archive switch (admin management) -->
+        <section v-if="authStore.isAdmin" class="archive-section">
+          <h3>Status</h3>
+          <p class="section-hint">
+            Archived projects are read-only: their tasks and notes cannot
+            change, they disappear from the selection lists and they move to
+            the end of the admin list. Every task must be Done to archive.
+          </p>
+          <div class="visibility-controls">
+            <label class="radio-label">
+              <input
+                v-model="editArchived"
+                type="radio"
+                :value="false"
+                @change="updateArchived(false)"
+              />
+              Active
+              <small>Normal project</small>
+            </label>
+            <label class="radio-label">
+              <input
+                v-model="editArchived"
+                type="radio"
+                :value="true"
+                @change="updateArchived(true)"
+              />
+              Archived
+              <small>Read-only, hidden from lists</small>
+            </label>
+          </div>
+          <div v-if="archiveError" class="status-error">
+            <i class="bi bi-exclamation-circle" /> {{ archiveError }}
+          </div>
+        </section>
+
         <!-- Statuses (admin management) -->
-        <section v-if="authStore.isAdmin">
+        <section v-if="authStore.isAdmin && !project.archived">
           <h3>Statuses</h3>
           <p class="section-hint">
             Select which statuses from the global catalog this project uses.
@@ -222,6 +264,10 @@ const editVisibility = ref("public");
 const editUserAccess = ref([]);
 const availableUsers = ref([]);
 
+// --- Archive switch (admin) ---
+const editArchived = ref(false);
+const archiveError = ref("");
+
 // --- Status selection (admin) ---
 const selectedStatuses = ref([]);
 const savingStatuses = ref(false);
@@ -245,6 +291,8 @@ watch(
         if (authStore.isAdmin && projectData) {
           editVisibility.value = projectData.visibility || "public";
           editUserAccess.value = [...(projectData.userAccess || [])];
+          editArchived.value = !!projectData.archived;
+          archiveError.value = "";
           await statusesStore.fetchAll();
           selectedStatuses.value = (projectData.statuses || []).filter((s) =>
             catalogStatuses.value.includes(s),
@@ -320,6 +368,19 @@ async function updateVisibility() {
 function onUserAccessChange(ids) {
   editUserAccess.value = ids;
   updateVisibility();
+}
+
+async function updateArchived(archived) {
+  archiveError.value = "";
+  try {
+    await projectsStore.update(props.projectId, { archived });
+    editArchived.value = archived;
+  } catch (e) {
+    archiveError.value =
+      e.response?.data?.error || "Failed to update project status";
+    // Revert the radio to the project's actual state
+    editArchived.value = !!project.value?.archived;
+  }
 }
 
 function toggleStatus(status) {
@@ -434,6 +495,11 @@ async function deleteProject() {
   color: var(--color-on-primary);
 }
 
+.badge-archived {
+  background: var(--color-text-muted);
+  color: var(--color-surface, #fff);
+}
+
 section {
   margin-bottom: var(--space-lg);
 }
@@ -488,6 +554,11 @@ section {
 
 .radio-label:has(input:focus-visible) {
   box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+.radio-label:has(input:disabled) {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .radio-label small {
