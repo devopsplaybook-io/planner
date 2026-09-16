@@ -4,8 +4,10 @@
       <header class="dialog-header">
         <h3>Project Details</h3>
         <div class="dialog-actions">
+          <!-- Rendered even when no project is selected (dialog is mounted
+               app-wide), so project can be null here -->
           <button
-            v-if="!editing && authStore.isAdmin && !project.archived"
+            v-if="!editing && authStore.isAdmin && !project?.archived"
             class="secondary"
             @click="startEdit"
           >
