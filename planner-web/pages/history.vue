@@ -317,8 +317,12 @@ function openTask(task) {
   });
 }
 
-async function fetchHistory() {
-  loading.value = true;
+// silent: refresh in place (no loading indicator) so the timeline stays
+// mounted and the scroll position is preserved
+async function fetchHistory({ silent = false } = {}) {
+  if (!silent) {
+    loading.value = true;
+  }
   try {
     // No projectId / doneSince: all visible tasks including all-time Done
     // (visibility is enforced server-side); everything else is client-side
@@ -327,7 +331,9 @@ async function fetchHistory() {
   } catch {
     // Handle error
   } finally {
-    loading.value = false;
+    if (!silent) {
+      loading.value = false;
+    }
   }
 }
 
@@ -343,7 +349,7 @@ onMounted(async () => {
 });
 
 // Refresh when the task dialog closes: status or dates may have changed
-useDialogCloseRefresh("taskId", fetchHistory);
+useDialogCloseRefresh("taskId", () => fetchHistory({ silent: true }));
 </script>
 
 <style scoped>
