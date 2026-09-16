@@ -17,9 +17,17 @@
           <span class="task-icon"><i class="bi bi-kanban" /></span>
           <span class="task-title">{{ task.title }}</span>
         </div>
-        <span class="status-badge" :style="statusBadgeStyle">{{
-          task.status
-        }}</span>
+        <div class="card-status-row">
+          <span
+            class="status-badge"
+            :style="statusBadgeStyle"
+            :title="task.status"
+            >{{ task.status }}</span
+          >
+          <span v-if="projectName" class="project-name" :title="projectName">{{
+            projectName
+          }}</span>
+        </div>
         <div class="card-meta">
           <small
             v-if="task.dueDate"
@@ -63,12 +71,20 @@ const props = defineProps({
 const emit = defineEmits(["click", "dragstart", "dragend"]);
 
 const statusesStore = useStatusesStore();
+const projectsStore = useProjectsStore();
 
 const isDragging = ref(false);
 
 const statusBadgeStyle = computed(() => {
   const color = statusesStore.colorFor(props.task.status);
   return { background: color, color: readableTextColor(color) };
+});
+
+const projectName = computed(() => {
+  const project = projectsStore.projects.find(
+    (p) => p.id === props.task.projectId,
+  );
+  return project?.name || "";
 });
 
 function onDragStart(event) {
@@ -178,9 +194,31 @@ function onDragEnd(event) {
   flex: 1;
 }
 
+/* Status badge and project name share one line; both truncate with an
+   ellipsis when they don't fit together (full text on hover via title) */
+.card-status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
 /* Status badge, colored from the status catalog (see stores/statuses) */
 .status-badge {
-  align-self: flex-start;
+  flex-shrink: 0;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-wider);
