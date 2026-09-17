@@ -300,4 +300,12 @@ useDialogCloseRefresh("taskId", () => fetchTasks({ silent: true }));
   padding: var(--space-md) 0;
   opacity: 0.6;
 }
+
+/* On mobile the 200px minimum makes short columns barely usable for
+   drag-and-drop, so raise it by 50% (same breakpoint as calendar/Navigation) */
+@media (max-width: 767px) {
+  .kanban-column {
+    min-height: 300px;
+  }
+}
 </style>

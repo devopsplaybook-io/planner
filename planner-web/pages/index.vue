@@ -555,4 +555,12 @@ section h2 {
   padding-left: 1.5em;
   margin-bottom: var(--space-sm);
 }
+
+/* On mobile the 90% percentage bridge has less room to work with, so cap
+   each task-list directly at 70vh (same breakpoint as calendar/Navigation) */
+@media (max-width: 767px) {
+  .task-list {
+    max-height: 70vh;
+  }
+}
 </style>
