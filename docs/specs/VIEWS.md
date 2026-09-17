@@ -20,7 +20,7 @@ Each view provides a different perspective on the same task data.
 - [x] Task status labels on the dashboard use the color configured for the status in the admin Statuses tab
 - [x] Each task card shows the project name next to the status badge on a single line; when both are too long to fit together they are truncated with an ellipsis (full text on hover)
 - [x] The dashboard only includes tasks from projects visible to the current user (see [PROJECTS.md](PROJECTS.md)); admins see all tasks
-- [x] Each dashboard section's task-list container has a max-height of 90% of the parent container and scrolls with an internal vertical scrollbar when the tasks exceed it; the cards keep their natural height — the list scrolls instead of being compressed
+- [x] Each dashboard section's task-list container has a max-height of 90% of the parent container and scrolls with an internal vertical scrollbar when the tasks exceed it; the cards keep their natural height — the list scrolls instead of being compressed; on mobile (viewport ≤ 767px) the task-list container is capped at 70vh
 
 ### History View
 
@@ -48,6 +48,6 @@ Each view provides a different perspective on the same task data.
 - [x] Columns correspond to the project's defined statuses.
 - [x] Status labels (column headers and task status badges) use the color configured for the status in the admin Statuses tab.
 - [x] Each task card shows the project name next to the status badge on a single line; when both are too long to fit together they are truncated with an ellipsis (full text on hover).
-- [x] Each kanban column has a max-height of 90% of the board height; the task list inside the column scrolls with an internal vertical scrollbar while the column header stays visible.
+- [x] Each kanban column has a max-height of 90% of the board height; the task list inside the column scrolls with an internal vertical scrollbar while the column header stays visible; on mobile (viewport ≤ 767px) the column minimum height is increased to 300px
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-16_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-17_
