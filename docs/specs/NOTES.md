@@ -14,6 +14,8 @@ exactly one project and has the following attributes:
 
 ## Management of Notes
 
+[x] Create: after creating a note, the note dialog opens on the new object.
+
 [x] Update: when a note is clicked, the note is displayed and the user can edit the note.
 
 [x] Project change: when a note is opened in edit mode, the project can be changed; the target project must be visible to the user.
@@ -26,4 +28,4 @@ exactly one project and has the following attributes:
 - [x] A note the user cannot see answers 404 on the note API, like a missing note.
 - [x] Creating a note requires the target project to be visible to the user; updating, deleting and interacting with a note (comments, labels, attachments) requires the note to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-16_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-18_

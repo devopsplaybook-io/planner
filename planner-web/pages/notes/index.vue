@@ -135,9 +135,14 @@ useDialogCloseRefresh("noteId", () => notesStore.fetchAll());
 async function createNote() {
   creating.value = true;
   try {
-    await notesStore.create(newNote.value);
+    const created = await notesStore.create(newNote.value);
     showCreateDialog.value = false;
     newNote.value = { projectId: "", title: "", description: "" };
+    // Open the note dialog on the freshly created note
+    router.replace({
+      path: route.path,
+      query: { ...route.query, noteId: created.id },
+    });
   } catch (e) {
     alert(e.response?.data?.error || "Failed to create note");
   } finally {

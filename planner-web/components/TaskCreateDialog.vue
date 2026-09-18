@@ -160,9 +160,9 @@ async function createTask() {
       assignees: form.value.assignees,
       checklist: form.value.checklist.filter((c) => c.text.trim()),
     };
-    await tasksStore.create(data);
+    const created = await tasksStore.create(data);
     emit("close");
-    emit("created");
+    emit("created", created.id);
   } catch (e) {
     alert(e.response?.data?.error || "Failed to create task");
   } finally {
