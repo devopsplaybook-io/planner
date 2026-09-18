@@ -10,7 +10,7 @@
         <small class="card-date">{{ formatDate(note.dateCreated) }}</small>
       </header>
       <p v-if="note.description" class="card-desc">
-        {{ truncate(note.description, 150) }}
+        {{ truncate(note.description, 240) }}
       </p>
       <footer
         v-if="
@@ -54,13 +54,17 @@ function truncate(text, max) {
   font-size: var(--text-sm);
 }
 
+.note-card {
+  min-height: 8em;
+}
+
 .card-desc {
   margin-top: var(--space-xs);
   font-size: var(--text-base);
   color: var(--color-text-muted);
   line-height: var(--leading-normal);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
