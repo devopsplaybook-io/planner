@@ -189,7 +189,7 @@
   <TaskCreateDialog
     :open="showCreateDialog"
     @close="showCreateDialog = false"
-    @created="fetchDashboard"
+    @created="onTaskCreated"
   />
 </template>
 
@@ -327,6 +327,15 @@ function openTask(task) {
     path: route.path,
     query: { ...route.query, taskId: task.id },
   });
+}
+
+async function onTaskCreated(taskId) {
+  // Open the task dialog on the freshly created task
+  router.replace({
+    path: route.path,
+    query: { ...route.query, taskId },
+  });
+  await fetchDashboard({ silent: true });
 }
 
 // Dashboard data is a local snapshot (not a store computed), so refresh it

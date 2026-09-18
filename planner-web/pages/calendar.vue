@@ -71,7 +71,7 @@
   <TaskCreateDialog
     :open="showCreateDialog"
     @close="showCreateDialog = false"
-    @created="fetchTasks"
+    @created="onTaskCreated"
   />
 </template>
 
@@ -249,6 +249,15 @@ function openTask(task) {
     path: route.path,
     query: { ...route.query, taskId: task.id },
   });
+}
+
+async function onTaskCreated(taskId) {
+  // Open the task dialog on the freshly created task
+  router.replace({
+    path: route.path,
+    query: { ...route.query, taskId },
+  });
+  await fetchTasks({ silent: true });
 }
 
 function onDragOver(dateStr) {
