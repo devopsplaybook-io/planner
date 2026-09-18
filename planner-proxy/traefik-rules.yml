@@ -1,11 +1,20 @@
+# Development proxy (Traefik).
+
+# Routers are evaluated most-specific-first: the API router must be matched
+# before the catch-all web router. This is enforced with explicit priorities
+# that encode the order the routers are written below. Do not rely on
+# Traefik's default priority (rule length), which is not related to the
+# order in this file.
 http:
   routers:
-    web:
-      service: service-web
-      rule: PathPrefix(`/`)
-    server:
+    server: # evaluated first: planner-server (Fastify) on :8080
       service: service-server
       rule: PathPrefix(`/api/`)
+      priority: 100
+    web: # evaluated second: catch-all to planner-web (Nuxt) on :3000
+      service: service-web
+      rule: PathPrefix(`/`)
+      priority: 1
 
   services:
     service-web:
