@@ -36,6 +36,7 @@ It is installable on mobile and desktop devices and works offline.
   - [x] The detail dialogs share a standardized header: icon-only Edit (pencil), Save (check) and Cancel (undo arrow) buttons that appear/disappear together when switching between display and Edit mode, an advanced (…) menu for destructive/rare actions, and a close button
 - [x] A shared multi-user selection component (auto-complete box with removable chips) is used for task assignees and project user access, replacing per-user checkbox lists
 - [x] When a Task, Note or Project detail dialog is closed, the view behind it refreshes its data in place: the list is not unmounted and the user's scroll position is preserved (the full loading indicator is only shown on initial load)
+- [x] Long markdown descriptions in the Task, Note and Project detail dialogs collapse to a capped height with a fade at the cut and a "Show more/less" disclosure exposing `aria-expanded`: the full text is shown when expanded, the disclosure only appears when the content actually overflows the cap (a short description is never faded or truncated), and Edit mode always shows the complete description
 
 ### Tasks
 
