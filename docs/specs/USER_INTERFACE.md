@@ -41,4 +41,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-16_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-18_
