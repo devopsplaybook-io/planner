@@ -20,6 +20,8 @@ exactly one project and has the following attributes:
 
 [x] Notes list: notes are displayed as cards showing the title, creation date, a description preview of up to 5 lines, labels and the comment count; cards have a minimum height so notes without a description remain readable and clickable.
 
+[x] Advanced menu: the note dialog offers an advanced menu with Delete; delete is no longer a standalone button.
+
 [x] Project change: when a note is opened in edit mode, the project can be changed; the target project must be visible to the user.
 
 [x] Archived projects (see [PROJECTS.md](PROJECTS.md)) are read-only: notes in them cannot be created or updated (including comments, labels, attachments) and notes cannot be moved into them; deleting a note is still allowed.

@@ -4,6 +4,7 @@ Projects are the top-level organizational unit.
 
 - [x] There is one default project, but multiple projects can be added.
 - [x] Projects are created and managed by admins in Admin &rarr; Projects (see [ADMIN.md](ADMIN.md)); the Projects page is not part of the global navigation and the projects API rejects create/update/delete for non-admin users.
+- [x] Delete: the project dialog offers an advanced menu with Delete (admins only, not for the default project); delete is no longer a standalone button.
 
 ## Visibility
 
@@ -39,4 +40,4 @@ Projects are active or archived. The status is switched by the admin in the proj
 - [x] The History page still allows selecting archived projects, marked as "(archived)".
 - [x] The task list, dashboard and search still show tasks that belong to archived projects when they match the filter (30-day Done window or search).
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-16_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-18_
