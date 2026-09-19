@@ -95,10 +95,34 @@
             />
             <div
               v-else
-              class="markdown-body"
-              v-html="renderMarkdown(project.description) || 'No description'"
-            />
+              id="project-description-body"
+              class="markdown-collapse"
+              :class="{
+                'is-truncated': !descriptionExpanded,
+                'is-overflowing': descriptionOverflowing,
+              }"
+            >
+              <div
+                :ref="setDescriptionContentEl"
+                class="markdown-collapse-content markdown-body"
+                v-html="
+                  renderMarkdown(project.description) || 'No description'
+                "
+              />
+            </div>
           </label>
+          <!-- Outside the <label>: a <button> is a labelable element, so
+               leaving it inside would forward clicks on the description text
+               to the toggle. -->
+          <button
+            v-if="!editing && descriptionOverflowing"
+            class="expand-btn"
+            :aria-expanded="descriptionExpanded"
+            aria-controls="project-description-body"
+            @click="toggleDescription"
+          >
+            {{ descriptionExpanded ? "Show less" : "Show more" }}
+          </button>
         </section>
 
         <!-- Meta Info (read-only summary, display mode) -->
@@ -288,6 +312,15 @@ const saving = ref(false);
 const advancedMenuEl = ref(null);
 const editForm = ref({ name: "", description: "" });
 const saveError = ref("");
+// Long descriptions collapse behind a "Show more/less" disclosure in view
+// mode; Edit mode always shows the full text (the textarea is untouched).
+const {
+  expanded: descriptionExpanded,
+  overflowing: descriptionOverflowing,
+  setContentEl: setDescriptionContentEl,
+  toggle: toggleDescription,
+  reset: resetDescriptionCollapse,
+} = useOverflowCollapse();
 
 // --- Visibility management (admin) ---
 const editVisibility = ref("public");
@@ -341,6 +374,16 @@ watch(
     }
   },
   { immediate: true },
+);
+
+// Re-collapse the description when switching projects or leaving Edit mode;
+// the ResizeObserver re-measures overflow once the new content has rendered.
+watch(
+  () => [props.projectId, editing.value],
+  async () => {
+    await nextTick();
+    resetDescriptionCollapse();
+  },
 );
 
 function handleClose() {
