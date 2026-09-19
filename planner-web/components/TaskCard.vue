@@ -62,6 +62,7 @@
 
 <script setup>
 import { readableTextColor } from "../utils/statusColor";
+import { displayName } from "../utils/projectHierarchy";
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -84,7 +85,7 @@ const projectName = computed(() => {
   const project = projectsStore.projects.find(
     (p) => p.id === props.task.projectId,
   );
-  return project?.name || "";
+  return project ? displayName(project.name) : "";
 });
 
 function onDragStart(event) {

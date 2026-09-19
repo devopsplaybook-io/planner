@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
-import { parseDoneSince, TasksRoutes } from "./TasksRoutes";
+import { parseDoneSince, parseProjectIds, TasksRoutes } from "./TasksRoutes";
 import { TasksDataAdd, TasksDataDelete, TasksDataGet, TasksDataList, TasksDataUpdate, addAssignee, addComment, addLabel, addTaskAttachment, clearLabels, deleteTaskAttachment, getTaskAttachment, removeAssignee } from "./TasksData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { ProjectsDataGet } from "../projects/ProjectsData";
@@ -76,6 +76,39 @@ describe("parseDoneSince", () => {
     expect(() => parseDoneSince("garbage")).toThrow();
     expect(() => parseDoneSince("not a date")).toThrow();
     expect(() => parseDoneSince("2026-13-45")).toThrow();
+  });
+});
+
+describe("parseProjectIds", () => {
+  it("should return undefined for absent, null, empty or whitespace-only values", () => {
+    expect(parseProjectIds(undefined)).toBeUndefined();
+    expect(parseProjectIds(null)).toBeUndefined();
+    expect(parseProjectIds("")).toBeUndefined();
+    expect(parseProjectIds("   ")).toBeUndefined();
+    expect(parseProjectIds(" , , ")).toBeUndefined();
+  });
+
+  it("should return a single id", () => {
+    expect(parseProjectIds("proj-1")).toEqual(["proj-1"]);
+  });
+
+  it("should split on commas and trim each id", () => {
+    expect(parseProjectIds(" proj-1 ,proj-2,  proj-3  ")).toEqual([
+      "proj-1",
+      "proj-2",
+      "proj-3",
+    ]);
+  });
+
+  it("should drop empty segments and de-duplicate ids", () => {
+    expect(parseProjectIds("proj-1,,proj-1,proj-2")).toEqual([
+      "proj-1",
+      "proj-2",
+    ]);
+  });
+
+  it("should ignore a non-string value", () => {
+    expect(parseProjectIds(42)).toBeUndefined();
   });
 });
 
@@ -179,6 +212,27 @@ describe("TasksRoutes project visibility", () => {
       q: undefined,
       visibleTo: { userId: "user-1" },
     });
+  });
+
+  it("should forward the projectIds subtree filter to the data layer", async () => {
+    await app.inject({
+      method: "GET",
+      url: "/?projectIds=proj-1,proj-2",
+    });
+    expect(TasksDataList).toHaveBeenCalledWith({
+      projectId: undefined,
+      projectIds: ["proj-1", "proj-2"],
+      doneSince: undefined,
+      q: undefined,
+      visibleTo: { userId: "user-1" },
+    });
+  });
+
+  it("should not set projectIds when the param is absent", async () => {
+    await app.inject({ method: "GET", url: "/" });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      expect.not.objectContaining({ projectIds: expect.anything() }),
+    );
   });
 
   // ==================== GET BY ID ====================

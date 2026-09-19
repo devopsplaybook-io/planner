@@ -208,7 +208,13 @@ async function fetchTasks({ silent = false } = {}) {
     loading.value = true;
   }
   try {
-    await tasksStore.fetchAll(projectsStore.selectedProjectFilter || undefined);
+    // A selected project filters its whole subtree (the project plus its
+    // sub-projects); ids are expanded outside the select component
+    const filterId = projectsStore.selectedProjectFilter;
+    const projectIds = filterId
+      ? projectsStore.subtreeProjectIds(filterId)
+      : undefined;
+    await tasksStore.fetchAll(undefined, { projectIds });
   } catch {
     // Handle error
   } finally {

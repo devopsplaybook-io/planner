@@ -89,14 +89,41 @@ const dragTask = ref(null);
 const dragOverStatus = ref(null);
 
 const statuses = computed(() => {
-  if (projectsStore.selectedProjectFilter) {
-    const project = projectsStore.projects.find(
-      (p) => p.id === projectsStore.selectedProjectFilter,
-    );
-    if (project?.statuses?.length) {
-      return project.statuses;
+  const filterId = projectsStore.selectedProjectFilter;
+  if (filterId) {
+    // Union of the subtree's statuses (selected project + its
+    // sub-projects), in global-catalog order, followed by uncovered
+    // project/task statuses as the dangling-status safety net
+    const ids = new Set(projectsStore.subtreeProjectIds(filterId));
+    const subtreeStatuses = new Set();
+    for (const project of projectsStore.projects) {
+      if (ids.has(project.id)) {
+        for (const status of project.statuses || []) {
+          subtreeStatuses.add(status);
+        }
+      }
     }
-    return fallbackStatuses();
+    const ordered = statusesStore.catalogNames.filter((status) =>
+      subtreeStatuses.has(status),
+    );
+    const seen = new Set(ordered);
+    for (const project of projectsStore.projects) {
+      if (ids.has(project.id)) {
+        for (const status of project.statuses || []) {
+          if (!seen.has(status)) {
+            seen.add(status);
+            ordered.push(status);
+          }
+        }
+      }
+    }
+    for (const task of tasksStore.tasks) {
+      if (!seen.has(task.status)) {
+        seen.add(task.status);
+        ordered.push(task.status);
+      }
+    }
+    return ordered.length > 0 ? ordered : fallbackStatuses();
   }
   // All projects: follow the global status catalog, then append any
   // statuses not covered (e.g. dangling task statuses) as a safety net
@@ -187,9 +214,13 @@ async function fetchTasks({ silent = false } = {}) {
     const doneSince = new Date(
       Date.now() - DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
     ).toISOString();
-    await tasksStore.fetchAll(projectsStore.selectedProjectFilter || undefined, {
-      doneSince,
-    });
+    // A selected project filters its whole subtree (the project plus its
+    // sub-projects); ids are expanded outside the select component
+    const filterId = projectsStore.selectedProjectFilter;
+    const projectIds = filterId
+      ? projectsStore.subtreeProjectIds(filterId)
+      : undefined;
+    await tasksStore.fetchAll(undefined, { doneSince, projectIds });
   } catch {
     // Handle error
   } finally {

@@ -20,6 +20,8 @@ export interface NextViewData {
 
 export interface DashboardFilters {
   projectId?: string;
+  /** Subtree filter: matches tasks in any of these projects (IN). */
+  projectIds?: string[];
   labels?: string[];
   /** When set, restricts results to projects visible to this user (non-admin viewers). */
   visibleTo?: { userId: string };
@@ -65,6 +67,12 @@ export async function ViewsDataGetDashboard(
   if (filters?.projectId) {
     filterConditions.push(`${col("projectId")} = ?`);
     filterParams.push(filters.projectId);
+  }
+
+  if (filters?.projectIds && filters.projectIds.length > 0) {
+    const placeholders = filters.projectIds.map(() => "?").join(", ");
+    filterConditions.push(`${col("projectId")} IN (${placeholders})`);
+    filterParams.push(...filters.projectIds);
   }
 
   if (filters?.labels && filters.labels.length > 0) {

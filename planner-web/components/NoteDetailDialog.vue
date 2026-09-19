@@ -266,6 +266,7 @@
 
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
+import { displayName } from "../utils/projectHierarchy";
 
 const props = defineProps({
   noteId: { type: String, default: null },
@@ -305,7 +306,7 @@ const projectName = computed(() => {
   const project = projectsStore.projects.find(
     (p) => p.id === note.value?.projectId,
   );
-  return project?.name || "";
+  return project ? displayName(project.name) : "";
 });
 
 watch(

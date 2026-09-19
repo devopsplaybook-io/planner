@@ -49,10 +49,16 @@ export const useTasksStore = defineStore("tasks", {
   }),
 
   actions: {
-    async fetchAll(projectId?: string, opts?: { doneSince?: string }) {
+    async fetchAll(
+      projectId?: string,
+      opts?: { doneSince?: string; projectIds?: string[] },
+    ) {
       const params: Record<string, string> = {};
       if (projectId) {
         params.projectId = projectId;
+      }
+      if (opts?.projectIds && opts.projectIds.length > 0) {
+        params.projectIds = opts.projectIds.join(",");
       }
       if (opts?.doneSince) {
         params.doneSince = opts.doneSince;
@@ -66,13 +72,41 @@ export const useTasksStore = defineStore("tasks", {
       return res.data;
     },
 
-    async fetchDashboard(params?: { projectId?: string; labels?: string }) {
-      const res = await api.get("/views/dashboard", { params });
+    async fetchDashboard(params?: {
+      projectId?: string;
+      projectIds?: string[];
+      labels?: string;
+    }) {
+      const query: Record<string, string> = {};
+      if (params?.projectId) {
+        query.projectId = params.projectId;
+      }
+      if (params?.projectIds && params.projectIds.length > 0) {
+        query.projectIds = params.projectIds.join(",");
+      }
+      if (params?.labels) {
+        query.labels = params.labels;
+      }
+      const res = await api.get("/views/dashboard", { params: query });
       return res.data;
     },
 
-    async searchTasks(params?: { projectId?: string; q?: string }) {
-      const res = await api.get("/tasks", { params });
+    async searchTasks(params?: {
+      projectId?: string;
+      projectIds?: string[];
+      q?: string;
+    }) {
+      const query: Record<string, string> = {};
+      if (params?.projectId) {
+        query.projectId = params.projectId;
+      }
+      if (params?.projectIds && params.projectIds.length > 0) {
+        query.projectIds = params.projectIds.join(",");
+      }
+      if (params?.q) {
+        query.q = params.q;
+      }
+      const res = await api.get("/tasks", { params: query });
       return res.data;
     },
 

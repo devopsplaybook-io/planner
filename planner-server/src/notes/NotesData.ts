@@ -18,6 +18,8 @@ export async function NotesDataGet(id: string): Promise<Note> {
 
 export interface NoteListFilters {
   projectId?: string;
+  /** Subtree filter: matches notes in any of these projects (IN). */
+  projectIds?: string[];
   /** When set, restricts results to projects visible to this user (non-admin viewers). */
   visibleTo?: { userId: string };
 }
@@ -38,6 +40,11 @@ export function buildListNotesQuery(
   if (filters.projectId) {
     conditions.push(`${quote("projectId")} = ?`);
     params.push(filters.projectId);
+  }
+  if (filters.projectIds && filters.projectIds.length > 0) {
+    const placeholders = filters.projectIds.map(() => "?").join(", ");
+    conditions.push(`${quote("projectId")} IN (${placeholders})`);
+    params.push(...filters.projectIds);
   }
   if (filters.visibleTo) {
     const visibility = visibleProjectsCondition(filters.visibleTo.userId, dbType);

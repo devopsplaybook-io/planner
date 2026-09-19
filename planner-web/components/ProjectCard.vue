@@ -5,7 +5,7 @@
       <header>
         <div class="card-title-row">
           <span class="item-icon"><i class="bi bi-folder" /></span>
-          <span class="item-title">{{ project.name }}</span>
+          <span class="item-title" :title="displayPath">{{ displayPath }}</span>
         </div>
         <div class="badge-group">
           <span v-if="project.isDefault" class="badge">Default</span>
@@ -34,11 +34,16 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from "vue";
+import { displayName } from "../utils/projectHierarchy";
+
+const props = defineProps({
   project: { type: Object, required: true },
 });
 
 defineEmits(["click"]);
+
+const displayPath = computed(() => displayName(props.project.name));
 </script>
 
 <style scoped>

@@ -8,6 +8,7 @@ import {
   isProjectVisible,
 } from "../projects/ProjectVisibility";
 import { ProjectsDataGet } from "../projects/ProjectsData";
+import { parseProjectIds } from "../tasks/TasksRoutes";
 import {
   NotesDataAdd,
   NotesDataDelete,
@@ -63,23 +64,23 @@ async function archivedProjectError(
 export class NotesRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
-    fastify.get<{ Querystring: { projectId?: string } }>(
-      "/",
-      async (req, res) => {
-        const userSession = await AuthGetUserSession(req);
-        if (!userSession.isAuthenticated) {
-          return res.status(403).send({ error: "Access Denied" });
-        }
-        const filters: NoteListFilters = {
-          projectId: req.query.projectId,
-        };
-        if (userSession.role !== "admin") {
-          filters.visibleTo = { userId: userSession.userId };
-        }
-        const notes = await NotesDataList(filters);
-        return res.status(200).send(notes.map((n) => n.toTransportJson()));
-      },
-    );
+    fastify.get<{
+      Querystring: { projectId?: string; projectIds?: string };
+    }>("/", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(403).send({ error: "Access Denied" });
+      }
+      const filters: NoteListFilters = {
+        projectId: req.query.projectId,
+        projectIds: parseProjectIds(req.query.projectIds),
+      };
+      if (userSession.role !== "admin") {
+        filters.visibleTo = { userId: userSession.userId };
+      }
+      const notes = await NotesDataList(filters);
+      return res.status(200).send(notes.map((n) => n.toTransportJson()));
+    });
 
     // ==================== GET BY ID ====================
     fastify.get<{ Params: { id: string } }>("/:id", async (req, res) => {

@@ -94,10 +94,11 @@ const creating = ref(false);
 const newNote = ref({ projectId: "", title: "", description: "" });
 
 const filteredNotes = computed(() => {
-  if (!projectsStore.selectedProjectFilter) return notesStore.notes;
-  return notesStore.notes.filter(
-    (n) => n.projectId === projectsStore.selectedProjectFilter,
-  );
+  const filterId = projectsStore.selectedProjectFilter;
+  if (!filterId) return notesStore.notes;
+  // The filter spans the selected project's whole subtree
+  const ids = new Set(projectsStore.subtreeProjectIds(filterId));
+  return notesStore.notes.filter((n) => ids.has(n.projectId));
 });
 
 function onFilterChange(projectId) {

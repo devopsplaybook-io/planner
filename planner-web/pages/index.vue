@@ -243,8 +243,9 @@ async function runSearch() {
   searching.value = true;
   try {
     const params = { q };
-    if (projectsStore.selectedProjectFilter) {
-      params.projectId = projectsStore.selectedProjectFilter;
+    const filterId = projectsStore.selectedProjectFilter;
+    if (filterId) {
+      params.projectIds = projectsStore.subtreeProjectIds(filterId);
     }
     searchResults.value = await tasksStore.searchTasks(params);
   } catch {
@@ -298,19 +299,19 @@ async function fetchDashboard({ silent = false } = {}) {
     loading.value = true;
   }
   try {
-    const params = {};
-    if (projectsStore.selectedProjectFilter) {
-      params.projectId = projectsStore.selectedProjectFilter;
-    }
+    // A selected project filters its whole subtree (the project plus its
+    // sub-projects); ids are expanded outside the select component
+    const filterId = projectsStore.selectedProjectFilter;
+    const projectIds = filterId
+      ? projectsStore.subtreeProjectIds(filterId)
+      : undefined;
+    const params = projectIds ? { projectIds } : {};
     const doneSince = new Date(
       Date.now() - DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
     ).toISOString();
     const [dashboard] = await Promise.all([
       tasksStore.fetchDashboard(params),
-      tasksStore.fetchAll(
-        projectsStore.selectedProjectFilter || undefined,
-        { doneSince },
-      ),
+      tasksStore.fetchAll(undefined, { doneSince, projectIds }),
     ]);
     dashboardData.value = dashboard;
   } catch {

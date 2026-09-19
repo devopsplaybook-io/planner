@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { AuthGetUserSession } from "../users/Auth";
 import { DashboardFilters, ViewsDataGetDashboard } from "./ViewsData";
+import { parseProjectIds } from "../tasks/TasksRoutes";
 
 export class ViewsRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
@@ -8,6 +9,7 @@ export class ViewsRoutes {
     fastify.get<{
       Querystring: {
         projectId?: string;
+        projectIds?: string;
         labels?: string;
       };
     }>("/dashboard", async (req, res) => {
@@ -20,6 +22,7 @@ export class ViewsRoutes {
         : undefined;
       const filters: DashboardFilters = {
         projectId: req.query.projectId,
+        projectIds: parseProjectIds(req.query.projectIds),
         labels,
       };
       if (userSession.role !== "admin") {
