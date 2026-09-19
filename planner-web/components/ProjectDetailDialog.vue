@@ -8,17 +8,27 @@
                app-wide), so project can be null here -->
           <button
             v-if="project && !editing && authStore.isAdmin"
-            class="secondary"
+            class="secondary icon-btn"
+            aria-label="Edit"
             @click="startEdit"
           >
-            <i class="bi bi-pencil" /> Edit
+            <i class="bi bi-pencil" />
           </button>
           <template v-if="editing">
-            <button :aria-busy="saving" @click="saveEdit">
-              <i class="bi bi-check" /> Save
+            <button
+              class="icon-btn"
+              :aria-busy="saving"
+              aria-label="Save"
+              @click="saveEdit"
+            >
+              <i class="bi bi-check" />
             </button>
-            <button class="secondary" @click="cancelEdit">
-              <i class="bi bi-x" /> Cancel
+            <button
+              class="secondary icon-btn"
+              aria-label="Cancel"
+              @click="cancelEdit"
+            >
+              <i class="bi bi-arrow-counterclockwise" />
             </button>
           </template>
           <details
@@ -417,94 +427,6 @@ async function deleteProject() {
 </script>
 
 <style scoped>
-.dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.dialog-header h3 {
-  margin: 0;
-}
-
-.dialog-actions {
-  display: flex;
-  gap: var(--space-sm);
-  align-items: center;
-}
-
-/* Advanced (…) dropdown menu in the header actions */
-.advanced-menu {
-  position: relative;
-}
-
-.advanced-menu summary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25em 0.5em;
-  font-size: var(--text-lg);
-  line-height: 1;
-  min-width: auto;
-  width: auto;
-  list-style: none;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  transition:
-    background var(--transition-fast),
-    border-color var(--transition-fast);
-}
-
-.advanced-menu summary::-webkit-details-marker {
-  display: none;
-}
-
-.advanced-menu summary:hover {
-  background: var(--color-surface-hover);
-}
-
-.advanced-menu ul {
-  position: absolute;
-  top: calc(100% + 2px);
-  right: 0;
-  z-index: 100;
-  min-width: max-content;
-  margin: 0;
-  padding: var(--space-2xs);
-  list-style: none;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
-}
-
-.advanced-menu a {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-sm);
-  color: var(--color-text);
-  font-size: var(--text-base);
-  white-space: nowrap;
-}
-
-.advanced-menu a:hover {
-  background: var(--color-primary-soft);
-  color: var(--color-primary-text);
-  text-decoration: none;
-}
-
-.advanced-menu .danger-item {
-  color: var(--color-danger);
-}
-
-.advanced-menu .danger-item:hover {
-  color: var(--color-danger-hover);
-}
-
 .edit-section {
   margin-bottom: var(--space-lg);
 }
