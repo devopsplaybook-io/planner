@@ -12,7 +12,7 @@ Projects are created and managed by admins in the admin section (see [PROJECTS.m
 - [x] The admin section has a "Projects" tab where projects are created and managed.
 - [x] The tab order is: Users, Projects, Statuses.
 - [x] The selected tab is reflected in the URL (query parameter) and is kept when the page is refreshed or reached again through browser navigation.
-- [x] Project management covers: create, edit name and description, visibility and user access, status selection, delete.
+- [x] Project management covers: create, edit (name and description, visibility and user access, status selection, Active/Archived switch &mdash; all edited in the project dialog's Edit mode and saved with one Save), delete.
 - [x] Projects are listed with active projects first and archived projects at the end of the list.
 - [x] The project dialog offers a Status switch (Active / Archived); a project cannot be archived while it has tasks that are not Done, and while archived the project cannot be edited except switching it back to Active (see [PROJECTS.md](PROJECTS.md)).
 - [x] Creating, updating and deleting projects through the API requires the admin role; reading projects stays available to all authenticated users (project filters).
@@ -33,4 +33,4 @@ Statuses are defined, managed and ordered globally in the admin section. Project
 - [x] The admin chooses a status color from a simplified preset-swatch picker (main colors, a few shades per color).
 - [x] The exact hex color code of each status is stored server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-16_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-19_

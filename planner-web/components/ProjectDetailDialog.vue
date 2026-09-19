@@ -7,18 +7,28 @@
           <!-- Rendered even when no project is selected (dialog is mounted
                app-wide), so project can be null here -->
           <button
-            v-if="!editing && authStore.isAdmin && !project?.archived"
-            class="secondary"
+            v-if="project && !editing && authStore.isAdmin"
+            class="secondary icon-btn"
+            aria-label="Edit"
             @click="startEdit"
           >
-            <i class="bi bi-pencil" /> Edit
+            <i class="bi bi-pencil" />
           </button>
           <template v-if="editing">
-            <button :aria-busy="saving" @click="saveEdit">
-              <i class="bi bi-check" /> Save
+            <button
+              class="icon-btn"
+              :aria-busy="saving"
+              aria-label="Save"
+              @click="saveEdit"
+            >
+              <i class="bi bi-check" />
             </button>
-            <button class="secondary" @click="cancelEdit">
-              <i class="bi bi-x" /> Cancel
+            <button
+              class="secondary icon-btn"
+              aria-label="Cancel"
+              @click="cancelEdit"
+            >
+              <i class="bi bi-arrow-counterclockwise" />
             </button>
           </template>
           <details
@@ -59,6 +69,7 @@
               v-model="editForm.name"
               type="text"
               required
+              :disabled="isFrozen"
             />
             <h2 v-else>
               {{ project.name }}
@@ -70,7 +81,12 @@
           </label>
           <label>
             Description
-            <textarea v-if="editing" v-model="editForm.description" rows="3" />
+            <textarea
+              v-if="editing"
+              v-model="editForm.description"
+              rows="3"
+              :disabled="isFrozen"
+            />
             <div
               v-else
               class="markdown-body"
@@ -79,8 +95,8 @@
           </label>
         </section>
 
-        <!-- Meta Info (read-only summary for non-admin users) -->
-        <section v-if="!authStore.isAdmin" class="meta-section">
+        <!-- Meta Info (read-only summary, display mode) -->
+        <section v-if="!editing" class="meta-section">
           <div class="meta-field">
             <strong>Visibility</strong>
             <span>
@@ -98,10 +114,19 @@
             <strong>Statuses</strong>
             <span>{{ project.statuses?.length || 0 }} defined</span>
           </div>
+          <div v-if="authStore.isAdmin" class="meta-field">
+            <strong>State</strong>
+            <span>
+              <i
+                :class="project.archived ? 'bi bi-archive' : 'bi bi-check-circle'"
+              />
+              {{ project.archived ? "Archived" : "Active" }}
+            </span>
+          </div>
         </section>
 
-        <!-- Visibility (admin management) -->
-        <section v-if="authStore.isAdmin" class="visibility-section">
+        <!-- Visibility (admin, edit mode) -->
+        <section v-if="editing" class="visibility-section">
           <h3>Visibility</h3>
           <div class="visibility-controls">
             <label class="radio-label">
@@ -109,8 +134,7 @@
                 v-model="editVisibility"
                 type="radio"
                 value="public"
-                :disabled="project.archived"
-                @change="updateVisibility"
+                :disabled="isFrozen"
               />
               Public
               <small>Visible to all users</small>
@@ -120,23 +144,22 @@
                 v-model="editVisibility"
                 type="radio"
                 value="restricted"
-                :disabled="project.archived"
-                @change="updateVisibility"
+                :disabled="isFrozen"
               />
               Restricted
               <small>Only visible to selected users</small>
             </label>
           </div>
           <UserMultiSelect
-            v-if="editVisibility === 'restricted' && !project.archived"
-            :model-value="editUserAccess"
+            v-if="editVisibility === 'restricted'"
+            v-model="editUserAccess"
             :users="availableUsers"
-            @update:model-value="onUserAccessChange"
+            :disabled="isFrozen"
           />
         </section>
 
-        <!-- Status: archive switch (admin management) -->
-        <section v-if="authStore.isAdmin" class="archive-section">
+        <!-- Status: archive switch (admin, edit mode) -->
+        <section v-if="editing" class="archive-section">
           <h3>Status</h3>
           <p class="section-hint">
             Archived projects are read-only: their tasks and notes cannot
@@ -145,33 +168,20 @@
           </p>
           <div class="visibility-controls">
             <label class="radio-label">
-              <input
-                v-model="editArchived"
-                type="radio"
-                :value="false"
-                @change="updateArchived(false)"
-              />
+              <input v-model="editArchived" type="radio" :value="false" />
               Active
               <small>Normal project</small>
             </label>
             <label class="radio-label">
-              <input
-                v-model="editArchived"
-                type="radio"
-                :value="true"
-                @change="updateArchived(true)"
-              />
+              <input v-model="editArchived" type="radio" :value="true" />
               Archived
               <small>Read-only, hidden from lists</small>
             </label>
           </div>
-          <div v-if="archiveError" class="status-error">
-            <i class="bi bi-exclamation-circle" /> {{ archiveError }}
-          </div>
         </section>
 
-        <!-- Statuses (admin management) -->
-        <section v-if="authStore.isAdmin && !project.archived">
+        <!-- Statuses (admin, edit mode) -->
+        <section v-if="editing" class="statuses-section">
           <h3>Statuses</h3>
           <p class="section-hint">
             Select which statuses from the global catalog this project uses.
@@ -186,10 +196,10 @@
             >
               <label>
                 <input
+                  v-model="selectedStatuses"
                   type="checkbox"
-                  :checked="selectedStatuses.includes(status)"
-                  :disabled="status === 'Done'"
-                  @change="toggleStatus(status)"
+                  :value="status"
+                  :disabled="isFrozen || status === 'Done'"
                 />
                 {{ status }}
               </label>
@@ -198,23 +208,17 @@
               </span>
             </div>
           </div>
-          <div v-if="unknownStatuses.length" class="status-warning">
+          <div v-if="!isFrozen && unknownStatuses.length" class="status-warning">
             <i class="bi bi-exclamation-triangle" />
             Not in the catalog, will be removed on save:
             {{ unknownStatuses.join(", ") }}
           </div>
-          <div v-if="statusEditError" class="status-error">
-            <i class="bi bi-exclamation-circle" /> {{ statusEditError }}
-          </div>
-          <button
-            type="button"
-            :aria-busy="savingStatuses"
-            class="save-statuses-btn"
-            @click="saveStatuses"
-          >
-            <i class="bi bi-check-lg" /> Save statuses
-          </button>
         </section>
+
+        <!-- Unified save error (edit mode) -->
+        <div v-if="editing && saveError" class="status-error">
+          <i class="bi bi-exclamation-circle" /> {{ saveError }}
+        </div>
       </template>
 
       <!-- Delete Confirmation -->
@@ -272,6 +276,7 @@ const editing = ref(false);
 const saving = ref(false);
 const advancedMenuEl = ref(null);
 const editForm = ref({ name: "", description: "" });
+const saveError = ref("");
 
 // --- Visibility management (admin) ---
 const editVisibility = ref("public");
@@ -280,12 +285,13 @@ const availableUsers = ref([]);
 
 // --- Archive switch (admin) ---
 const editArchived = ref(false);
-const archiveError = ref("");
 
 // --- Status selection (admin) ---
 const selectedStatuses = ref([]);
-const savingStatuses = ref(false);
-const statusEditError = ref("");
+
+// The server freezes all fields except the archived flag while a project
+// is archived, so Edit mode only leaves the Active/Archived switch enabled.
+const isFrozen = computed(() => !!project.value?.archived);
 
 const catalogStatuses = computed(() => statusesStore.catalogNames);
 const unknownStatuses = computed(() =>
@@ -303,14 +309,7 @@ watch(
       try {
         const projectData = await projectsStore.fetchById(newId);
         if (authStore.isAdmin && projectData) {
-          editVisibility.value = projectData.visibility || "public";
-          editUserAccess.value = [...(projectData.userAccess || [])];
-          editArchived.value = !!projectData.archived;
-          archiveError.value = "";
           await statusesStore.fetchAll();
-          selectedStatuses.value = (projectData.statuses || []).filter((s) =>
-            catalogStatuses.value.includes(s),
-          );
           await fetchUsers();
         }
       } catch {
@@ -329,31 +328,67 @@ function handleClose() {
   emit("close");
 }
 
-function startEdit() {
+function seedEditState() {
   if (!project.value) return;
   editForm.value = {
     name: project.value.name,
     description: project.value.description || "",
   };
+  editVisibility.value = project.value.visibility || "public";
+  editUserAccess.value = [...(project.value.userAccess || [])];
+  editArchived.value = !!project.value.archived;
+  selectedStatuses.value = (project.value.statuses || []).filter((s) =>
+    catalogStatuses.value.includes(s),
+  );
+  saveError.value = "";
+}
+
+function startEdit() {
+  seedEditState();
   editing.value = true;
 }
 
 function cancelEdit() {
+  seedEditState();
   editing.value = false;
 }
 
 async function saveEdit() {
   if (!project.value) return;
-  saving.value = true;
-  try {
-    await projectsStore.update(props.projectId, {
+  saveError.value = "";
+  if (!editForm.value.name.trim()) {
+    saveError.value = "Name is required";
+    return;
+  }
+  let payload;
+  if (project.value.archived) {
+    // Frozen project: only the archived flag may change.
+    payload = { archived: editArchived.value };
+  } else {
+    const statuses = selectedStatuses.value.filter(Boolean);
+    if (!statuses.includes("Done")) {
+      statuses.push("Done");
+    }
+    if (statuses.length < 2) {
+      saveError.value = 'At least one status besides "Done" is required.';
+      return;
+    }
+    payload = {
       name: editForm.value.name,
       description: editForm.value.description,
-    });
+      visibility: editVisibility.value,
+      userAccess: editUserAccess.value,
+      archived: editArchived.value,
+      statuses,
+    };
+  }
+  saving.value = true;
+  try {
+    await projectsStore.update(props.projectId, payload);
     editing.value = false;
     emit("updated");
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to update project");
+    saveError.value = e.response?.data?.error || "Failed to update project";
   } finally {
     saving.value = false;
   }
@@ -365,71 +400,6 @@ async function fetchUsers() {
     availableUsers.value = res.data;
   } catch {
     // Silently fail
-  }
-}
-
-async function updateVisibility() {
-  try {
-    await projectsStore.update(props.projectId, {
-      visibility: editVisibility.value,
-      userAccess: editUserAccess.value,
-    });
-  } catch (e) {
-    alert(e.response?.data?.error || "Failed to update visibility");
-  }
-}
-
-function onUserAccessChange(ids) {
-  editUserAccess.value = ids;
-  updateVisibility();
-}
-
-async function updateArchived(archived) {
-  archiveError.value = "";
-  try {
-    await projectsStore.update(props.projectId, { archived });
-    editArchived.value = archived;
-  } catch (e) {
-    archiveError.value =
-      e.response?.data?.error || "Failed to update project status";
-    // Revert the radio to the project's actual state
-    editArchived.value = !!project.value?.archived;
-  }
-}
-
-function toggleStatus(status) {
-  if (status === "Done") return;
-  statusEditError.value = "";
-  const idx = selectedStatuses.value.indexOf(status);
-  if (idx >= 0) {
-    selectedStatuses.value.splice(idx, 1);
-  } else {
-    selectedStatuses.value.push(status);
-  }
-}
-
-async function saveStatuses() {
-  statusEditError.value = "";
-  const statuses = selectedStatuses.value.filter(Boolean);
-  if (!statuses.includes("Done")) {
-    statuses.push("Done");
-  }
-  if (statuses.length < 2) {
-    statusEditError.value =
-      'At least one status besides "Done" is required.';
-    return;
-  }
-  savingStatuses.value = true;
-  try {
-    const updated = await projectsStore.update(props.projectId, { statuses });
-    selectedStatuses.value = (updated.statuses || []).filter((s) =>
-      catalogStatuses.value.includes(s),
-    );
-  } catch (e) {
-    statusEditError.value =
-      e.response?.data?.error || "Failed to save statuses";
-  } finally {
-    savingStatuses.value = false;
   }
 }
 
@@ -457,94 +427,6 @@ async function deleteProject() {
 </script>
 
 <style scoped>
-.dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.dialog-header h3 {
-  margin: 0;
-}
-
-.dialog-actions {
-  display: flex;
-  gap: var(--space-sm);
-  align-items: center;
-}
-
-/* Advanced (…) dropdown menu in the header actions */
-.advanced-menu {
-  position: relative;
-}
-
-.advanced-menu summary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25em 0.5em;
-  font-size: var(--text-lg);
-  line-height: 1;
-  min-width: auto;
-  width: auto;
-  list-style: none;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  transition:
-    background var(--transition-fast),
-    border-color var(--transition-fast);
-}
-
-.advanced-menu summary::-webkit-details-marker {
-  display: none;
-}
-
-.advanced-menu summary:hover {
-  background: var(--color-surface-hover);
-}
-
-.advanced-menu ul {
-  position: absolute;
-  top: calc(100% + 2px);
-  right: 0;
-  z-index: 100;
-  min-width: max-content;
-  margin: 0;
-  padding: var(--space-2xs);
-  list-style: none;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
-}
-
-.advanced-menu a {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-sm);
-  color: var(--color-text);
-  font-size: var(--text-base);
-  white-space: nowrap;
-}
-
-.advanced-menu a:hover {
-  background: var(--color-primary-soft);
-  color: var(--color-primary-text);
-  text-decoration: none;
-}
-
-.advanced-menu .danger-item {
-  color: var(--color-danger);
-}
-
-.advanced-menu .danger-item:hover {
-  color: var(--color-danger-hover);
-}
-
 .edit-section {
   margin-bottom: var(--space-lg);
 }
@@ -721,10 +603,6 @@ section {
   align-items: center;
   gap: var(--space-2xs);
   margin-bottom: var(--space-sm);
-}
-
-.save-statuses-btn {
-  margin-top: var(--space-xs);
 }
 
 .inner-dialog article footer {
