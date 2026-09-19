@@ -54,5 +54,6 @@ Each view provides a different perspective on the same task data.
 - [x] Status labels (column headers and task status badges) use the color configured for the status in the admin Statuses tab.
 - [x] Each task card shows the project name next to the status badge on a single line; when both are too long to fit together they are truncated with an ellipsis (full text on hover).
 - [x] Each kanban column has a max-height of 90% of the board height; the task list inside the column scrolls with an internal vertical scrollbar while the column header stays visible; on mobile (viewport ≤ 767px) the column minimum height is increased to 300px
+- [x] Tasks in each column are ordered by last update date, newest first (the most recently updated task appears at the top of its column).
 
 _Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-19_
