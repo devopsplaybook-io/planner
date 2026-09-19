@@ -18,6 +18,8 @@ export async function TasksDataGet(id: string): Promise<Task> {
 
 export interface TaskListFilters {
   projectId?: string;
+  /** Subtree filter: matches tasks in any of these projects (IN). */
+  projectIds?: string[];
   doneSince?: string;
   /** Case-insensitive substring matched against title and description. */
   q?: string;
@@ -41,6 +43,11 @@ export function buildListTasksQuery(
   if (filters.projectId) {
     conditions.push(`${quote("projectId")} = ?`);
     params.push(filters.projectId);
+  }
+  if (filters.projectIds && filters.projectIds.length > 0) {
+    const placeholders = filters.projectIds.map(() => "?").join(", ");
+    conditions.push(`${quote("projectId")} IN (${placeholders})`);
+    params.push(...filters.projectIds);
   }
   if (filters.doneSince) {
     // Non-Done tasks always pass; Done tasks must have been updated since

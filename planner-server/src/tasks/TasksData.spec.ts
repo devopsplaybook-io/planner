@@ -67,6 +67,88 @@ describe("buildListTasksQuery", () => {
   });
 });
 
+describe("buildListTasksQuery projectIds (subtree)", () => {
+  it("should filter by a single project id", () => {
+    const { sql, params } = buildListTasksQuery(
+      { projectIds: ["proj-1"] },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE projectId IN (?) ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["proj-1"]);
+  });
+
+  it("should build one placeholder per id with params in order", () => {
+    const { sql, params } = buildListTasksQuery(
+      { projectIds: ["proj-1", "proj-2", "proj-3"] },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE projectId IN (?, ?, ?) ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["proj-1", "proj-2", "proj-3"]);
+  });
+
+  it("should ignore an empty projectIds array", () => {
+    const { sql, params } = buildListTasksQuery(
+      { projectIds: [] },
+      "sqlite",
+    );
+    expect(sql).toBe("SELECT * FROM tasks ORDER BY dateCreated DESC");
+    expect(params).toEqual([]);
+  });
+
+  it("should AND projectId and projectIds when both are set", () => {
+    const { sql, params } = buildListTasksQuery(
+      { projectId: "proj-1", projectIds: ["proj-2", "proj-3"] },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE projectId = ? AND projectId IN (?, ?) ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["proj-1", "proj-2", "proj-3"]);
+  });
+
+  it("should combine projectIds with doneSince, q and visibility in order", () => {
+    const { sql, params } = buildListTasksQuery(
+      {
+        projectIds: ["proj-1", "proj-2"],
+        doneSince: "2026-08-14T00:00:00.000Z",
+        q: "report",
+        visibleTo: { userId: "user-1" },
+      },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE projectId IN (?, ?) AND (status != ? OR dateUpdated >= ?) " +
+        "AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\') " +
+        "AND (projectId IN (SELECT id FROM projects WHERE visibility = 'public') " +
+        "OR projectId IN (SELECT projectId FROM project_users WHERE userId = ?)) " +
+        "ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual([
+      "proj-1",
+      "proj-2",
+      "Done",
+      "2026-08-14T00:00:00.000Z",
+      "%report%",
+      "%report%",
+      "user-1",
+    ]);
+  });
+
+  it("should quote identifiers for postgres in the IN clause", () => {
+    const { sql } = buildListTasksQuery(
+      { projectIds: ["proj-1", "proj-2"] },
+      "postgres",
+    );
+    expect(sql).toBe(
+      'SELECT * FROM tasks WHERE "projectId" IN (?, ?) ORDER BY "dateCreated" DESC',
+    );
+  });
+});
+
 describe("buildListTasksQuery search (q)", () => {
   it("should match title or description case-insensitively (sqlite)", () => {
     const { sql, params } = buildListTasksQuery({ q: "report" }, "sqlite");

@@ -71,8 +71,14 @@
               required
               :disabled="isFrozen"
             />
+            <p
+              v-if="editing && !isFrozen && namePreview"
+              class="name-preview"
+            >
+              Will be saved as: <strong>{{ namePreview }}</strong>
+            </p>
             <h2 v-else>
-              {{ project.name }}
+              {{ displayPath }}
               <span v-if="project.isDefault" class="badge">Default project</span>
               <span v-if="project.archived" class="badge badge-archived">
                 Archived</span
@@ -254,6 +260,11 @@
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
 import api from "../utils/api";
+import {
+  cascadeRenameName,
+  displayName,
+  normalizeName,
+} from "../utils/projectHierarchy";
 
 const props = defineProps({
   projectId: { type: String, default: null },
@@ -299,6 +310,14 @@ const unknownStatuses = computed(() =>
     (s) => !catalogStatuses.value.includes(s),
   ),
 );
+
+// Name normalization preview: what the input will be stored as
+const namePreview = computed(() => normalizeName(editForm.value.name));
+const displayPath = computed(() =>
+  project.value ? displayName(project.value.name) : "",
+);
+
+const sameList = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 watch(
   () => props.projectId,
@@ -360,11 +379,55 @@ async function saveEdit() {
     saveError.value = "Name is required";
     return;
   }
+  const descendants = projectsStore.descendantsOf(props.projectId);
+  const oldName = project.value.name;
+  let cascade = false;
+  let propagate = false;
+  let visibilityChanged = false;
+  let statusesChanged = false;
+  let newStatuses = [];
+
   let payload;
   if (project.value.archived) {
     // Frozen project: only the archived flag may change.
     payload = { archived: editArchived.value };
   } else {
+    const newName = normalizeName(editForm.value.name);
+    if (!newName) {
+      saveError.value = "Name is required";
+      return;
+    }
+    if (projectsStore.isNameTaken(newName, props.projectId)) {
+      saveError.value = `A project named "${displayName(newName)}" already exists`;
+      return;
+    }
+    editForm.value.name = newName;
+
+    const nameChanged = newName !== normalizeName(oldName);
+    if (nameChanged && descendants.length > 0) {
+      // Renaming without rewriting the descendants would orphan them, and
+      // archived sub-projects reject edits, so the cascade is blocked
+      // instead of silently skipping them
+      const archived = descendants.filter((d) => d.archived);
+      if (archived.length > 0) {
+        const names = archived.map((d) => displayName(d.name)).join(", ");
+        saveError.value =
+          archived.length === 1
+            ? `Cannot rename: ${names} is archived — unarchive it first`
+            : `Cannot rename: ${names} are archived — unarchive them first`;
+        return;
+      }
+      const confirmed = window.confirm(
+        `Rewrite the names of ${descendants.length} sub-project${
+          descendants.length > 1 ? "s" : ""
+        } to match the new name?`,
+      );
+      if (!confirmed) {
+        return;
+      }
+      cascade = true;
+    }
+
     const statuses = selectedStatuses.value.filter(Boolean);
     if (!statuses.includes("Done")) {
       statuses.push("Done");
@@ -373,8 +436,32 @@ async function saveEdit() {
       saveError.value = 'At least one status besides "Done" is required.';
       return;
     }
+    newStatuses = statuses;
+
+    // Propagation: only what actually changed is offered to the children
+    visibilityChanged =
+      editVisibility.value !== (project.value.visibility || "public") ||
+      !sameList(
+        [...editUserAccess.value].sort(),
+        [...(project.value.userAccess || [])].sort(),
+      );
+    statusesChanged = !sameList(statuses, project.value.statuses || []);
+    if (descendants.length > 0 && (visibilityChanged || statusesChanged)) {
+      const what = [
+        visibilityChanged && "visibility",
+        statusesChanged && "status selection",
+      ]
+        .filter(Boolean)
+        .join(" and ");
+      propagate = window.confirm(
+        `Apply the new ${what} to all ${descendants.length} sub-project${
+          descendants.length > 1 ? "s" : ""
+        }?`,
+      );
+    }
+
     payload = {
-      name: editForm.value.name,
+      name: newName,
       description: editForm.value.description,
       visibility: editVisibility.value,
       userAccess: editUserAccess.value,
@@ -385,6 +472,52 @@ async function saveEdit() {
   saving.value = true;
   try {
     await projectsStore.update(props.projectId, payload);
+
+    const failures = [];
+    if (cascade) {
+      for (const child of descendants) {
+        try {
+          await projectsStore.update(child.id, {
+            name: cascadeRenameName(oldName, payload.name, child.name),
+          });
+        } catch (e) {
+          failures.push(
+            `${displayName(child.name)}: ${
+              e.response?.data?.error || "rename failed"
+            }`,
+          );
+        }
+      }
+    }
+    if (propagate) {
+      const childPayload = {};
+      if (visibilityChanged) {
+        childPayload.visibility = editVisibility.value;
+        childPayload.userAccess = editUserAccess.value;
+      }
+      if (statusesChanged) {
+        childPayload.statuses = newStatuses;
+      }
+      for (const child of descendants) {
+        try {
+          await projectsStore.update(child.id, childPayload);
+        } catch (e) {
+          failures.push(
+            `${displayName(child.name)}: ${
+              e.response?.data?.error || "update failed"
+            }`,
+          );
+        }
+      }
+    }
+    if (failures.length > 0) {
+      const attempted =
+        (cascade ? descendants.length : 0) +
+        (propagate ? descendants.length : 0);
+      alert(
+        `${attempted - failures.length} of ${attempted} sub-project updates succeeded: ${failures.join(", ")}`,
+      );
+    }
     editing.value = false;
     emit("updated");
   } catch (e) {
@@ -413,6 +546,13 @@ function openDeleteConfirm() {
 }
 
 async function deleteProject() {
+  // Guard: a project with sub-projects cannot be deleted until they are
+  // removed or moved (their parent path would go missing)
+  if (projectsStore.descendantsOf(props.projectId).length > 0) {
+    showDeleteConfirm.value = false;
+    alert("Delete or move the sub-projects first.");
+    return;
+  }
   deleting.value = true;
   try {
     await projectsStore.remove(props.projectId);
@@ -446,6 +586,16 @@ async function deleteProject() {
 
 .edit-section textarea {
   min-height: 60px;
+}
+
+.name-preview {
+  margin: var(--space-2xs) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.name-preview strong {
+  color: var(--color-text);
 }
 
 .meta-section {

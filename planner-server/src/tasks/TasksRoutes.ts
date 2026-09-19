@@ -81,6 +81,26 @@ export function parseDoneSince(value: unknown): string | undefined {
 }
 
 /**
+ * Validates the optional comma-separated projectIds query param (the
+ * expanded subtree of a selected project). Returns undefined when
+ * absent/empty and otherwise the trimmed, non-empty, de-duplicated id list.
+ * Pure so it can be unit-tested without the route layer.
+ */
+export function parseProjectIds(value: unknown): string[] | undefined {
+  if (typeof value !== "string" || value.trim() === "") {
+    return undefined;
+  }
+  const ids: string[] = [];
+  for (const part of value.split(",")) {
+    const id = part.trim();
+    if (id && !ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+  return ids.length > 0 ? ids : undefined;
+}
+
+/**
  * Loads a task and returns null when it does not exist or sits in a project
  * the user cannot see (admins bypass). Both cases answer 404 so restricted
  * tasks are not distinguishable from missing ones.
@@ -116,7 +136,12 @@ export class TasksRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
     fastify.get<{
-      Querystring: { projectId?: string; doneSince?: string; q?: string };
+      Querystring: {
+        projectId?: string;
+        projectIds?: string;
+        doneSince?: string;
+        q?: string;
+      };
     }>("/", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
@@ -130,6 +155,7 @@ export class TasksRoutes {
       }
       const filters: TaskListFilters = {
         projectId: req.query.projectId,
+        projectIds: parseProjectIds(req.query.projectIds),
         doneSince,
         q: req.query.q?.trim() || undefined,
       };

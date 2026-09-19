@@ -116,6 +116,22 @@ describe("NotesRoutes project visibility", () => {
     });
   });
 
+  it("should forward the projectIds subtree filter to the data layer", async () => {
+    await app.inject({ method: "GET", url: "/?projectIds=proj-1,proj-2" });
+    expect(NotesDataList).toHaveBeenCalledWith({
+      projectId: undefined,
+      projectIds: ["proj-1", "proj-2"],
+      visibleTo: { userId: "user-1" },
+    });
+  });
+
+  it("should not set projectIds when the param is absent", async () => {
+    await app.inject({ method: "GET", url: "/" });
+    expect(NotesDataList).toHaveBeenCalledWith(
+      expect.not.objectContaining({ projectIds: expect.anything() }),
+    );
+  });
+
   // ==================== GET BY ID ====================
   it("should return a note from a public project", async () => {
     const note = makeNote(publicProject);

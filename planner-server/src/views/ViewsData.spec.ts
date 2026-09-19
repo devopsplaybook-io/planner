@@ -76,3 +76,45 @@ describe("ViewsDataGetDashboard visibility", () => {
     expect(params.indexOf("proj-1")).toBeLessThan(params.indexOf("user-1"));
   });
 });
+
+describe("ViewsDataGetDashboard projectIds (subtree)", () => {
+  beforeEach(() => {
+    (DbUtilsQuerySQL as jest.Mock).mockClear();
+  });
+
+  it("should add the IN clause to every section query with params in order", async () => {
+    await ViewsDataGetDashboard({ projectIds: ["proj-1", "proj-2"] });
+    const calls = (DbUtilsQuerySQL as jest.Mock).mock.calls;
+    expect(calls.length).toBe(4);
+    for (const [sql, params] of calls) {
+      expect(sql).toContain("projectId IN (?, ?)");
+      expect(params).toContain("proj-1");
+      expect(params).toContain("proj-2");
+    }
+  });
+
+  it("should combine projectIds with the visibility clause", async () => {
+    await ViewsDataGetDashboard({
+      projectIds: ["proj-1"],
+      visibleTo: { userId: "user-1" },
+    });
+    const [sql, params] = (DbUtilsQuerySQL as jest.Mock).mock.calls[0];
+    expect(sql).toContain("projectId IN (?)");
+    expect(sql).toContain("project_users");
+    expect(params.indexOf("proj-1")).toBeLessThan(params.indexOf("user-1"));
+  });
+
+  it("should leave the SQL unchanged without projectIds", async () => {
+    await ViewsDataGetDashboard({});
+    for (const [sql] of (DbUtilsQuerySQL as jest.Mock).mock.calls) {
+      expect(sql).not.toContain("projectId IN (?, ?)");
+    }
+  });
+
+  it("should ignore an empty projectIds array", async () => {
+    await ViewsDataGetDashboard({ projectIds: [] });
+    for (const [sql] of (DbUtilsQuerySQL as jest.Mock).mock.calls) {
+      expect(sql).not.toContain("projectId IN");
+    }
+  });
+});

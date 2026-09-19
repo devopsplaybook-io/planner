@@ -128,11 +128,13 @@ const loading = ref(true);
 const now = ref(Date.now());
 
 // All visible tasks are fetched once; the project filter is applied
-// client-side so switching projects never triggers a refetch
+// client-side so switching projects never triggers a refetch. A selected
+// project filters its whole subtree (the project plus its sub-projects).
 const filteredTasks = computed(() => {
-  const projectId = projectsStore.selectedProjectFilter;
-  if (!projectId) return tasksStore.tasks;
-  return tasksStore.tasks.filter((t) => t.projectId === projectId);
+  const filterId = projectsStore.selectedProjectFilter;
+  if (!filterId) return tasksStore.tasks;
+  const ids = new Set(projectsStore.subtreeProjectIds(filterId));
+  return tasksStore.tasks.filter((t) => ids.has(t.projectId));
 });
 
 // Shared time domain: earliest task creation to latest bar end

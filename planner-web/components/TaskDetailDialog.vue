@@ -417,6 +417,7 @@
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
 import api from "../utils/api";
+import { displayName } from "../utils/projectHierarchy";
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -496,7 +497,7 @@ const projectName = computed(() => {
   const project = projectsStore.projects.find(
     (p) => p.id === task.value?.projectId,
   );
-  return project?.name || "";
+  return project ? displayName(project.name) : "";
 });
 
 // Cancelling moves the task to Done and renames it, so hide the action for
