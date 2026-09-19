@@ -97,7 +97,10 @@
             class="bi bi-exclamation-triangle tree-orphan"
             title="Parent project not found"
           />
-          <span class="tree-path">{{ displayPath(node.project.name) }}</span>
+          <span
+            v-if="node.depth > 0"
+            class="tree-path"
+          >{{ displayPath(node.project.name) }}</span>
         </div>
         <div v-if="flatVisibleNodes.length === 0" class="tree-empty">
           No projects found
@@ -271,18 +274,26 @@ function positionPopover() {
     return;
   }
   const rect = trigger.getBoundingClientRect();
-  const width = Math.max(rect.width, 300);
-  const maxWidth = Math.min(400, window.innerWidth - 16);
-  const w = Math.min(width, maxWidth);
+  const margin = 8;
+  const width = Math.min(
+    Math.max(rect.width, 300),
+    400,
+    window.innerWidth - margin * 2,
+  );
   let left = rect.left;
-  if (left + w > window.innerWidth - 8) {
-    left = Math.max(8, window.innerWidth - w - 8);
+  if (left + width > window.innerWidth - margin) {
+    // Near the viewport's right edge, align the popover's right edge with the
+    // trigger's instead of overhanging it
+    left = rect.right - width;
+  }
+  if (left < margin) {
+    left = Math.min(margin, window.innerWidth - width - margin);
   }
   popoverStyle.value = {
     position: "fixed",
     top: `${rect.bottom + 4}px`,
     left: `${left}px`,
-    width: `${w}px`,
+    width: `${width}px`,
   };
 }
 
@@ -431,6 +442,9 @@ onBeforeUnmount(() => {
 
 .tree-search input:focus {
   outline: none;
+  /* Pico paints its focus ring with a box-shadow, which reads as a border
+     around this borderless input */
+  box-shadow: none;
 }
 
 .tree-options {
