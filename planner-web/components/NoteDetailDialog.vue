@@ -29,6 +29,22 @@
               <i class="bi bi-arrow-counterclockwise" />
             </button>
           </template>
+          <details v-if="note" ref="advancedMenuEl" class="advanced-menu">
+            <summary class="secondary" role="button" aria-label="Advanced">
+              <i class="bi bi-three-dots" />
+            </summary>
+            <ul>
+              <li>
+                <a
+                  href="#"
+                  class="danger-item"
+                  @click.prevent="openDeleteConfirm"
+                >
+                  <i class="bi bi-trash" /> Delete Note
+                </a>
+              </li>
+            </ul>
+          </details>
           <button class="close-btn" aria-label="Close" @click="handleClose">
             ×
           </button>
@@ -207,13 +223,6 @@
             <button type="submit" :aria-busy="submitting">Send</button>
           </form>
         </details>
-
-        <!-- Delete -->
-        <section>
-          <button class="contrast" @click="showDeleteConfirm = true">
-            <i class="bi bi-trash" /> Delete Note
-          </button>
-        </section>
       </template>
 
       <!-- Fullscreen Image Viewer -->
@@ -282,6 +291,7 @@ const deletingAttachmentId = ref("");
 const fileInput = ref(null);
 const editing = ref(false);
 const saving = ref(false);
+const advancedMenuEl = ref(null);
 const editForm = ref({ title: "", description: "", projectId: "" });
 const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
@@ -414,6 +424,15 @@ async function saveEditComment(commentId) {
   }
 }
 
+function closeAdvancedMenu() {
+  advancedMenuEl.value?.removeAttribute("open");
+}
+
+function openDeleteConfirm() {
+  closeAdvancedMenu();
+  showDeleteConfirm.value = true;
+}
+
 async function deleteNote() {
   deleting.value = true;
   try {
@@ -494,6 +513,78 @@ async function deleteAttachment(attachmentId) {
   line-height: 1;
   min-width: auto;
   width: auto;
+}
+
+/* Advanced (…) dropdown menu in the header actions */
+.advanced-menu {
+  position: relative;
+}
+
+.advanced-menu summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25em 0.5em;
+  font-size: var(--text-lg);
+  line-height: 1;
+  min-width: auto;
+  width: auto;
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.advanced-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-menu summary:hover {
+  background: var(--color-surface-hover);
+}
+
+.advanced-menu ul {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 100;
+  min-width: max-content;
+  margin: 0;
+  padding: var(--space-2xs);
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.advanced-menu a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  white-space: nowrap;
+}
+
+.advanced-menu a:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+  text-decoration: none;
+}
+
+.advanced-menu .danger-item {
+  color: var(--color-danger);
+}
+
+.advanced-menu .danger-item:hover {
+  color: var(--color-danger-hover);
 }
 
 .close-btn {

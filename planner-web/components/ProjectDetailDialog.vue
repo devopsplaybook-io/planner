@@ -21,6 +21,26 @@
               <i class="bi bi-x" /> Cancel
             </button>
           </template>
+          <details
+            v-if="project && authStore.isAdmin && !project.isDefault"
+            ref="advancedMenuEl"
+            class="advanced-menu"
+          >
+            <summary class="secondary" role="button" aria-label="Advanced">
+              <i class="bi bi-three-dots" />
+            </summary>
+            <ul>
+              <li>
+                <a
+                  href="#"
+                  class="danger-item"
+                  @click.prevent="openDeleteConfirm"
+                >
+                  <i class="bi bi-trash" /> Delete Project
+                </a>
+              </li>
+            </ul>
+          </details>
           <button class="close-btn" aria-label="Close" @click="handleClose">
             ×
           </button>
@@ -195,13 +215,6 @@
             <i class="bi bi-check-lg" /> Save statuses
           </button>
         </section>
-
-        <!-- Delete -->
-        <section v-if="authStore.isAdmin && !project.isDefault">
-          <button class="contrast" @click="showDeleteConfirm = true">
-            <i class="bi bi-trash" /> Delete Project
-          </button>
-        </section>
       </template>
 
       <!-- Delete Confirmation -->
@@ -257,6 +270,7 @@ const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
 const editing = ref(false);
 const saving = ref(false);
+const advancedMenuEl = ref(null);
 const editForm = ref({ name: "", description: "" });
 
 // --- Visibility management (admin) ---
@@ -419,6 +433,15 @@ async function saveStatuses() {
   }
 }
 
+function closeAdvancedMenu() {
+  advancedMenuEl.value?.removeAttribute("open");
+}
+
+function openDeleteConfirm() {
+  closeAdvancedMenu();
+  showDeleteConfirm.value = true;
+}
+
 async function deleteProject() {
   deleting.value = true;
   try {
@@ -448,6 +471,78 @@ async function deleteProject() {
   display: flex;
   gap: var(--space-sm);
   align-items: center;
+}
+
+/* Advanced (…) dropdown menu in the header actions */
+.advanced-menu {
+  position: relative;
+}
+
+.advanced-menu summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25em 0.5em;
+  font-size: var(--text-lg);
+  line-height: 1;
+  min-width: auto;
+  width: auto;
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.advanced-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-menu summary:hover {
+  background: var(--color-surface-hover);
+}
+
+.advanced-menu ul {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 100;
+  min-width: max-content;
+  margin: 0;
+  padding: var(--space-2xs);
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.advanced-menu a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  white-space: nowrap;
+}
+
+.advanced-menu a:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+  text-decoration: none;
+}
+
+.advanced-menu .danger-item {
+  color: var(--color-danger);
+}
+
+.advanced-menu .danger-item:hover {
+  color: var(--color-danger-hover);
 }
 
 .edit-section {
