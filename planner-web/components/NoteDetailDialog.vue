@@ -71,10 +71,32 @@
             <textarea v-if="editing" v-model="editForm.description" rows="3" />
             <div
               v-else
-              class="markdown-body"
-              v-html="renderMarkdown(note.description) || 'No description'"
-            />
+              id="note-description-body"
+              class="markdown-collapse"
+              :class="{
+                'is-truncated': !descriptionExpanded,
+                'is-overflowing': descriptionOverflowing,
+              }"
+            >
+              <div
+                :ref="setDescriptionContentEl"
+                class="markdown-collapse-content markdown-body"
+                v-html="renderMarkdown(note.description) || 'No description'"
+              />
+            </div>
           </label>
+          <!-- Outside the <label>: a <button> is a labelable element, so
+               leaving it inside would forward clicks on the description text
+               to the toggle. -->
+          <button
+            v-if="!editing && descriptionOverflowing"
+            class="expand-btn"
+            :aria-expanded="descriptionExpanded"
+            aria-controls="note-description-body"
+            @click="toggleDescription"
+          >
+            {{ descriptionExpanded ? "Show less" : "Show more" }}
+          </button>
         </section>
 
         <!-- Meta Info -->
@@ -296,6 +318,15 @@ const advancedMenuEl = ref(null);
 const editForm = ref({ title: "", description: "", projectId: "" });
 const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
+// Long descriptions collapse behind a "Show more/less" disclosure in view
+// mode; Edit mode always shows the full text (the textarea is untouched).
+const {
+  expanded: descriptionExpanded,
+  overflowing: descriptionOverflowing,
+  setContentEl: setDescriptionContentEl,
+  toggle: toggleDescription,
+  reset: resetDescriptionCollapse,
+} = useOverflowCollapse();
 // Comment edit/delete state
 const deletingCommentId = ref("");
 const editingCommentId = ref("");
@@ -327,6 +358,16 @@ watch(
     }
   },
   { immediate: true },
+);
+
+// Re-collapse the description when switching notes or leaving Edit mode; the
+// ResizeObserver re-measures overflow once the new content has rendered.
+watch(
+  () => [props.noteId, editing.value],
+  async () => {
+    await nextTick();
+    resetDescriptionCollapse();
+  },
 );
 
 function formatDate(dateStr) {
