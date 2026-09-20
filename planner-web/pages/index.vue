@@ -67,7 +67,9 @@
           >
             <div
               v-html="
-                renderMarkdown(recommendationStore.recommendation.analysis)
+                renderRecommendationMarkdown(
+                  recommendationStore.recommendation.analysis,
+                )
               "
             />
           </div>
@@ -77,7 +79,7 @@
           >
             <div
               v-html="
-                renderMarkdown(
+                renderRecommendationMarkdown(
                   recommendationStore.recommendation.recommendations,
                 )
               "
@@ -195,7 +197,7 @@
 
 <script setup>
 import { watchDebounced } from "@vueuse/core";
-import { marked } from "marked";
+import { renderMarkdown } from "../composables/useMarkdown";
 
 const DONE_WINDOW_DAYS = 30;
 
@@ -257,10 +259,20 @@ async function runSearch() {
 
 watchDebounced(searchQuery, runSearch, { debounce: 300 });
 
-function renderMarkdown(text) {
+function renderRecommendationMarkdown(text) {
   if (!text) return "";
-  const html = marked(text, { breaks: true });
-  return injectTaskLinks(html);
+  return injectTaskLinks(renderMarkdown(text));
+}
+
+// Task titles are interpolated into HTML attributes and content below, so
+// they must be escaped even though the markdown itself is already sanitized
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function injectTaskLinks(html) {
@@ -271,7 +283,7 @@ function injectTaskLinks(html) {
     const regex = new RegExp(escapedId, "g");
     result = result.replace(
       regex,
-      `<a href="/tasks/${task.id}" class="task-badge">${task.title}</a>`,
+      `<a href="/tasks/${escapeHtml(task.id)}" class="task-badge">${escapeHtml(task.title)}</a>`,
     );
   }
   return result;

@@ -11,7 +11,8 @@
     <!-- App-level detail dialogs controlled by URL query params -->
     <TaskDetailDialog
       :task-id="route.query.taskId || null"
-      @close="closeDialog('taskId')"
+      :comment-id="route.query.commentId || null"
+      @close="closeDialog('taskId', 'commentId')"
       @updated="onDialogUpdated"
       @cloned="onTaskCloned"
     />
@@ -33,11 +34,12 @@ const route = useRoute();
 const router = useRouter();
 
 /**
- * Close a detail dialog by removing its query param from the URL.
+ * Close a detail dialog by removing its query params from the URL.
  */
-function closeDialog(param) {
+function closeDialog(...params) {
+  const keys = new Set(params);
   const newQuery = Object.fromEntries(
-    Object.entries(route.query).filter(([key]) => key !== param),
+    Object.entries(route.query).filter(([key]) => !keys.has(key)),
   );
   router.replace({ path: route.path, query: newQuery });
 }
@@ -53,13 +55,13 @@ function onDialogUpdated() {
 }
 
 /**
- * Point the open task dialog at the freshly created clone.
+ * Point the open task dialog at the freshly created clone. A comment deep
+ * link from the source task cannot resolve on the clone, so drop it.
  */
 function onTaskCloned(newTaskId) {
-  router.replace({
-    path: route.path,
-    query: { ...route.query, taskId: newTaskId },
-  });
+  const query = { ...route.query, taskId: newTaskId };
+  delete query.commentId;
+  router.replace({ path: route.path, query });
 }
 
 // Theme management

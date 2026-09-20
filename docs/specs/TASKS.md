@@ -7,7 +7,7 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 | [x] Title       | A short name for the task                                                                                                   |
 | [x] Description | A detailed description of the task                                                                                          |
 | [x] Checklist   | A list of items that can be marked as done or not done. This checklist is displayed as a list of checkboxes within the task |
-| [x] Comments    | Threaded comments on the task                                                                                               |
+| [x] Comments    | Flat comments on the task, with markdown rendering, edit and delete                                                         |
 | [x] Assignees   | Zero, one, or more users assigned to the task                                                                               |
 | [x] Status      | One of the statuses selected by the project (from the global catalog, see [ADMIN.md](ADMIN.md))                             |
 | [x] Attachments | Files attached to the task                                                                                                  |
@@ -34,10 +34,28 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Cancel: the task dialog advanced menu offers Cancel; cancelling moves the task to Done and appends " [cancelled]" to its title; the action is confirmed before applying; it is not offered for Done tasks or tasks in archived projects.
 
+## Task Dialog UX
+
+[x] Comment display: comment headers show relative timestamps with the full date as tooltip and an "(edited)" marker for edited comments; comment actions are visible on touch devices; the per-comment Show more/less disclosure exposes its state with `aria-expanded`; rendered markdown links open in a new tab with `rel="noopener noreferrer"`.
+
+[x] Comment editor: the add and edit comment forms offer a Write/Preview toggle (Preview renders through the same sanitized markdown pipeline as displayed comments), an auto-growing textarea and Ctrl/Cmd+Enter submit; an unsent draft is kept per task/comment in localStorage (distinct add and edit namespaces, restored when reopening, cleared on send, save, cancel or discard).
+
+[x] Comment permalinks: every comment has an anchor and a copy-link action; a `?taskId=…&commentId=…` URL opens the task dialog with the Comments section expanded, scrolled to and briefly highlighting the comment; the parameter is stripped when the dialog closes and unknown ids are ignored; plain `?taskId=` links behave as before.
+
+[x] Long comment threads: with more than 20 comments, only the latest 20 are rendered behind a one-way "Show N earlier comments" expander (deep links force the full thread).
+
+[x] Checklist: items can be deleted (no confirmation, they are trivially re-addable) and the section summary shows a done/total progress bar next to the count badge.
+
+[x] Status and due date: a color chip next to the status select reflects the status color of the global catalog; overdue and due-today due dates are visually emphasized (based on local time, never for Done tasks).
+
+[x] No browser dialogs in task dialog flows: errors surface as an inline dismissible banner and destructive actions use the custom confirmation dialogs instead of `alert()`/`confirm()`.
+
+[x] Section state: the Checklist, Attachments and Comments sections remember their collapsed/expanded state per dialog type in localStorage (graceful degrade to content-based defaults when storage is unavailable).
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.
 - [x] A task the user cannot see answers 404 on the task API, like a missing task.
 - [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-18_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-20_

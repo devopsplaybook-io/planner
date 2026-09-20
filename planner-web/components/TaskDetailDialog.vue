@@ -82,10 +82,26 @@
       </section>
 
       <template v-else-if="task">
+        <div v-if="dialogError" class="dialog-error" role="alert">
+          <span>{{ dialogError }}</span>
+          <button
+            class="dialog-error-dismiss"
+            aria-label="Dismiss error"
+            @click="dismissDialogError"
+          >
+            ×
+          </button>
+        </div>
+
         <!-- Status dropdown — always visible -->
         <section class="status-bar">
           <label class="status-select">
             <strong>Status</strong>
+            <span
+              class="status-dot"
+              :style="{ backgroundColor: statusColor }"
+              :title="task.status"
+            />
             <select
               :value="task.status"
               :aria-busy="savingStatus"
@@ -164,7 +180,14 @@
           <div class="meta-field">
             <strong>Due date</strong>
             <input v-if="editing" v-model="editForm.dueDate" type="date" />
-            <span v-else>{{ task.dueDate || "No due date" }}</span>
+            <span
+              v-else
+              :class="dueUrgency ? `due-${dueUrgency}` : null"
+              :title="dueUrgencyTitle"
+            >
+              {{ task.dueDate || "No due date" }}
+              <i v-if="dueUrgency" class="bi bi-exclamation-triangle" />
+            </span>
           </div>
           <div class="meta-field">
             <strong>Assignees</strong>
@@ -191,32 +214,51 @@
         <!-- Checklist -->
         <details
           class="compact-section"
-          :open="task.checklist && task.checklist.length > 0"
+          :open="isSectionOpen('checklist', hasChecklist)"
+          @toggle="onSectionToggle('checklist', $event, hasChecklist)"
         >
           <summary>
             Checklist
+            <span v-if="hasChecklist" class="count-badge">
+              {{ checklistDoneCount }}/{{ task.checklist.length }}
+            </span>
             <span
-              v-if="task.checklist && task.checklist.length"
-              class="count-badge"
+              v-if="hasChecklist"
+              class="checklist-progress"
+              role="progressbar"
+              :aria-valuenow="checklistDoneCount"
+              aria-valuemin="0"
+              :aria-valuemax="task.checklist.length"
+              aria-label="Checklist progress"
             >
-              {{ task.checklist.filter((i) => i.done).length }}/{{
-                task.checklist.length
-              }}
+              <span
+                class="checklist-progress-fill"
+                :style="{ width: checklistPercent + '%' }"
+              />
             </span>
           </summary>
-          <div v-if="task.checklist && task.checklist.length" class="checklist">
-            <label
+          <div v-if="hasChecklist" class="checklist">
+            <div
               v-for="(item, idx) in task.checklist"
               :key="idx"
               class="checklist-item"
             >
-              <input
-                type="checkbox"
-                :checked="item.done"
-                @change="toggleChecklist(idx)"
-              />
-              <span :class="{ done: item.done }">{{ item.text }}</span>
-            </label>
+              <label>
+                <input
+                  type="checkbox"
+                  :checked="item.done"
+                  @change="toggleChecklist(idx)"
+                />
+                <span :class="{ done: item.done }">{{ item.text }}</span>
+              </label>
+              <button
+                class="checklist-item-delete"
+                :aria-label="`Delete checklist item: ${item.text}`"
+                @click="deleteChecklistItem(idx)"
+              >
+                <i class="bi bi-x" />
+              </button>
+            </div>
           </div>
           <div class="add-checklist-item">
             <input
@@ -234,21 +276,16 @@
         <!-- Attachments -->
         <details
           class="compact-section"
-          :open="task.attachments && task.attachments.length > 0"
+          :open="isSectionOpen('attachments', hasAttachments)"
+          @toggle="onSectionToggle('attachments', $event, hasAttachments)"
         >
           <summary>
             Attachments
-            <span
-              v-if="task.attachments && task.attachments.length"
-              class="count-badge"
-            >
+            <span v-if="hasAttachments" class="count-badge">
               {{ task.attachments.length }}
             </span>
           </summary>
-          <div
-            v-if="task.attachments && task.attachments.length"
-            class="attachments"
-          >
+          <div v-if="hasAttachments" class="attachments">
             <div
               v-for="att in task.attachments"
               :key="att.id"
@@ -291,49 +328,82 @@
         <!-- Comments -->
         <details
           class="compact-section"
-          :open="task.comments && task.comments.length > 0"
+          :open="isSectionOpen('comments', hasComments)"
+          @toggle="onSectionToggle('comments', $event, hasComments)"
         >
           <summary>
             Comments
-            <span
-              v-if="task.comments && task.comments.length"
-              class="count-badge"
-            >
+            <span v-if="hasComments" class="count-badge">
               {{ task.comments.length }}
             </span>
           </summary>
-          <div class="comments">
+          <button
+            v-if="hiddenCommentsCount > 0"
+            class="expand-btn show-earlier-btn"
+            :aria-expanded="showAllComments"
+            aria-controls="comments-list"
+            @click="showAllComments = true"
+          >
+            Show {{ hiddenCommentsCount }} earlier comments
+          </button>
+          <div id="comments-list" class="comments">
             <div
-              v-for="comment in task.comments || []"
+              v-for="comment in visibleComments"
+              :id="`comment-${comment.id}`"
               :key="comment.id"
               class="comment"
+              :class="{ 'comment-highlight': highlightedCommentId === comment.id }"
             >
               <header>
-                <strong>{{ comment.userName || comment.userId }}</strong>
-                <small>{{ formatDate(comment.dateCreated) }}</small>
-                <div v-if="canModifyComment(comment)" class="comment-actions">
+                <div class="comment-meta">
+                  <strong>{{ comment.userName || comment.userId }}</strong>
+                  <small :title="formatDate(comment.dateCreated)">{{
+                    formatRelativeTime(comment.dateCreated)
+                  }}</small>
+                  <small
+                    v-if="
+                      comment.dateUpdated &&
+                      comment.dateUpdated !== comment.dateCreated
+                    "
+                    class="comment-edited"
+                    >(edited)</small
+                  >
+                </div>
+                <div class="comment-actions">
                   <button
                     class="comment-action-btn"
-                    aria-label="Edit comment"
-                    @click="startEditComment(comment)"
+                    aria-label="Copy link to comment"
+                    @click="copyCommentLink(comment.id)"
                   >
-                    <i class="bi bi-pencil" />
+                    <i class="bi bi-link-45deg" />
                   </button>
-                  <button
-                    class="comment-action-btn danger"
-                    aria-label="Delete comment"
-                    :aria-busy="deletingCommentId === comment.id"
-                    @click="handleDeleteComment(comment.id)"
-                  >
-                    <i class="bi bi-trash" />
-                  </button>
+                  <template v-if="canModifyComment(comment)">
+                    <button
+                      class="comment-action-btn"
+                      aria-label="Edit comment"
+                      @click="startEditComment(comment)"
+                    >
+                      <i class="bi bi-pencil" />
+                    </button>
+                    <button
+                      class="comment-action-btn danger"
+                      aria-label="Delete comment"
+                      :aria-busy="deletingCommentId === comment.id"
+                      @click="handleDeleteComment(comment.id)"
+                    >
+                      <i class="bi bi-trash" />
+                    </button>
+                  </template>
                 </div>
               </header>
               <template v-if="editingCommentId === comment.id">
                 <div class="comment-edit-form">
-                  <textarea
+                  <CommentComposer
                     v-model="editingCommentText"
-                    rows="2"
+                    :draft-key="editCommentDraftKey(comment.id)"
+                    :busy="savingComment"
+                    placeholder="Edit comment... (Markdown supported)"
+                    @submit="saveEditComment(comment.id)"
                   />
                   <div class="comment-edit-actions">
                     <button class="secondary small-btn" @click="cancelEditComment">Cancel</button>
@@ -343,6 +413,7 @@
               </template>
               <template v-else>
                 <div
+                  :id="`comment-body-${comment.id}`"
                   class="comment-body markdown-body"
                   :class="{ 'is-truncated': !expandedComments.has(comment.id) }"
                 >
@@ -355,6 +426,8 @@
                 <button
                   v-if="overflowingComments.has(comment.id)"
                   class="expand-btn"
+                  :aria-expanded="expandedComments.has(comment.id)"
+                  :aria-controls="`comment-body-${comment.id}`"
                   @click="toggleCommentExpand(comment.id)"
                 >
                   {{ expandedComments.has(comment.id) ? 'Show less' : 'Show more' }}
@@ -363,13 +436,23 @@
             </div>
           </div>
           <form class="add-comment" @submit.prevent="addComment">
-            <textarea
+            <CommentComposer
               v-model="newComment"
-              placeholder="Add a comment... (Markdown supported)"
-              rows="2"
-              required
+              :draft-key="addCommentDraftKey"
+              :busy="submitting"
+              @submit="addComment"
             />
-            <button type="submit" :aria-busy="submitting">Send</button>
+            <div class="add-comment-actions">
+              <button
+                v-if="newComment.trim()"
+                type="button"
+                class="secondary small-btn"
+                @click="discardAddComment"
+              >
+                Discard
+              </button>
+              <button type="submit" :aria-busy="submitting">Send</button>
+            </div>
           </form>
         </details>
       </template>
@@ -432,25 +515,59 @@
           </footer>
         </article>
       </dialog>
+
+      <!-- Delete Comment Confirmation -->
+      <dialog
+        ref="deleteCommentDialogEl"
+        class="inner-dialog"
+        @close="showDeleteCommentConfirm = false"
+      >
+        <article>
+          <header><h3>Delete Comment</h3></header>
+          <p>Are you sure you want to delete this comment?</p>
+          <footer class="dialog-footer">
+            <button class="secondary" @click="showDeleteCommentConfirm = false">
+              Cancel
+            </button>
+            <button
+              class="contrast"
+              :aria-busy="!!deletingCommentId"
+              @click="deleteComment"
+            >
+              Delete
+            </button>
+          </footer>
+        </article>
+      </dialog>
     </article>
   </dialog>
 </template>
 
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
+import { formatRelativeTime } from "../utils/relativeTime";
+import {
+  loadCommentDraft,
+  clearCommentDraft,
+} from "../composables/useCommentDraft";
 import api from "../utils/api";
 import { displayName } from "../utils/projectHierarchy";
 
 const props = defineProps({
   taskId: { type: String, default: null },
+  commentId: { type: String, default: null },
 });
 const emit = defineEmits(["close", "updated", "cloned"]);
+
+const route = useRoute();
+const router = useRouter();
 
 // Modal dialog wiring: backdrop, focus trap, Escape to close
 const dialogEl = useModalDialog(() => !!props.taskId);
 
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
+const statusesStore = useStatusesStore();
 const authStore = useAuthStore();
 const recommendationStore = useRecommendationStore();
 
@@ -508,6 +625,15 @@ const deletingCommentId = ref("");
 const editingCommentId = ref("");
 const editingCommentText = ref("");
 const savingComment = ref(false);
+// Comment delete runs through the custom inner-dialog confirm instead of
+// browser confirm(); the pending id is kept until the user confirms
+const showDeleteCommentConfirm = ref(false);
+const deleteCommentDialogEl = useModalDialog(
+  () => showDeleteCommentConfirm.value,
+);
+const pendingDeleteCommentId = ref("");
+// Inline dismissible error banner replacing browser alert() in this dialog
+const dialogError = ref("");
 // A one-shot measurement races with dialog rendering: the <dialog> opens
 // via showModal in a post-flush watcher, so content may still be
 // display:none and report scrollHeight 0, hiding the expand button until
@@ -515,6 +641,93 @@ const savingComment = ref(false);
 // re-measures whenever its box actually changes: dialog or <details>
 // opening, image loading, text re-wrapping.
 const commentResizeObserver = new ResizeObserver(measureComments);
+
+// Remembered collapse state of the Checklist/Attachments/Comments sections
+const {
+  isSectionOpen,
+  onSectionToggle,
+  forceSectionOpen,
+  reset: resetForcedSections,
+} = useSectionState("planner.sectionState.taskDialog");
+
+// Long threads show only the latest comments behind a one-way expander
+const COMMENTS_VISIBLE_LIMIT = 20;
+const showAllComments = ref(false);
+const visibleComments = computed(() => {
+  const comments = task.value?.comments || [];
+  if (showAllComments.value || comments.length <= COMMENTS_VISIBLE_LIMIT) {
+    return comments;
+  }
+  return comments.slice(-COMMENTS_VISIBLE_LIMIT);
+});
+const hiddenCommentsCount = computed(() => {
+  const comments = task.value?.comments || [];
+  if (showAllComments.value || comments.length <= COMMENTS_VISIBLE_LIMIT) {
+    return 0;
+  }
+  return comments.length - COMMENTS_VISIBLE_LIMIT;
+});
+
+// Comment deep links (?taskId=…&commentId=…): scroll to and briefly
+// highlight the anchored comment
+const highlightedCommentId = ref("");
+let highlightTimer = null;
+
+const hasChecklist = computed(() => !!task.value?.checklist?.length);
+const hasAttachments = computed(() => !!task.value?.attachments?.length);
+const hasComments = computed(() => !!task.value?.comments?.length);
+const checklistDoneCount = computed(() =>
+  (task.value?.checklist || []).filter((i) => i.done).length,
+);
+const checklistPercent = computed(() =>
+  hasChecklist.value
+    ? Math.round((checklistDoneCount.value / task.value.checklist.length) * 100)
+    : 0,
+);
+
+const statusColor = computed(() =>
+  task.value ? statusesStore.colorFor(task.value.status) : "transparent",
+);
+
+// Due-date urgency against local today; never for Done tasks
+const dueUrgency = computed(() => {
+  const t = task.value;
+  if (!t?.dueDate || t.status === "Done") return null;
+  const parts = t.dueDate.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return null;
+  const due = new Date(parts[0], parts[1] - 1, parts[2]);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (due.getTime() < today.getTime()) return "overdue";
+  if (due.getTime() === today.getTime()) return "today";
+  return null;
+});
+const dueUrgencyTitle = computed(() =>
+  dueUrgency.value === "overdue"
+    ? "This task is overdue"
+    : dueUrgency.value === "today"
+      ? "This task is due today"
+      : null,
+);
+
+// localStorage draft keys: distinct add/edit namespaces under one prefix
+const addCommentDraftKey = computed(() =>
+  props.taskId ? `planner.commentDraft.task.${props.taskId}` : null,
+);
+
+function editCommentDraftKey(commentId) {
+  return props.taskId
+    ? `planner.commentDraft.task.${props.taskId}.edit.${commentId}`
+    : null;
+}
+
+function setDialogError(e, fallback) {
+  dialogError.value = e?.response?.data?.error || fallback;
+}
+
+function dismissDialogError() {
+  dialogError.value = "";
+}
 
 const availableStatuses = computed(() => {
   if (!task.value) return ["To Do", "In Progress", "Done"];
@@ -581,12 +794,32 @@ watch(
   () => props.taskId,
   async (newId) => {
     stopTaskPolling();
+    // Reset per-task state before anything else: the deep-link override,
+    // the thread collapse, the error banner, pending edit/delete state
+    resetForcedSections();
+    showAllComments.value = false;
+    highlightedCommentId.value = "";
+    if (highlightTimer) {
+      clearTimeout(highlightTimer);
+      highlightTimer = null;
+    }
+    dialogError.value = "";
+    editingCommentId.value = "";
+    editingCommentText.value = "";
+    pendingDeleteCommentId.value = "";
     if (newId) {
       // The advanced menu needs the LLM config; fetch it when opening.
       recommendationStore.fetchConfig();
+      // The status chip needs the statuses catalog on a cold deep link
+      if (!statusesStore.catalog.length) {
+        statusesStore.fetchAll().catch(() => {});
+      }
       loading.value = true;
       editing.value = false;
       notFound.value = false;
+      // Restore the add-comment draft first, under the NEW task's key, so
+      // a task A→B switch can never write task A's text into B's draft
+      newComment.value = loadCommentDraft(addCommentDraftKey.value);
       try {
         await tasksStore.fetchById(newId);
         await projectsStore.fetchAll();
@@ -602,6 +835,9 @@ watch(
       }
       if (!notFound.value) {
         startTaskPolling();
+        if (props.commentId) {
+          await handleCommentDeepLink();
+        }
       }
     } else {
       tasksStore.currentTask = null;
@@ -609,6 +845,48 @@ watch(
   },
   { immediate: true },
 );
+
+// A commentId arriving while the dialog is already open on this task
+// (e.g. copying a comment link) re-runs the deep-link scroll/highlight;
+// on a cold load the taskId watcher above handles it after the fetch.
+watch(
+  () => props.commentId,
+  (newCommentId) => {
+    if (newCommentId && task.value && task.value.id === props.taskId) {
+      handleCommentDeepLink();
+    }
+  },
+);
+
+async function handleCommentDeepLink() {
+  const commentId = props.commentId;
+  if (!commentId || !task.value) return;
+  const exists = (task.value.comments || []).some((c) => c.id === commentId);
+  if (!exists) {
+    // Unknown comment (deleted, or a stale link): strip the param so the
+    // URL stays clean and shareable
+    const query = { ...route.query };
+    delete query.commentId;
+    router.replace({ path: route.path, query });
+    return;
+  }
+  // Force the Comments section open, overriding both the stored section
+  // state and the long-thread collapse
+  showAllComments.value = true;
+  forceSectionOpen("comments");
+  await nextTick();
+  requestAnimationFrame(() => {
+    const el = document.getElementById(`comment-${commentId}`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    highlightedCommentId.value = commentId;
+    if (highlightTimer) clearTimeout(highlightTimer);
+    highlightTimer = setTimeout(() => {
+      highlightedCommentId.value = "";
+      highlightTimer = null;
+    }, 2000);
+  });
+}
 
 // Belt-and-braces alongside the ResizeObserver: re-measure after the
 // comments have rendered. The observer remains the source of truth — it
@@ -667,6 +945,7 @@ function measureComments() {
 onBeforeUnmount(() => {
   stopTaskPolling();
   commentResizeObserver.disconnect();
+  if (highlightTimer) clearTimeout(highlightTimer);
 });
 
 function toggleCommentExpand(commentId) {
@@ -718,6 +997,7 @@ function cancelEdit() {
 
 async function saveEdit() {
   if (!task.value) return;
+  dialogError.value = "";
   saving.value = true;
   try {
     await tasksStore.update(props.taskId, {
@@ -747,7 +1027,7 @@ async function saveEdit() {
     editing.value = false;
     emit("updated");
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to update task");
+    setDialogError(e, "Failed to update task");
   } finally {
     saving.value = false;
   }
@@ -757,27 +1037,36 @@ async function onStatusChange(event) {
   if (!task.value) return;
   const newStatus = event.target.value;
   if (newStatus === task.value.status) return;
+  dialogError.value = "";
   savingStatus.value = true;
   try {
     await tasksStore.update(props.taskId, { status: newStatus });
     emit("updated");
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to update status");
+    setDialogError(e, "Failed to update status");
   } finally {
     savingStatus.value = false;
   }
 }
 
 async function addComment() {
+  if (!newComment.value.trim()) return;
+  dialogError.value = "";
   submitting.value = true;
   try {
     await tasksStore.addComment(props.taskId, newComment.value);
+    clearCommentDraft(addCommentDraftKey.value);
     newComment.value = "";
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to add comment");
+    setDialogError(e, "Failed to add comment");
   } finally {
     submitting.value = false;
   }
+}
+
+function discardAddComment() {
+  clearCommentDraft(addCommentDraftKey.value);
+  newComment.value = "";
 }
 
 function canModifyComment(comment) {
@@ -785,55 +1074,100 @@ function canModifyComment(comment) {
   return authStore.currentUser?.id === comment.userId;
 }
 
-async function handleDeleteComment(commentId) {
-  if (!confirm("Delete this comment?")) return;
+function handleDeleteComment(commentId) {
+  dialogError.value = "";
+  pendingDeleteCommentId.value = commentId;
+  showDeleteCommentConfirm.value = true;
+}
+
+async function deleteComment() {
+  const commentId = pendingDeleteCommentId.value;
+  if (!commentId || deletingCommentId.value) return;
   deletingCommentId.value = commentId;
   try {
     await tasksStore.deleteComment(props.taskId, commentId);
+    showDeleteCommentConfirm.value = false;
+    pendingDeleteCommentId.value = "";
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to delete comment");
+    setDialogError(e, "Failed to delete comment");
   } finally {
     deletingCommentId.value = "";
   }
 }
 
 function startEditComment(comment) {
+  // A stored draft (if any) wins over the comment's current text
+  editingCommentText.value =
+    loadCommentDraft(editCommentDraftKey(comment.id)) || comment.text;
   editingCommentId.value = comment.id;
-  editingCommentText.value = comment.text;
 }
 
 function cancelEditComment() {
+  clearCommentDraft(editCommentDraftKey(editingCommentId.value));
   editingCommentId.value = "";
   editingCommentText.value = "";
 }
 
 async function saveEditComment(commentId) {
   if (!editingCommentText.value.trim()) return;
+  dialogError.value = "";
   savingComment.value = true;
   try {
     await tasksStore.updateComment(props.taskId, commentId, editingCommentText.value);
+    clearCommentDraft(editCommentDraftKey(commentId));
     editingCommentId.value = "";
     editingCommentText.value = "";
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to update comment");
+    setDialogError(e, "Failed to update comment");
   } finally {
     savingComment.value = false;
   }
 }
 
+async function copyCommentLink(commentId) {
+  if (!props.taskId) return;
+  dialogError.value = "";
+  const query = { ...route.query, taskId: props.taskId, commentId };
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined) params.set(key, String(value));
+  }
+  const url = `${window.location.origin}${route.path}?${params.toString()}`;
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    setDialogError(null, "Failed to copy comment link");
+  }
+  // Reflect the deep link in the URL; stripped again on dialog close
+  router.replace({ path: route.path, query });
+}
+
 async function toggleChecklist(idx) {
   if (!task.value) return;
+  dialogError.value = "";
   const checklist = [...task.value.checklist];
   checklist[idx] = { ...checklist[idx], done: !checklist[idx].done };
   try {
     await tasksStore.update(props.taskId, { checklist });
-  } catch {
-    // Handle error
+  } catch (e) {
+    setDialogError(e, "Failed to update checklist");
+  }
+}
+
+async function deleteChecklistItem(idx) {
+  if (!task.value) return;
+  dialogError.value = "";
+  const checklist = task.value.checklist.filter((_, i) => i !== idx);
+  try {
+    await tasksStore.update(props.taskId, { checklist });
+  } catch (e) {
+    setDialogError(e, "Failed to delete checklist item");
   }
 }
 
 async function addChecklistItem() {
   if (!task.value || !newChecklistText.value.trim()) return;
+  dialogError.value = "";
   savingChecklist.value = true;
   try {
     await tasksStore.update(props.taskId, {
@@ -843,8 +1177,8 @@ async function addChecklistItem() {
       ],
     });
     newChecklistText.value = "";
-  } catch {
-    // Handle error
+  } catch (e) {
+    setDialogError(e, "Failed to add checklist item");
   } finally {
     savingChecklist.value = false;
   }
@@ -857,13 +1191,14 @@ function closeAdvancedMenu() {
 async function cloneTask() {
   closeAdvancedMenu();
   if (!task.value || cloning.value) return;
+  dialogError.value = "";
   cloning.value = true;
   try {
     const newTask = await tasksStore.clone(props.taskId);
     // Re-point the dialog at the clone via the taskId query param
     emit("cloned", newTask.id);
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to clone task");
+    setDialogError(e, "Failed to clone task");
   } finally {
     cloning.value = false;
   }
@@ -872,6 +1207,7 @@ async function cloneTask() {
 async function improveTask() {
   closeAdvancedMenu();
   if (!task.value || improving.value) return;
+  dialogError.value = "";
   improving.value = true;
   try {
     const source = editing.value
@@ -893,7 +1229,7 @@ async function improveTask() {
     editForm.value.description =
       improved.description || editForm.value.description;
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to improve task");
+    setDialogError(e, "Failed to improve task");
   } finally {
     improving.value = false;
   }
@@ -911,6 +1247,7 @@ function openCancelConfirm() {
 
 async function cancelTask() {
   if (!task.value || cancelling.value) return;
+  dialogError.value = "";
   cancelling.value = true;
   try {
     const suffix = " [cancelled]";
@@ -924,20 +1261,21 @@ async function cancelTask() {
     showCancelConfirm.value = false;
     emit("updated");
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to cancel task");
+    setDialogError(e, "Failed to cancel task");
   } finally {
     cancelling.value = false;
   }
 }
 
 async function deleteTask() {
+  dialogError.value = "";
   deleting.value = true;
   try {
     await tasksStore.remove(props.taskId);
     showDeleteConfirm.value = false;
     emit("close");
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to delete task");
+    setDialogError(e, "Failed to delete task");
   } finally {
     deleting.value = false;
   }
@@ -946,12 +1284,13 @@ async function deleteTask() {
 async function uploadAttachment() {
   const input = fileInput.value;
   if (!input || !input.files || !input.files[0]) return;
+  dialogError.value = "";
   uploading.value = true;
   try {
     await tasksStore.uploadAttachment(props.taskId, input.files[0]);
     input.value = "";
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to upload file");
+    setDialogError(e, "Failed to upload file");
   } finally {
     uploading.value = false;
   }
@@ -973,11 +1312,12 @@ function isImageFile(fileName) {
 }
 
 async function deleteAttachment(attachmentId) {
+  dialogError.value = "";
   deletingAttachmentId.value = attachmentId;
   try {
     await tasksStore.deleteAttachment(props.taskId, attachmentId);
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to delete attachment");
+    setDialogError(e, "Failed to delete attachment");
   } finally {
     deletingAttachmentId.value = "";
   }
@@ -1012,6 +1352,43 @@ async function deleteAttachment(attachmentId) {
   margin: 0;
   flex: 1;
   min-width: 0;
+}
+
+/* Color chip reflecting the current status color */
+.status-dot {
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* Inline dismissible error banner (replaces browser alert()) */
+.dialog-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  margin-bottom: var(--space-md);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  background: var(--color-surface);
+}
+
+.dialog-error-dismiss {
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  font-size: var(--text-lg);
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 var(--space-2xs);
+}
+
+.dialog-error-dismiss:hover {
+  color: var(--color-danger-hover);
 }
 
 .edit-section {
@@ -1083,6 +1460,17 @@ section h4 {
   color: var(--color-text-muted);
 }
 
+/* Due-date urgency (never applied to Done tasks) */
+.due-overdue {
+  color: var(--color-danger);
+  font-weight: var(--weight-semibold);
+}
+
+.due-today {
+  color: var(--color-warning);
+  font-weight: var(--weight-semibold);
+}
+
 .checklist {
   display: flex;
   flex-direction: column;
@@ -1093,8 +1481,18 @@ section h4 {
 .checklist-item {
   display: flex;
   align-items: center;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.checklist-item label {
+  display: flex;
+  align-items: center;
   gap: var(--space-sm);
   cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }
 
 .checklist-item .done {
@@ -1102,13 +1500,64 @@ section h4 {
   color: var(--color-text-muted);
 }
 
+.checklist-item-delete {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+  line-height: 1;
+  padding: 0 var(--space-2xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.checklist-item:hover .checklist-item-delete,
+.checklist-item:focus-within .checklist-item-delete {
+  opacity: 1;
+}
+
+.checklist-item-delete:hover {
+  color: var(--color-danger);
+}
+
+/* Thin done/total bar next to the section count badge */
+.checklist-progress {
+  width: 80px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.checklist-progress-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-normal);
+}
+
 .add-checklist-item,
-.add-comment,
 .add-attachment {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: var(--space-sm);
   align-items: center;
+}
+
+/* The comment form stacks: composer (tabs + textarea) with the action row
+   below it, GitHub-style */
+.add-comment {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-xs);
+}
+
+.add-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-xs);
 }
 
 .comments {
@@ -1125,6 +1574,25 @@ section h4 {
   padding: var(--space-xs) var(--space-sm);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
+}
+
+/* Deep-link highlight: brief fade from the accent back to the surface */
+.comment-highlight {
+  animation: comment-highlight-fade 2s ease-out;
+}
+
+@keyframes comment-highlight-fade {
+  0%,
+  40% {
+    background: var(--color-primary-soft);
+  }
+  100% {
+    background: var(--color-surface);
+  }
+}
+
+.show-earlier-btn {
+  margin: var(--space-xs) 0 0;
 }
 
 .comment-body,
@@ -1146,6 +1614,18 @@ section h4 {
   font-size: var(--text-md);
 }
 
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.comment-edited {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 .comment-actions {
   display: flex;
   gap: var(--space-2xs);
@@ -1164,8 +1644,18 @@ section h4 {
   transition: opacity var(--transition-fast), color var(--transition-fast);
 }
 
-.comment:hover .comment-action-btn {
+.comment:hover .comment-action-btn,
+.comment:focus-within .comment-action-btn {
   opacity: 1;
+}
+
+/* Touch devices have no hover: keep the comment and checklist actions
+   always visible */
+@media (hover: none) {
+  .comment-action-btn,
+  .checklist-item-delete {
+    opacity: 1;
+  }
 }
 
 .comment-action-btn:hover {
