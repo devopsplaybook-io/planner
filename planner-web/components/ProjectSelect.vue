@@ -21,7 +21,7 @@
       v-if="open"
       class="project-select-popover"
       :style="popoverStyle"
-      @click.stop
+      @click.stop.prevent
       @keydown="onPopoverKeydown"
     >
       <div class="tree-search">
@@ -47,7 +47,7 @@
           role="option"
           :aria-selected="modelValue === ''"
           :class="{ active: activeIndex === 0 }"
-          @click="select('')"
+          @click.prevent="select('')"
           @mousemove="activeIndex = 0"
         >
           <span class="tree-label">{{ allLabel }}</span>
@@ -65,7 +65,7 @@
           }"
           :style="{ '--depth': node.depth }"
           :title="node.project.name"
-          @click="select(node.project.id)"
+          @click.prevent="select(node.project.id)"
           @mousemove="activeIndex = listIndex(index)"
         >
           <button
