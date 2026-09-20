@@ -321,6 +321,41 @@ describe("TasksRoutes project visibility", () => {
     expect(TasksDataDelete).not.toHaveBeenCalled();
   });
 
+  it("should replace the checklist when a reduced one is sent", async () => {
+    const task = makeTask(publicProject);
+    task.checklist = [
+      { text: "First", done: false },
+      { text: "Second", done: true },
+    ];
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { checklist: [{ text: "Second", done: true }] },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(task.checklist).toEqual([{ text: "Second", done: true }]);
+    expect(TasksDataUpdate).toHaveBeenCalledWith(task);
+    expect(res.json().checklist).toEqual([{ text: "Second", done: true }]);
+  });
+
+  it("should accept an empty checklist and remove every item", async () => {
+    const task = makeTask(publicProject);
+    task.checklist = [{ text: "Only", done: false }];
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { checklist: [] },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(task.checklist).toEqual([]);
+    expect(TasksDataUpdate).toHaveBeenCalledWith(task);
+    expect(res.json().checklist).toEqual([]);
+  });
+
   // ==================== PROJECT CHANGE ====================
   it("should move a task to a visible target project", async () => {
     const from = makeProject("public", []);
