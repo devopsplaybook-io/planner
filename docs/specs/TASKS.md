@@ -6,7 +6,7 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 | --------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | [x] Title       | A short name for the task                                                                                                   |
 | [x] Description | A detailed description of the task                                                                                          |
-| [x] Checklist   | A list of items that can be marked as done or not done. This checklist is displayed as a list of checkboxes within the task |
+| [x] Checklist   | A list of items that can be marked as done or not done, and removed. This checklist is displayed as a list of checkboxes within the task |
 | [x] Comments    | Flat comments on the task, with markdown rendering, edit and delete                                                         |
 | [x] Assignees   | Zero, one, or more users assigned to the task                                                                               |
 | [x] Status      | One of the statuses selected by the project (from the global catalog, see [ADMIN.md](ADMIN.md))                             |
