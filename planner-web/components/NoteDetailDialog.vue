@@ -121,21 +121,16 @@
         <!-- Attachments -->
         <details
           class="compact-section"
-          :open="note.attachments && note.attachments.length > 0"
+          :open="isSectionOpen('attachments', hasAttachments)"
+          @toggle="onSectionToggle('attachments', $event, hasAttachments)"
         >
           <summary>
             Attachments
-            <span
-              v-if="note.attachments && note.attachments.length"
-              class="count-badge"
-            >
+            <span v-if="hasAttachments" class="count-badge">
               {{ note.attachments.length }}
             </span>
           </summary>
-          <div
-            v-if="note.attachments && note.attachments.length"
-            class="attachments"
-          >
+          <div v-if="hasAttachments" class="attachments">
             <div
               v-for="att in note.attachments"
               :key="att.id"
@@ -178,14 +173,12 @@
         <!-- Comments -->
         <details
           class="compact-section"
-          :open="note.comments && note.comments.length > 0"
+          :open="isSectionOpen('comments', hasComments)"
+          @toggle="onSectionToggle('comments', $event, hasComments)"
         >
           <summary>
             Comments
-            <span
-              v-if="note.comments && note.comments.length"
-              class="count-badge"
-            >
+            <span v-if="hasComments" class="count-badge">
               {{ note.comments.length }}
             </span>
           </summary>
@@ -196,8 +189,20 @@
               class="comment"
             >
               <header>
-                <strong>{{ comment.userName || comment.userId }}</strong>
-                <small>{{ formatDate(comment.dateCreated) }}</small>
+                <div class="comment-meta">
+                  <strong>{{ comment.userName || comment.userId }}</strong>
+                  <small :title="formatDate(comment.dateCreated)">{{
+                    formatRelativeTime(comment.dateCreated)
+                  }}</small>
+                  <small
+                    v-if="
+                      comment.dateUpdated &&
+                      comment.dateUpdated !== comment.dateCreated
+                    "
+                    class="comment-edited"
+                    >(edited)</small
+                  >
+                </div>
                 <div v-if="canModifyComment(comment)" class="comment-actions">
                   <button
                     class="comment-action-btn"
@@ -218,9 +223,12 @@
               </header>
               <template v-if="editingCommentId === comment.id">
                 <div class="comment-edit-form">
-                  <textarea
+                  <CommentComposer
                     v-model="editingCommentText"
-                    rows="2"
+                    :draft-key="editCommentDraftKey(comment.id)"
+                    :busy="savingComment"
+                    placeholder="Edit comment... (Markdown supported)"
+                    @submit="saveEditComment(comment.id)"
                   />
                   <div class="comment-edit-actions">
                     <button class="secondary small-btn" @click="cancelEditComment">Cancel</button>
@@ -236,13 +244,23 @@
             </div>
           </div>
           <form class="add-comment" @submit.prevent="addComment">
-            <textarea
+            <CommentComposer
               v-model="newComment"
-              placeholder="Add a comment... (Markdown supported)"
-              rows="2"
-              required
+              :draft-key="addCommentDraftKey"
+              :busy="submitting"
+              @submit="addComment"
             />
-            <button type="submit" :aria-busy="submitting">Send</button>
+            <div class="add-comment-actions">
+              <button
+                v-if="newComment.trim()"
+                type="button"
+                class="secondary small-btn"
+                @click="discardAddComment"
+              >
+                Discard
+              </button>
+              <button type="submit" :aria-busy="submitting">Send</button>
+            </div>
           </form>
         </details>
       </template>
@@ -288,6 +306,11 @@
 
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
+import { formatRelativeTime } from "../utils/relativeTime";
+import {
+  loadCommentDraft,
+  clearCommentDraft,
+} from "../composables/useCommentDraft";
 import { displayName } from "../utils/projectHierarchy";
 
 const props = defineProps({
@@ -333,6 +356,25 @@ const editingCommentId = ref("");
 const editingCommentText = ref("");
 const savingComment = ref(false);
 
+// Remembered collapse state of the Attachments/Comments sections
+const { isSectionOpen, onSectionToggle } = useSectionState(
+  "planner.sectionState.noteDialog",
+);
+
+const hasAttachments = computed(() => !!note.value?.attachments?.length);
+const hasComments = computed(() => !!note.value?.comments?.length);
+
+// localStorage draft keys: distinct add/edit namespaces under one prefix
+const addCommentDraftKey = computed(() =>
+  props.noteId ? `planner.commentDraft.note.${props.noteId}` : null,
+);
+
+function editCommentDraftKey(commentId) {
+  return props.noteId
+    ? `planner.commentDraft.note.${props.noteId}.edit.${commentId}`
+    : null;
+}
+
 const projectName = computed(() => {
   const project = projectsStore.projects.find(
     (p) => p.id === note.value?.projectId,
@@ -343,9 +385,14 @@ const projectName = computed(() => {
 watch(
   () => props.noteId,
   async (newId) => {
+    editingCommentId.value = "";
+    editingCommentText.value = "";
     if (newId) {
       loading.value = true;
       editing.value = false;
+      // Restore the add-comment draft first, under the NEW note's key, so
+      // a note A→B switch can never write note A's text into B's draft
+      newComment.value = loadCommentDraft(addCommentDraftKey.value);
       try {
         await notesStore.fetchById(newId);
       } catch {
@@ -414,15 +461,22 @@ async function saveEdit() {
 }
 
 async function addComment() {
+  if (!newComment.value.trim()) return;
   submitting.value = true;
   try {
     await notesStore.addComment(props.noteId, newComment.value);
+    clearCommentDraft(addCommentDraftKey.value);
     newComment.value = "";
   } catch (e) {
     alert(e.response?.data?.error || "Failed to add comment");
   } finally {
     submitting.value = false;
   }
+}
+
+function discardAddComment() {
+  clearCommentDraft(addCommentDraftKey.value);
+  newComment.value = "";
 }
 
 function canModifyComment(comment) {
@@ -443,11 +497,14 @@ async function handleDeleteComment(commentId) {
 }
 
 function startEditComment(comment) {
+  // A stored draft (if any) wins over the comment's current text
+  editingCommentText.value =
+    loadCommentDraft(editCommentDraftKey(comment.id)) || comment.text;
   editingCommentId.value = comment.id;
-  editingCommentText.value = comment.text;
 }
 
 function cancelEditComment() {
+  clearCommentDraft(editCommentDraftKey(editingCommentId.value));
   editingCommentId.value = "";
   editingCommentText.value = "";
 }
@@ -457,6 +514,7 @@ async function saveEditComment(commentId) {
   savingComment.value = true;
   try {
     await notesStore.updateComment(props.noteId, commentId, editingCommentText.value);
+    clearCommentDraft(editCommentDraftKey(commentId));
     editingCommentId.value = "";
     editingCommentText.value = "";
   } catch (e) {
@@ -622,6 +680,18 @@ section h4 {
   font-size: var(--text-md);
 }
 
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.comment-edited {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 .comment-actions {
   display: flex;
   gap: var(--space-2xs);
@@ -640,8 +710,16 @@ section h4 {
   transition: opacity var(--transition-fast), color var(--transition-fast);
 }
 
-.comment:hover .comment-action-btn {
+.comment:hover .comment-action-btn,
+.comment:focus-within .comment-action-btn {
   opacity: 1;
+}
+
+/* Touch devices have no hover: keep the comment actions always visible */
+@media (hover: none) {
+  .comment-action-btn {
+    opacity: 1;
+  }
 }
 
 .comment-action-btn:hover {
@@ -708,12 +786,26 @@ section h4 {
   margin-bottom: 0;
 }
 
-.add-comment,
 .add-attachment {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: var(--space-sm);
   align-items: center;
+}
+
+/* The comment form stacks: composer (tabs + textarea) with the action row
+   below it, GitHub-style */
+.add-comment {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-xs);
+}
+
+.add-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-xs);
 }
 
 .attachments {
