@@ -115,10 +115,32 @@
             <textarea v-if="editing" v-model="editForm.description" rows="3" />
             <div
               v-else
-              class="markdown-body"
-              v-html="renderMarkdown(task.description) || 'No description'"
-            />
+              id="task-description-body"
+              class="markdown-collapse"
+              :class="{
+                'is-truncated': !descriptionExpanded,
+                'is-overflowing': descriptionOverflowing,
+              }"
+            >
+              <div
+                :ref="setDescriptionContentEl"
+                class="markdown-collapse-content markdown-body"
+                v-html="renderMarkdown(task.description) || 'No description'"
+              />
+            </div>
           </label>
+          <!-- Outside the <label>: a <button> is a labelable element, so
+               leaving it inside would forward clicks on the description text
+               to the toggle. -->
+          <button
+            v-if="!editing && descriptionOverflowing"
+            class="expand-btn"
+            :aria-expanded="descriptionExpanded"
+            aria-controls="task-description-body"
+            @click="toggleDescription"
+          >
+            {{ descriptionExpanded ? "Show less" : "Show more" }}
+          </button>
         </section>
 
         <!-- Meta Info -->
@@ -390,6 +412,15 @@ const editForm = ref({
 const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
 const users = ref([]);
+// Long descriptions collapse behind a "Show more/less" disclosure in view
+// mode; Edit mode always shows the full text (the textarea is untouched).
+const {
+  expanded: descriptionExpanded,
+  overflowing: descriptionOverflowing,
+  setContentEl: setDescriptionContentEl,
+  toggle: toggleDescription,
+  reset: resetDescriptionCollapse,
+} = useOverflowCollapse();
 
 const availableStatuses = computed(() => {
   if (!task.value) return ["To Do", "In Progress", "Done"];
@@ -483,6 +514,16 @@ watch(
     }
   },
   { immediate: true },
+);
+
+// Re-collapse the description when switching tasks or leaving Edit mode; the
+// ResizeObserver re-measures overflow once the new content has rendered.
+watch(
+  () => [props.taskId, editing.value],
+  async () => {
+    await nextTick();
+    resetDescriptionCollapse();
+  },
 );
 
 onBeforeUnmount(() => {

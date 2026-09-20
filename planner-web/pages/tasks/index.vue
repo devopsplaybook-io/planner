@@ -153,7 +153,13 @@ function fallbackStatuses() {
 }
 
 function getTasksByStatus(status) {
-  return tasksStore.tasks.filter((t) => t.status === status);
+  return tasksStore.tasks
+    .filter((t) => t.status === status)
+    .sort(
+      (a, b) =>
+        new Date(b.dateUpdated || b.dateCreated) -
+        new Date(a.dateUpdated || a.dateCreated),
+    );
 }
 
 function onDragStart(event, task) {

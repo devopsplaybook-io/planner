@@ -386,20 +386,8 @@ function toggleExpand(commentId) {
   margin-bottom: 0;
 }
 
-.expand-btn {
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  font-size: var(--text-sm);
-  padding: 0;
-  margin-top: var(--space-2xs);
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.expand-btn:hover {
-  color: var(--color-primary-hover);
-}
+/* .expand-btn (the "Show more/less" disclosure) is shared across the detail
+   dialogs and lives in main.css. */
 
 .add-comment {
   display: grid;

@@ -484,6 +484,63 @@ span + i.bi {
 }
 
 /* ============================================
+   Collapsible long markdown (detail dialogs)
+   ============================================ */
+
+/* Long descriptions in the Task/Note/Project detail dialogs collapse to a
+   cap with a fade at the cut and a "Show more/less" disclosure. The clip
+   lives on the outer element; the inner .markdown-collapse-content carries
+   the rendered markdown and is measured unclipped (see the
+   useOverflowCollapse composable). The 10em cap must match the composable's
+   collapsedEm default. flow-root keeps child margins from collapsing out. */
+.markdown-collapse {
+  display: flow-root;
+}
+
+.markdown-collapse.is-truncated {
+  max-height: 10em;
+  overflow: hidden;
+}
+
+/* Fade the cut only when the content actually overflows, so a short block
+   is never faded. mask-image is background-independent, unlike an ::after
+   gradient overlay. */
+.markdown-collapse.is-truncated.is-overflowing {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 2.5em),
+    transparent
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5em), transparent);
+}
+
+.markdown-collapse-content {
+  display: flow-root;
+}
+
+/* "Show more/less" disclosure, shared by comment and description collapse */
+.expand-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  padding: 0;
+  margin-top: var(--space-2xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* The higher-specificity button:hover rule in base.css would fill the button
+   with --color-primary-hover — the same token this rule sets for text —
+   making the label unreadable, so keep the quiet look explicit here. */
+.expand-btn:hover,
+.expand-btn:focus-visible {
+  background: none;
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+}
+
+/* ============================================
    Dialog helpers
    ============================================ */
 

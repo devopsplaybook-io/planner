@@ -21,6 +21,7 @@
       v-if="open"
       class="project-select-popover"
       :style="popoverStyle"
+      @click.stop
       @keydown="onPopoverKeydown"
     >
       <div class="tree-search">

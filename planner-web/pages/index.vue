@@ -401,6 +401,9 @@ onMounted(async () => {
 
 .search-input:focus {
   outline: none;
+  /* Pico paints its focus ring with a box-shadow, which reads as a border
+     inset from the outer search box; keep the highlight on .search-box */
+  box-shadow: none;
 }
 
 section {
