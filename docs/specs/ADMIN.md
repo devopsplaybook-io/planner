@@ -19,7 +19,7 @@ Projects are created and managed by admins in the admin section (see [PROJECTS.m
 
 ### Projects hierarchy (see [PROJECTS.md](PROJECTS.md))
 
-- [x] The projects tab lists projects as an indented tree: sub-projects appear nested under their parent path (indentation from the name segments), archived projects remain at the end of the list, and orphaned projects (missing parent path) render at the root with a warning.
+- [x] The projects tab lists projects as an indented tree on all viewports: a project that has sub-projects is followed by a nested, indented group of its sub-projects (one indent step per level; sub-project cards show their leaf name with the full path as tooltip), archived projects remain at the end of the list, and orphaned projects (missing parent path) render at the root with a warning.
 - [x] The create dialog and the project name edit normalize the entered name as specified in [PROJECTS.md](PROJECTS.md) and show a live "will be saved as &hellip;" preview; a duplicate normalized name (case-insensitive) is rejected before submitting.
 - [x] When saving visibility or status-selection changes for a project that has sub-projects, the dialog asks "Apply to all sub-projects?"; on confirm the changed parts are propagated to each sub-project and partial failures are surfaced (e.g. "7 of 8 sub-projects updated: School is archived").
 - [x] Renaming a project that has sub-projects offers the rename cascade to its descendants and is blocked while any affected sub-project is archived (see [PROJECTS.md](PROJECTS.md)).
@@ -41,4 +41,4 @@ Statuses are defined, managed and ordered globally in the admin section. Project
 - [x] The admin chooses a status color from a simplified preset-swatch picker (main colors, a few shades per color).
 - [x] The exact hex color code of each status is stored server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-19_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-20_

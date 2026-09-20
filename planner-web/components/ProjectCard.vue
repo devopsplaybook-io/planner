@@ -5,7 +5,7 @@
       <header>
         <div class="card-title-row">
           <span class="item-icon"><i class="bi bi-folder" /></span>
-          <span class="item-title" :title="displayPath">{{ displayPath }}</span>
+          <span class="item-title" :title="displayPath">{{ displayTitle }}</span>
         </div>
         <div class="badge-group">
           <span v-if="project.isDefault" class="badge">Default</span>
@@ -35,15 +35,21 @@
 
 <script setup>
 import { computed } from "vue";
-import { displayName } from "../utils/projectHierarchy";
+import { displayName, leafName } from "../utils/projectHierarchy";
 
 const props = defineProps({
   project: { type: Object, required: true },
+  depth: { type: Number, default: 0 },
 });
 
 defineEmits(["click"]);
 
 const displayPath = computed(() => displayName(props.project.name));
+// Inside the tree a sub-project shows its leaf name (the full path is in the
+// surrounding indentation); at the root the full path is the label
+const displayTitle = computed(() =>
+  props.depth > 0 ? leafName(props.project.name) : displayPath.value,
+);
 </script>
 
 <style scoped>

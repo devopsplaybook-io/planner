@@ -10,22 +10,12 @@
     <div v-if="loading" class="loading-indicator" />
 
     <div v-else class="project-grid">
-      <div
-        v-for="node in projectNodes"
-        :key="node.project.id"
-        class="project-slot"
-        :style="{ '--depth': node.depth }"
-      >
-        <i
-          v-if="node.orphan"
-          class="bi bi-exclamation-triangle orphan-warning"
-          title="Parent project not found"
-        />
-        <ProjectCard
-          :project="node.project"
-          @click="openProject(node.project.id)"
-        />
-      </div>
+      <ProjectTreeBranch
+        v-for="root in projectTree"
+        :key="root.project.id"
+        :node="root"
+        @open="openProject"
+      />
     </div>
 
     <!-- Create Dialog -->
@@ -82,11 +72,7 @@
 </template>
 
 <script setup>
-import {
-  buildProjectTree,
-  flattenProjectTree,
-  normalizeName,
-} from "../utils/projectHierarchy";
+import { buildProjectTree, normalizeName } from "../utils/projectHierarchy";
 
 const projectsStore = useProjectsStore();
 const route = useRoute();
@@ -99,10 +85,12 @@ const createDialogEl = useModalDialog(() => showCreateDialog.value);
 const creating = ref(false);
 const newProject = ref({ name: "", description: "" });
 
-// Tree order (parents before their sub-projects) with the depth driving the
-// indentation; orphaned projects render at the root with a warning
-const projectNodes = computed(() =>
-  flattenProjectTree(buildProjectTree(projectsStore.projects)),
+// Tree order (parents before their sub-projects); orphaned projects render
+// at the root with a warning, archived projects stay at the end. The
+// recursive ProjectTreeBranch renders each parent followed by a nested,
+// indented group of its children so the hierarchy is visible on desktop too.
+const projectTree = computed(() =>
+  buildProjectTree(projectsStore.projects),
 );
 
 const namePreview = computed(() => normalizeName(newProject.value.name));
@@ -160,20 +148,6 @@ async function createProject() {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--space-md);
-}
-
-.project-slot {
-  position: relative;
-  /* Indentation per hierarchy depth (depth 0 = root) */
-  margin-left: calc(var(--depth, 0) * 1.25rem);
-}
-
-.orphan-warning {
-  position: absolute;
-  top: -0.6em;
-  right: 0.5em;
-  z-index: 1;
-  color: var(--color-warning, #b58900);
 }
 
 .name-preview {
