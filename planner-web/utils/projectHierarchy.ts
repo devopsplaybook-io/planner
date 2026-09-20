@@ -94,24 +94,6 @@ export function buildProjectTree(
   return roots;
 }
 
-/** Flattens a tree in display order (parent before its children). */
-export function flattenProjectTree(
-  roots: ProjectTreeNode[],
-): ProjectTreeNode[] {
-  const out: ProjectTreeNode[] = [];
-  for (const root of roots) {
-    flattenInto(root, out);
-  }
-  return out;
-}
-
-function flattenInto(node: ProjectTreeNode, out: ProjectTreeNode[]): void {
-  out.push(node);
-  for (const child of node.children) {
-    flattenInto(child, out);
-  }
-}
-
 /**
  * Whether a normalized project name is already used by another project
  * (case-insensitive). Project mutations are admin-only, so validating at
