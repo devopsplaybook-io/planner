@@ -530,8 +530,14 @@ span + i.bi {
   text-decoration: underline;
 }
 
-.expand-btn:hover {
+/* The higher-specificity button:hover rule in base.css would fill the button
+   with --color-primary-hover — the same token this rule sets for text —
+   making the label unreadable, so keep the quiet look explicit here. */
+.expand-btn:hover,
+.expand-btn:focus-visible {
+  background: none;
   color: var(--color-primary-hover);
+  text-decoration: underline;
 }
 
 /* ============================================
