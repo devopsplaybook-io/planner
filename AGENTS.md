@@ -72,10 +72,10 @@ planner/
 - **Framework**: Fastify
 - **Database**: SQLite via `better-sqlite3` (with optional PostgreSQL support)
 - **Libraries**: `@devopsplaybook.io/common-utils`, `@devopsplaybook.io/otel-utils-fastify`
-- **Build**: `tsc` (compiles `src/` to `dist/`)
-- **Dev mode**: `ts-node-dev` (hot-reload)
-- **Tests**: Jest with `ts-jest`, files named `*.spec.ts` alongside source
-- **Linting**: ESLint with `typescript-eslint`
+- **Build**: `tsc` (compiles `src/` to `dist/`) + spec type-check (`tsc --noEmit`)
+- **Dev mode**: `tsx watch` (hot-reload)
+- **Tests**: Jest with `@swc/jest` (v8 coverage), files named `*.spec.ts` alongside source
+- **Linting**: oxlint
 - **Config**: Loaded from `config.json`, overridable via environment variables
 - Follow the patterns established in similar projects (quality-dashboard, otel-light)
 

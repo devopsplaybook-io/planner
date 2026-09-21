@@ -6,10 +6,10 @@
 - [x] **Framework**: Fastify (HTTP API)
 - [x] **Database**: SQLite (default), with optional PostgreSQL support
 - [x] **Language**: TypeScript
-- [x] **Build**: tsc (TypeScript compiler)
-- [x] **Dev mode**: ts-node-dev (hot-reload)
-- [x] **Tests**: Jest with ts-jest
-- [x] **Linting**: ESLint with typescript-eslint
+- [x] **Build**: tsc (TypeScript compiler) + spec type-check (tsc --noEmit)
+- [x] **Dev mode**: tsx watch (hot-reload)
+- [x] **Tests**: Jest with @swc/jest (v8 coverage)
+- [x] **Linting**: oxlint
 
 ### Libraries
 
@@ -42,4 +42,4 @@
 - [x] Only users with permission to view the Note or Task can download the attachment
 - [x] If the attachment is a picture, it is displayed in the UI. The max width should be the width of the viewport
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-06-11_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-21_
