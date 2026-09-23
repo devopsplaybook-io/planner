@@ -36,7 +36,7 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 ## Task Dialog UX
 
-[x] Comment display: comment headers show relative timestamps with the full date as tooltip and an "(edited)" marker for edited comments; comment actions are visible on touch devices; the per-comment Show more/less disclosure exposes its state with `aria-expanded`; rendered markdown links open in a new tab with `rel="noopener noreferrer"`.
+[x] Comment display: comment headers show relative timestamps with the full date as tooltip and an "(edited)" marker for edited comments; comment actions are visible on touch devices; the per-comment Show more/less disclosure exposes its state with `aria-expanded`; overflowing comments also get an icon-only expand/collapse toggle in the comment actions (chevron up/down, `aria-expanded`/`aria-controls`, kept in sync with the bottom disclosure, which stays); rendered markdown links open in a new tab with `rel="noopener noreferrer"`.
 
 [x] Comment editor: the add and edit comment forms offer a Write/Preview toggle (Preview renders through the same sanitized markdown pipeline as displayed comments), an auto-growing textarea and Ctrl/Cmd+Enter submit; an unsent draft is kept per task/comment in localStorage (distinct add and edit namespaces, restored when reopening, cleared on send, save, cancel or discard).
 
@@ -58,4 +58,4 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 - [x] A task the user cannot see answers 404 on the task API, like a missing task.
 - [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-20_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-23_
