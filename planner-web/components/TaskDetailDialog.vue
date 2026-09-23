@@ -371,6 +371,29 @@
                 </div>
                 <div class="comment-actions">
                   <button
+                    v-if="
+                      overflowingComments.has(comment.id) &&
+                      editingCommentId !== comment.id
+                    "
+                    class="comment-action-btn"
+                    :aria-expanded="expandedComments.has(comment.id)"
+                    :aria-controls="`comment-body-${comment.id}`"
+                    :aria-label="
+                      expandedComments.has(comment.id)
+                        ? 'Collapse comment'
+                        : 'Expand comment'
+                    "
+                    @click="toggleCommentExpand(comment.id)"
+                  >
+                    <i
+                      :class="
+                        expandedComments.has(comment.id)
+                          ? 'bi bi-chevron-up'
+                          : 'bi bi-chevron-down'
+                      "
+                    />
+                  </button>
+                  <button
                     class="comment-action-btn"
                     aria-label="Copy link to comment"
                     @click="copyCommentLink(comment.id)"
