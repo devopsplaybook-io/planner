@@ -432,11 +432,11 @@ describe("ProjectsRoutes admin enforcement", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("should reject reads for unauthenticated requests", async () => {
+  it("should reject reads for unauthenticated requests with 401", async () => {
     (AuthGetUserSession as jest.Mock).mockResolvedValue({
       isAuthenticated: false,
     });
     const res = await app.inject({ method: "GET", url: "/" });
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).toBe(401);
   });
 });

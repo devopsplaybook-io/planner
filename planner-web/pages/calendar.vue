@@ -77,6 +77,7 @@
 
 <script setup>
 import { readableTextColor } from "../utils/statusColor";
+import { formatLocalDate } from "../utils/date";
 
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
@@ -134,7 +135,7 @@ const calendarDays = computed(() => {
     days.push({
       day,
       date,
-      dateStr: date.toISOString().split("T")[0],
+      dateStr: formatLocalDate(date),
       isCurrentMonth: false,
       isToday: date.getTime() === today.getTime(),
       tasks: getTasksForDate(date),
@@ -147,7 +148,7 @@ const calendarDays = computed(() => {
     days.push({
       day,
       date,
-      dateStr: date.toISOString().split("T")[0],
+      dateStr: formatLocalDate(date),
       isCurrentMonth: true,
       isToday: date.getTime() === today.getTime(),
       tasks: getTasksForDate(date),
@@ -162,7 +163,7 @@ const calendarDays = computed(() => {
       days.push({
         day,
         date,
-        dateStr: date.toISOString().split("T")[0],
+        dateStr: formatLocalDate(date),
         isCurrentMonth: false,
         isToday: date.getTime() === today.getTime(),
         tasks: getTasksForDate(date),
@@ -174,7 +175,7 @@ const calendarDays = computed(() => {
 });
 
 function getTasksForDate(date) {
-  const dateStr = date.toISOString().split("T")[0];
+  const dateStr = formatLocalDate(date);
   return tasksStore.tasks.filter(
     (t) => t.dueDate && t.dueDate.startsWith(dateStr),
   );

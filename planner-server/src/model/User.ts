@@ -14,6 +14,7 @@ export class User {
     user.name = json.name as string;
     user.passwordEncrypted = json.passwordEncrypted as string;
     user.role = (json.role as UserRole) || "user";
+    user.tokenVersion = Number(json.tokenVersion || 0);
     return user;
   }
 
@@ -21,6 +22,8 @@ export class User {
   public name: string;
   public passwordEncrypted: string;
   public role: UserRole = "user";
+  /** Bumped to revoke all outstanding sessions of the user. */
+  public tokenVersion = 0;
   public dateCreated: string;
 
   constructor() {
@@ -34,6 +37,7 @@ export class User {
       name: this.name,
       passwordEncrypted: this.passwordEncrypted,
       role: this.role,
+      tokenVersion: this.tokenVersion,
       dateCreated: this.dateCreated,
     };
   }

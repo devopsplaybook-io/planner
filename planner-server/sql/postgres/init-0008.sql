@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS push_subscriptions (
-    "userId" VARCHAR(50) NOT NULL,
+    "userId" UUID NOT NULL,
     "endpoint" TEXT NOT NULL PRIMARY KEY,
     "keys" TEXT NOT NULL,
     "dateCreated" VARCHAR(100) NOT NULL

@@ -292,20 +292,19 @@
               class="attachment-item"
             >
               <div class="attachment-info">
-                <template v-if="isImageFile(att.fileName)">
+                <template v-if="isImageFile(att.fileName) && attachmentUrls[att.id]">
                   <img
-                    :src="`/api/tasks/${task.id}/attachments/${att.id}?inline=true&token=${authToken}`"
+                    :src="attachmentUrls[att.id]"
                     :alt="att.fileName"
                     class="attachment-preview"
-                    @click="
-                      fullscreenImage = `/api/tasks/${task.id}/attachments/${att.id}?inline=true&token=${authToken}`
-                    "
+                    @click="fullscreenImage = attachmentUrls[att.id]"
                   />
                 </template>
                 <a
-                  :href="`/api/tasks/${task.id}/attachments/${att.id}?token=${authToken}`"
-                  target="_blank"
+                  href="#"
+                  rel="noopener"
                   class="attachment-link"
+                  @click.prevent="downloadAttachment(att)"
                 >
                   <i class="bi bi-paperclip" /> {{ att.fileName }}
                 </a>
@@ -574,6 +573,10 @@ import {
   clearCommentDraft,
 } from "../composables/useCommentDraft";
 import api from "../utils/api";
+import {
+  downloadAttachment as downloadAttachmentFile,
+  fetchAttachmentObjectUrl,
+} from "../utils/attachments";
 import { displayName } from "../utils/projectHierarchy";
 
 const props = defineProps({
@@ -625,8 +628,10 @@ const editForm = ref({
   assignees: [],
   projectId: "",
 });
-const authToken = computed(() => localStorage.getItem("token") || "");
 const fullscreenImage = ref(null);
+// att.id -> blob object URL for image previews. Attachments are fetched
+// with the Bearer header; the JWT never appears in an attachment URL.
+const attachmentUrls = ref({});
 const users = ref([]);
 // Long descriptions collapse behind a "Show more/less" disclosure in view
 // mode; Edit mode always shows the full text (the textarea is untouched).
@@ -932,6 +937,35 @@ watch(
   },
 );
 
+// Fetch image previews as blobs whenever the attachment list changes
+// (dialog open, upload, delete) and drop object URLs for gone attachments
+watch(
+  () => task.value?.attachments,
+  async (attachments) => {
+    const validIds = new Set((attachments || []).map((att) => att.id));
+    const nextUrls = {};
+    for (const [id, url] of Object.entries(attachmentUrls.value)) {
+      if (validIds.has(id)) {
+        nextUrls[id] = url;
+      } else {
+        URL.revokeObjectURL(url);
+      }
+    }
+    attachmentUrls.value = nextUrls;
+    for (const att of attachments || []) {
+      if (!isImageFile(att.fileName) || attachmentUrls.value[att.id]) continue;
+      try {
+        attachmentUrls.value[att.id] = await fetchAttachmentObjectUrl(
+          `/tasks/${task.value.id}/attachments/${att.id}?inline=true`,
+        );
+      } catch {
+        // No preview available (e.g. removed meanwhile); the file link remains
+      }
+    }
+  },
+  { immediate: true },
+);
+
 function setCommentBodyRef(commentId, el) {
   if (el) {
     commentBodyEls.set(commentId, el);
@@ -969,6 +1003,10 @@ onBeforeUnmount(() => {
   stopTaskPolling();
   commentResizeObserver.disconnect();
   if (highlightTimer) clearTimeout(highlightTimer);
+  for (const url of Object.values(attachmentUrls.value)) {
+    URL.revokeObjectURL(url);
+  }
+  attachmentUrls.value = {};
 });
 
 function toggleCommentExpand(commentId) {
@@ -1343,6 +1381,18 @@ async function deleteAttachment(attachmentId) {
     setDialogError(e, "Failed to delete attachment");
   } finally {
     deletingAttachmentId.value = "";
+  }
+}
+
+async function downloadAttachment(att) {
+  dialogError.value = "";
+  try {
+    await downloadAttachmentFile(
+      `/tasks/${task.value.id}/attachments/${att.id}`,
+      att.fileName,
+    );
+  } catch (e) {
+    setDialogError(e, "Failed to download attachment");
   }
 }
 </script>

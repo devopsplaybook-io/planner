@@ -1,2 +1,3 @@
 /database*
 /vapid-keys.json
+/recommendation-*.json

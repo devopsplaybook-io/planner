@@ -20,7 +20,7 @@ import {
   deleteNoteComment,
   getNoteComment,
   updateNoteComment,
-  clearNoteLabels,
+  replaceNoteLabels,
   addNoteLabel,
   addNoteAttachment,
   deleteNoteAttachment,
@@ -69,7 +69,7 @@ export class NotesRoutes {
     }>("/", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       const filters: NoteListFilters = {
         projectId: req.query.projectId,
@@ -86,7 +86,7 @@ export class NotesRoutes {
     fastify.get<{ Params: { id: string } }>("/:id", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) {
@@ -288,10 +288,16 @@ export class NotesRoutes {
       if (archivedError) {
         return res.status(400).send({ error: archivedError });
       }
-      await clearNoteLabels(req.params.id);
-      for (const label of req.body.labels) {
-        await addNoteLabel(req.params.id, label);
+      const labels = req.body.labels;
+      if (
+        !Array.isArray(labels) ||
+        labels.some((label) => typeof label !== "string")
+      ) {
+        return res
+          .status(400)
+          .send({ error: "Invalid: labels (must be an array of strings)" });
       }
+      await replaceNoteLabels(req.params.id, labels);
       return res.status(201).send({});
     });
 
@@ -357,7 +363,7 @@ export class NotesRoutes {
     }>("/:id/attachments/:attachmentId", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       const attachment = await getNoteAttachment(req.params.attachmentId);
       if (!attachment) {
@@ -373,15 +379,16 @@ export class NotesRoutes {
         return res.status(404).send({ error: "File Not Found" });
       }
 
-      if (req.query.inline === "true") {
-        const ext = path.extname(attachment.fileName).toLowerCase();
+      const ext = path.extname(attachment.fileName).toLowerCase();
+      // SVG can carry scripts: serving it inline would run them on the app
+      // origin (stored XSS), so it is always served as a download
+      if (req.query.inline === "true" && ext !== ".svg") {
         const mimeTypes: Record<string, string> = {
           ".jpg": "image/jpeg",
           ".jpeg": "image/jpeg",
           ".png": "image/png",
           ".gif": "image/gif",
           ".webp": "image/webp",
-          ".svg": "image/svg+xml",
           ".bmp": "image/bmp",
           ".ico": "image/x-icon",
           ".avif": "image/avif",
@@ -391,6 +398,8 @@ export class NotesRoutes {
           "Content-Disposition",
           `inline; filename="${attachment.fileName}"`,
         );
+        // Defense-in-depth: inert even if a listed type turns out active
+        res.header("Content-Security-Policy", "sandbox");
       } else {
         res.type("application/octet-stream");
         res.header(

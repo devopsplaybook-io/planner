@@ -63,8 +63,23 @@ export const useRecommendationStore = defineStore("recommendation", {
     async regenerateRecommendation() {
       this.generating = true;
       try {
-        const res = await api.post("/recommendation/regenerate");
-        this.recommendation = res.data;
+        // The server regenerates in the background (202) and the result is
+        // served by GET /recommendation: poll until the cached entry is
+        // refreshed (or give up after ~2 minutes)
+        const previousGeneratedAt = this.recommendation?.generatedAt ?? null;
+        await api.post("/recommendation/regenerate");
+        for (let attempt = 0; attempt < 60; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          try {
+            const res = await api.get("/recommendation");
+            if (res.data?.generatedAt && res.data.generatedAt !== previousGeneratedAt) {
+              this.recommendation = res.data;
+              return;
+            }
+          } catch {
+            // transient error: keep polling
+          }
+        }
       } catch {
         // keep existing recommendation on failure
       } finally {

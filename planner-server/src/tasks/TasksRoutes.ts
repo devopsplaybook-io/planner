@@ -3,7 +3,11 @@ import { v4 as uuidv4 } from "uuid";
 import { Task } from "../model/Task";
 import { Project } from "../model/Project";
 import { UserSession } from "../model/UserSession";
-import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
+import {
+  AuthGetUserSession,
+  AuthMustBeAuthenticated,
+  AuthRateLimitKey,
+} from "../users/Auth";
 import { UsersDataGet } from "../users/UsersData";
 import { NotificationsTaskUpdated } from "../notifications/Notifications";
 import {
@@ -25,8 +29,7 @@ import {
   deleteComment,
   getComment,
   updateComment,
-  clearLabels,
-  addLabel,
+  replaceLabels,
   addTaskAttachment,
   deleteTaskAttachment,
   getTaskAttachment,
@@ -78,6 +81,40 @@ export function parseDoneSince(value: unknown): string | undefined {
     throw new Error("Invalid: doneSince (must be an ISO 8601 date)");
   }
   return date.toISOString();
+}
+
+/** Page size used when the caller does not send an explicit limit. */
+export const TASKS_DEFAULT_LIMIT = 1000;
+
+/**
+ * Validates the optional limit query param. Returns the default page size
+ * when absent and throws when the value is not a positive integer. Pure so
+ * it can be unit-tested without the route layer.
+ */
+export function parseLimit(value: unknown): number {
+  if (value === undefined || value === null || value === "") {
+    return TASKS_DEFAULT_LIMIT;
+  }
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error("Invalid: limit (must be a positive integer)");
+  }
+  return n;
+}
+
+/**
+ * Validates the optional offset query param. Returns 0 when absent and
+ * throws when the value is not a non-negative integer.
+ */
+export function parseOffset(value: unknown): number {
+  if (value === undefined || value === null || value === "") {
+    return 0;
+  }
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) {
+    throw new Error("Invalid: offset (must be a non-negative integer)");
+  }
+  return n;
 }
 
 /**
@@ -133,6 +170,8 @@ async function archivedProjectError(
 }
 
 export class TasksRoutes {
+  constructor(private rateLimitImproveMax: number = 30) {}
+
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
     fastify.get<{
@@ -141,15 +180,21 @@ export class TasksRoutes {
         projectIds?: string;
         doneSince?: string;
         q?: string;
+        limit?: string;
+        offset?: string;
       };
     }>("/", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       let doneSince: string | undefined;
+      let limit: number;
+      let offset: number;
       try {
         doneSince = parseDoneSince(req.query.doneSince);
+        limit = parseLimit(req.query.limit);
+        offset = parseOffset(req.query.offset);
       } catch (error) {
         return res.status(400).send({ error: (error as Error).message });
       }
@@ -158,6 +203,8 @@ export class TasksRoutes {
         projectIds: parseProjectIds(req.query.projectIds),
         doneSince,
         q: req.query.q?.trim() || undefined,
+        limit,
+        offset,
       };
       if (userSession.role !== "admin") {
         filters.visibleTo = { userId: userSession.userId };
@@ -170,7 +217,7 @@ export class TasksRoutes {
     fastify.get<{ Params: { id: string } }>("/:id", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) {
@@ -210,6 +257,11 @@ export class TasksRoutes {
       }
       if (project.archived) {
         return res.status(400).send({ error: "Project is archived" });
+      }
+      if (req.body.status && !project.statuses.includes(req.body.status)) {
+        return res.status(400).send({
+          error: "Invalid: status (must be one of the project's statuses)",
+        });
       }
 
       const task = new Task();
@@ -281,32 +333,46 @@ export class TasksRoutes {
     interface PostImprove extends RequestGenericInterface {
       Body: { title?: string; description?: string };
     }
-    fastify.post<PostImprove>("/improve", async (req, res) => {
-      try {
-        await AuthMustBeAuthenticated(req, res);
-      } catch {
-        return;
-      }
-      const title = (req.body.title || "").trim();
-      const description = (req.body.description || "").trim();
-      if (!title && !description) {
-        return res.status(400).send({ error: "Missing: title or description" });
-      }
-      let improved;
-      try {
-        improved = await TaskImproveText(title, description);
-      } catch {
-        return res
-          .status(502)
-          .send({ error: "Improve failed: the LLM request did not succeed" });
-      }
-      if (!improved) {
-        return res
-          .status(502)
-          .send({ error: "Improve failed: the LLM response could not be used" });
-      }
-      return res.status(200).send(improved);
-    });
+    fastify.post<PostImprove>(
+      "/improve",
+      {
+        config: {
+          rateLimit: {
+            max: this.rateLimitImproveMax,
+            timeWindow: "1 hour",
+            keyGenerator: (req) => AuthRateLimitKey(req),
+          },
+        },
+      },
+      async (req, res) => {
+        try {
+          await AuthMustBeAuthenticated(req, res);
+        } catch {
+          return;
+        }
+        const title = (req.body.title || "").trim();
+        const description = (req.body.description || "").trim();
+        if (!title && !description) {
+          return res
+            .status(400)
+            .send({ error: "Missing: title or description" });
+        }
+        let improved;
+        try {
+          improved = await TaskImproveText(title, description);
+        } catch {
+          return res
+            .status(502)
+            .send({ error: "Improve failed: the LLM request did not succeed" });
+        }
+        if (!improved) {
+          return res.status(502).send({
+            error: "Improve failed: the LLM response could not be used",
+          });
+        }
+        return res.status(200).send(improved);
+      },
+    );
 
     // ==================== UPDATE ====================
     interface PutTask extends RequestGenericInterface {
@@ -346,7 +412,6 @@ export class TasksRoutes {
       if (req.body.title) task.title = req.body.title;
       if (req.body.description !== undefined)
         task.description = req.body.description;
-      if (req.body.status) task.status = req.body.status;
       if (req.body.priority) task.priority = req.body.priority;
       if (req.body.dueDate !== undefined) task.dueDate = req.body.dueDate;
       if (req.body.checklist) task.checklist = req.body.checklist;
@@ -360,11 +425,28 @@ export class TasksRoutes {
           return res.status(400).send({ error: "Project is archived" });
         }
         movedToProject = project;
+      }
+      if (req.body.status) {
+        // The status must belong to the catalog of the project the task ends
+        // up in (the move target when moving); missing projects stay permissive
+        const targetProject =
+          movedToProject || (await ProjectsDataGet(task.projectId));
+        if (targetProject && !targetProject.statuses.includes(req.body.status)) {
+          return res.status(400).send({
+            error: "Invalid: status (must be one of the project's statuses)",
+          });
+        }
+        task.status = req.body.status;
+      }
+      if (movedToProject) {
         task.projectId = req.body.projectId;
-        // The status belongs to the source project's catalog: a status the
-        // target project does not use falls back to its first status
-        if (!project.statuses.includes(task.status)) {
-          task.status = project.statuses[0];
+        // Without an explicit status, a status the target project does not
+        // use falls back to its first status
+        if (
+          !req.body.status &&
+          !movedToProject.statuses.includes(task.status)
+        ) {
+          task.status = movedToProject.statuses[0];
         }
       }
       await TasksDataUpdate(task);
@@ -568,10 +650,16 @@ export class TasksRoutes {
       if (archivedError) {
         return res.status(400).send({ error: archivedError });
       }
-      await clearLabels(req.params.id);
-      for (const label of req.body.labels) {
-        await addLabel(req.params.id, label);
+      const labels = req.body.labels;
+      if (
+        !Array.isArray(labels) ||
+        labels.some((label) => typeof label !== "string")
+      ) {
+        return res
+          .status(400)
+          .send({ error: "Invalid: labels (must be an array of strings)" });
       }
+      await replaceLabels(req.params.id, labels);
       await TasksDataTouch(req.params.id);
       notifyAssignees(req.params.id, userSession.userId, "Labels updated");
       return res.status(201).send({});
@@ -641,7 +729,7 @@ export class TasksRoutes {
     }>("/:id/attachments/:attachmentId", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       const attachment = await getTaskAttachment(req.params.attachmentId);
       if (!attachment) {
@@ -657,15 +745,16 @@ export class TasksRoutes {
         return res.status(404).send({ error: "File Not Found" });
       }
 
-      if (req.query.inline === "true") {
-        const ext = path.extname(attachment.fileName).toLowerCase();
+      const ext = path.extname(attachment.fileName).toLowerCase();
+      // SVG can carry scripts: serving it inline would run them on the app
+      // origin (stored XSS), so it is always served as a download
+      if (req.query.inline === "true" && ext !== ".svg") {
         const mimeTypes: Record<string, string> = {
           ".jpg": "image/jpeg",
           ".jpeg": "image/jpeg",
           ".png": "image/png",
           ".gif": "image/gif",
           ".webp": "image/webp",
-          ".svg": "image/svg+xml",
           ".bmp": "image/bmp",
           ".ico": "image/x-icon",
           ".avif": "image/avif",
@@ -675,6 +764,8 @@ export class TasksRoutes {
           "Content-Disposition",
           `inline; filename="${attachment.fileName}"`,
         );
+        // Defense-in-depth: inert even if a listed type turns out active
+        res.header("Content-Security-Policy", "sandbox");
       } else {
         res.type("application/octet-stream");
         res.header(

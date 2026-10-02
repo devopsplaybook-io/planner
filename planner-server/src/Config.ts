@@ -13,6 +13,7 @@ export class Config {
   public JWT_KEY: string;
   public DATABASE_TYPE: string;
   public JWT_VALIDITY_DURATION: number;
+  public ATTACHMENT_MAX_SIZE: number;
 
   // LLM Recommendation
   public LLM_API_KEY: string;
@@ -20,6 +21,10 @@ export class Config {
   public LLM_MODEL: string;
   public LLM_RECOMMENDATION_ENABLED: boolean;
   public LLM_RECOMMENDATION_SCHEDULE_CRON: string;
+
+  // Rate limits (per user, per hour) for the LLM-backed endpoints
+  public RATE_LIMIT_LLM_IMPROVE_MAX: number;
+  public RATE_LIMIT_LLM_REGENERATE_MAX: number;
 
   // Web Push Notifications
   public WEB_PUSH_ENABLED: boolean;
@@ -44,11 +49,14 @@ export class Config {
     this.JWT_KEY = "";
     this.DATABASE_TYPE = "sqlite";
     this.JWT_VALIDITY_DURATION = 3600 * 24 * 30;
+    this.ATTACHMENT_MAX_SIZE = 10;
     this.LLM_API_KEY = "";
     this.LLM_API_URL = "https://api.deepseek.com/chat/completions";
     this.LLM_MODEL = "deepseek-chat";
     this.LLM_RECOMMENDATION_ENABLED = false;
     this.LLM_RECOMMENDATION_SCHEDULE_CRON = "0 0 * * *"; // daily at midnight
+    this.RATE_LIMIT_LLM_IMPROVE_MAX = 30;
+    this.RATE_LIMIT_LLM_REGENERATE_MAX = 5;
     this.WEB_PUSH_ENABLED = true;
     this.WEB_PUSH_SUBJECT = "mailto:admin@localhost";
     this.WEB_PUSH_NOTIFY_HOUR = 9; // send notifications from 9:00
@@ -64,9 +72,10 @@ export class Config {
     this.APPLICATION_TITLE = config.APPLICATION_TITLE || "Planner";
     this.API_PORT = config.API_PORT || 8080;
     this.CORS_POLICY_ORIGIN = config.CORS_POLICY_ORIGIN || "";
-    this.JWT_KEY = config.JWT_KEY || "dev";
+    this.JWT_KEY = config.JWT_KEY || "";
     this.DATABASE_TYPE = config.DATABASE_TYPE || "sqlite";
     this.JWT_VALIDITY_DURATION = config.JWT_VALIDITY_DURATION || 3600 * 24 * 30;
+    this.ATTACHMENT_MAX_SIZE = config.ATTACHMENT_MAX_SIZE || 10;
     this.LLM_API_KEY = config.LLM_API_KEY || "";
     this.LLM_API_URL =
       config.LLM_API_URL || "https://api.deepseek.com/chat/completions";
@@ -75,6 +84,9 @@ export class Config {
       config.LLM_RECOMMENDATION_ENABLED ?? false;
     this.LLM_RECOMMENDATION_SCHEDULE_CRON =
       config.LLM_RECOMMENDATION_SCHEDULE_CRON || "0 0 * * *";
+    this.RATE_LIMIT_LLM_IMPROVE_MAX = config.RATE_LIMIT_LLM_IMPROVE_MAX || 30;
+    this.RATE_LIMIT_LLM_REGENERATE_MAX =
+      config.RATE_LIMIT_LLM_REGENERATE_MAX || 5;
     this.WEB_PUSH_ENABLED = config.WEB_PUSH_ENABLED ?? true;
     this.WEB_PUSH_SUBJECT = config.WEB_PUSH_SUBJECT || "mailto:admin@localhost";
     this.WEB_PUSH_NOTIFY_HOUR = config.WEB_PUSH_NOTIFY_HOUR ?? 9;
@@ -95,6 +107,14 @@ export class Config {
     }
     if (process.env.JWT_KEY) {
       this.JWT_KEY = process.env.JWT_KEY;
+    }
+    if (process.env.JWT_VALIDITY_DURATION) {
+      this.JWT_VALIDITY_DURATION =
+        parseInt(process.env.JWT_VALIDITY_DURATION) || this.JWT_VALIDITY_DURATION;
+    }
+    if (process.env.ATTACHMENT_MAX_SIZE) {
+      this.ATTACHMENT_MAX_SIZE =
+        parseInt(process.env.ATTACHMENT_MAX_SIZE) || this.ATTACHMENT_MAX_SIZE;
     }
     if (process.env.DATABASE_TYPE) {
       this.DATABASE_TYPE = process.env.DATABASE_TYPE;
@@ -122,6 +142,16 @@ export class Config {
       this.LLM_RECOMMENDATION_SCHEDULE_CRON =
         process.env.LLM_RECOMMENDATION_SCHEDULE_CRON;
     }
+    if (process.env.RATE_LIMIT_LLM_IMPROVE_MAX) {
+      this.RATE_LIMIT_LLM_IMPROVE_MAX =
+        parseInt(process.env.RATE_LIMIT_LLM_IMPROVE_MAX) ||
+        this.RATE_LIMIT_LLM_IMPROVE_MAX;
+    }
+    if (process.env.RATE_LIMIT_LLM_REGENERATE_MAX) {
+      this.RATE_LIMIT_LLM_REGENERATE_MAX =
+        parseInt(process.env.RATE_LIMIT_LLM_REGENERATE_MAX) ||
+        this.RATE_LIMIT_LLM_REGENERATE_MAX;
+    }
     if (process.env.WEB_PUSH_ENABLED) {
       this.WEB_PUSH_ENABLED = process.env.WEB_PUSH_ENABLED === "true";
     }
@@ -142,6 +172,14 @@ export class Config {
     }
     if (process.env.WEB_PUSH_VAPID_PRIVATE_KEY) {
       this.WEB_PUSH_VAPID_PRIVATE_KEY = process.env.WEB_PUSH_VAPID_PRIVATE_KEY;
+    }
+
+    // Never run with a missing or publicly known JWT secret outside of
+    // development: tokens signed with it can be forged by anyone.
+    if (!this.DEV_MODE && (!this.JWT_KEY || this.JWT_KEY === "dev")) {
+      throw new Error(
+        "JWT_KEY must be set to a strong, private value (or start with DEV_MODE=true for local development)",
+      );
     }
   }
 }

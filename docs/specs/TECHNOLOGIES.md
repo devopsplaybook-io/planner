@@ -13,15 +13,15 @@
 
 ### Libraries
 
-- [x] [@devopsplaybook.io/common-utils](https://github.com/devopsplaybook-io/common-utils)
-  - Common utility functions used across devopsplaybook projects
+- [x] [@devopsplaybook.io/otel-utils](https://github.com/devopsplaybook-io/otel-utils)
+  - Shared OpenTelemetry tracer and logger used across devopsplaybook projects
 - [x] [@devopsplaybook.io/otel-utils-fastify](https://github.com/devopsplaybook-io/otel-utils-fastify)
-  - OpenTelemetry integration for Fastify
+  - OpenTelemetry integration for Fastify (hooks registered in `App.ts`, inert without `OPENTELEMETRY_COLLECTOR_*`)
 
 ### Attachments
 
 - [x] Notes and Tasks can contain attachments
-- [x] There is a maximum size for attachments, configured in megabytes in the configuration file (default: 10 MB)
+- [x] There is a maximum size for attachments, configured in megabytes via `ATTACHMENT_MAX_SIZE` (default: 10 MB)
 - [x] The actual attachment blob is stored on disk and not in the DB. The DB only contains the required metadata
 
 ## Web Side
@@ -42,4 +42,4 @@
 - [x] Only users with permission to view the Note or Task can download the attachment
 - [x] If the attachment is a picture, it is displayed in the UI. The max width should be the width of the viewport
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-21_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-02_

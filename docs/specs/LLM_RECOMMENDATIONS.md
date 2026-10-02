@@ -16,6 +16,7 @@ The dashboard displays AI-generated recommendations for each user, providing ins
   - [x] When the recommendation feature is disabled, the dashboard hides the recommendation section and the regenerate button.
   - [x] Recommendations are cached on disk (one JSON file per user), not stored in the database.
   - [x] Users can click a button to manually re-generate their recommendations.
+  - [x] Manual regeneration runs in the background (single-flight per user, rate-limited); the dashboard keeps showing the current recommendation and refreshes it when the new one is ready.
 - [x] Each recommendation includes:
   - [x] A performance summary: how the user performed on past tasks (completion delays, throughput).
   - [x] The suggested next task to work on, with rationale.
@@ -24,4 +25,4 @@ The dashboard displays AI-generated recommendations for each user, providing ins
 
 ## Implementation Status
 
-`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-09-13
+`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-10-02

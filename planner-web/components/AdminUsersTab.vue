@@ -232,21 +232,15 @@ function formatDate(dateStr) {
 async function fetchUsers() {
   loading.value = true;
   try {
+    // The list response carries API-key metadata (keyPrefix/expiresAt),
+    // so no per-user fetch is needed
     const res = await api.get("/users");
-    // Check which users have API keys
-    const usersWithKeys = await Promise.all(
-      res.data.map(async (user) => {
-        try {
-          await api.get(`/users/${user.id}/api-key`);
-          return { ...user, hasApiKey: true };
-        } catch {
-          return { ...user, hasApiKey: false };
-        }
-      }),
-    );
-    users.value = usersWithKeys;
+    users.value = res.data.map((user) => ({
+      ...user,
+      hasApiKey: !!user.apiKey,
+    }));
   } catch (e) {
-    if (e.response?.status === 403) {
+    if (e.response?.status === 401) {
       router.push("/login");
     }
   } finally {

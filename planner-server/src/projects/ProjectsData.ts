@@ -3,7 +3,10 @@ import {
   DbUtilsExecSQL,
   DbUtilsQuerySQL,
   DbUtilsGetType,
+  DbUtilsTransaction,
 } from "../utils/DbUtils";
+import { buildInPlaceholders } from "../tasks/TasksData";
+import { removeFilesQuietly } from "../utils/FileUtils";
 
 export async function ProjectsDataGet(id: string): Promise<Project> {
   const rows = await DbUtilsQuerySQL(
@@ -28,11 +31,13 @@ export async function ProjectsDataList(userId?: string): Promise<Project[]> {
   } else {
     rows = await DbUtilsQuerySQL(SQL_QUERIES.LIST_PROJECTS[DbUtilsGetType()]);
   }
-  const projects: Project[] = [];
-  for (const row of rows) {
-    const project = Project.fromJson(row);
-    project.userAccess = await getProjectUsers(project.id);
-    projects.push(project);
+  const projects = rows.map((row) => Project.fromJson(row));
+  // One batched query for the access lists instead of one query per project
+  const usersByProject = await getProjectUsersForProjects(
+    projects.map((p) => p.id),
+  );
+  for (const project of projects) {
+    project.userAccess = usersByProject.get(project.id) || [];
   }
   return projects;
 }
@@ -90,6 +95,28 @@ export async function getProjectUsers(projectId: string): Promise<string[]> {
   return rows.map((r) => r.userId as string);
 }
 
+async function getProjectUsersForProjects(
+  projectIds: string[],
+): Promise<Map<string, string[]>> {
+  const usersByProject = new Map<string, string[]>();
+  if (projectIds.length === 0) {
+    return usersByProject;
+  }
+  const rows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_PROJECT_USERS_BY_PROJECT_IDS[DbUtilsGetType()].replace(
+      ":ids",
+      buildInPlaceholders(projectIds.length),
+    ),
+    projectIds,
+  );
+  for (const row of rows) {
+    const list = usersByProject.get(row.projectId as string) || [];
+    list.push(row.userId as string);
+    usersByProject.set(row.projectId as string, list);
+  }
+  return usersByProject;
+}
+
 export async function addProjectUser(
   projectId: string,
   userId: string,
@@ -116,43 +143,70 @@ export async function clearProjectUsers(projectId: string): Promise<void> {
   ]);
 }
 
+/**
+ * Deletes the project, every child row (its tasks/notes with their children,
+ * project users, in one transaction) and the attachment files on disk.
+ */
 export async function ProjectsDataDelete(id: string): Promise<void> {
-  // Delete related records first
-  await DbUtilsExecSQL(
-    SQL_QUERIES.DELETE_TASK_LABELS_BY_PROJECT[DbUtilsGetType()],
-    [id],
+  const attachmentPaths = await getProjectAttachmentPaths(id);
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TASK_LABELS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TASK_ASSIGNEES_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TASK_COMMENTS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TASK_ATTACHMENTS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TASKS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_NOTE_LABELS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_NOTE_COMMENTS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_NOTE_ATTACHMENTS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_NOTES_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_PROJECT_USERS[DbUtilsGetType()], [
+      id,
+    ]);
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_PROJECT[DbUtilsGetType()], [id]);
+  });
+  await removeFilesQuietly(attachmentPaths);
+}
+
+async function getProjectAttachmentPaths(
+  projectId: string,
+): Promise<string[]> {
+  const dbType = DbUtilsGetType();
+  const taskRows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_TASK_ATTACHMENT_PATHS_BY_PROJECT[dbType],
+    [projectId],
   );
-  await DbUtilsExecSQL(
-    SQL_QUERIES.DELETE_TASK_ASSIGNEES_BY_PROJECT[DbUtilsGetType()],
-    [id],
+  const noteRows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_NOTE_ATTACHMENT_PATHS_BY_PROJECT[dbType],
+    [projectId],
   );
-  await DbUtilsExecSQL(
-    SQL_QUERIES.DELETE_TASK_COMMENTS_BY_PROJECT[DbUtilsGetType()],
-    [id],
-  );
-  await DbUtilsExecSQL(
-    SQL_QUERIES.DELETE_TASK_ATTACHMENTS_BY_PROJECT[DbUtilsGetType()],
-    [id],
-  );
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASKS_BY_PROJECT[DbUtilsGetType()], [
-    id,
-  ]);
-  await DbUtilsExecSQL(
-    SQL_QUERIES.DELETE_NOTE_LABELS_BY_PROJECT[DbUtilsGetType()],
-    [id],
-  );
-  await DbUtilsExecSQL(
-    SQL_QUERIES.DELETE_NOTE_COMMENTS_BY_PROJECT[DbUtilsGetType()],
-    [id],
-  );
-  await DbUtilsExecSQL(
-    SQL_QUERIES.DELETE_NOTE_ATTACHMENTS_BY_PROJECT[DbUtilsGetType()],
-    [id],
-  );
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTES_BY_PROJECT[DbUtilsGetType()], [
-    id,
-  ]);
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_PROJECT[DbUtilsGetType()], [id]);
+  return [...taskRows, ...noteRows].map((r) => r.filePath as string);
 }
 
 const SQL_QUERIES = {
@@ -258,5 +312,22 @@ const SQL_QUERIES = {
   GET_PROJECT_USERS: {
     postgres: 'SELECT "userId" FROM project_users WHERE "projectId" = $1',
     sqlite: "SELECT userId FROM project_users WHERE projectId = ?",
+  },
+  GET_PROJECT_USERS_BY_PROJECT_IDS: {
+    postgres:
+      'SELECT "projectId", "userId" FROM project_users WHERE "projectId" IN (:ids)',
+    sqlite: "SELECT projectId, userId FROM project_users WHERE projectId IN (:ids)",
+  },
+  GET_TASK_ATTACHMENT_PATHS_BY_PROJECT: {
+    postgres:
+      'SELECT "filePath" FROM task_attachments WHERE "taskId" IN (SELECT "id" FROM tasks WHERE "projectId" = $1)',
+    sqlite:
+      "SELECT filePath FROM task_attachments WHERE taskId IN (SELECT id FROM tasks WHERE projectId = ?)",
+  },
+  GET_NOTE_ATTACHMENT_PATHS_BY_PROJECT: {
+    postgres:
+      'SELECT "filePath" FROM note_attachments WHERE "noteId" IN (SELECT "id" FROM notes WHERE "projectId" = $1)',
+    sqlite:
+      "SELECT filePath FROM note_attachments WHERE noteId IN (SELECT id FROM notes WHERE projectId = ?)",
   },
 };

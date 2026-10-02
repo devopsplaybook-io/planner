@@ -19,6 +19,13 @@ spec:
         - image: planner
           name: planner
           imagePullPolicy: Always
+          env:
+            # Required: the server refuses to start without a strong JWT_KEY
+            - name: JWT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: planner-secrets
+                  key: jwtKey
           readinessProbe:
             httpGet:
               path: /api/status

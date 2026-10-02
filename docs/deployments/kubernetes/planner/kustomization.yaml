@@ -7,6 +7,7 @@ resources:
   - base/deployment.yaml
   - base/service.yaml
   - base/configmap.yaml
+  - base/secret.yaml
 images:
   - name: planner
     newTag: latest

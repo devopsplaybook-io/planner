@@ -1,6 +1,5 @@
 {
-  "CORS_POLICY_ORIGIN": "*",
-  "JWT_KEY": "dev",
+  "CORS_POLICY_ORIGIN": "",
   "DATABASE_TYPE": "sqlite",
   "processors": {
     "system": "processors-system",

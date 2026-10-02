@@ -3,8 +3,11 @@ import {
   DbUtilsExecSQL,
   DbUtilsQuerySQL,
   DbUtilsGetType,
+  DbUtilsTransaction,
 } from "../utils/DbUtils";
 import { visibleProjectsCondition } from "../projects/ProjectVisibility";
+import { buildInPlaceholders } from "../tasks/TasksData";
+import { removeFilesQuietly } from "../utils/FileUtils";
 
 export async function NotesDataGet(id: string): Promise<Note> {
   const rows = await DbUtilsQuerySQL(SQL_QUERIES.GET_NOTE[DbUtilsGetType()], [
@@ -13,7 +16,8 @@ export async function NotesDataGet(id: string): Promise<Note> {
   if (rows.length === 0) {
     return null;
   }
-  return enrichNote(rows[0]);
+  const notes = await enrichNotes(rows);
+  return notes[0];
 }
 
 export interface NoteListFilters {
@@ -64,11 +68,7 @@ export async function NotesDataList(
 ): Promise<Note[]> {
   const { sql, params } = buildListNotesQuery(filters);
   const rows = await DbUtilsQuerySQL(sql, params);
-  const notes: Note[] = [];
-  for (const row of rows) {
-    notes.push(await enrichNote(row));
-  }
-  return notes;
+  return enrichNotes(rows);
 }
 
 export async function NotesDataAdd(note: Note): Promise<void> {
@@ -93,15 +93,25 @@ export async function NotesDataUpdate(note: Note): Promise<void> {
   ]);
 }
 
+/**
+ * Deletes the note, its child rows (in one transaction) and the attachment
+ * files on disk.
+ */
 export async function NotesDataDelete(id: string): Promise<void> {
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE_LABELS[DbUtilsGetType()], [id]);
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE_COMMENTS[DbUtilsGetType()], [
-    id,
-  ]);
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE_ATTACHMENTS[DbUtilsGetType()], [
-    id,
-  ]);
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE[DbUtilsGetType()], [id]);
+  const attachments = await getAttachments([id]);
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE_LABELS[DbUtilsGetType()], [
+      id,
+    ]);
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE_COMMENTS[DbUtilsGetType()], [
+      id,
+    ]);
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE_ATTACHMENTS[DbUtilsGetType()], [
+      id,
+    ]);
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE[DbUtilsGetType()], [id]);
+  });
+  await removeFilesQuietly(attachments.map((a) => a.filePath));
 }
 
 // ==================== COMMENTS ====================
@@ -172,6 +182,29 @@ export async function clearNoteLabels(noteId: string): Promise<void> {
   ]);
 }
 
+/**
+ * Replaces the note labels atomically: the clear and the inserts run in one
+ * transaction, so a failure cannot leave the note label-less.
+ */
+export async function replaceNoteLabels(
+  noteId: string,
+  labels: string[],
+): Promise<void> {
+  const { v4: uuidv4 } = await import("uuid");
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_NOTE_LABELS[DbUtilsGetType()], [
+      noteId,
+    ]);
+    for (const name of labels) {
+      await DbUtilsExecSQL(SQL_QUERIES.INSERT_NOTE_LABEL[DbUtilsGetType()], [
+        uuidv4(),
+        noteId,
+        name,
+      ]);
+    }
+  });
+}
+
 // ==================== ATTACHMENTS ====================
 
 export async function addNoteAttachment(
@@ -220,52 +253,91 @@ export async function getNoteAttachment(attachmentId: string): Promise<{
 
 // ==================== HELPERS ====================
 
-async function enrichNote(row: Record<string, unknown>): Promise<Note> {
-  const note = Note.fromJson(row);
-  note.comments = await getNoteComments(note.id);
-  note.attachments = await getNoteAttachments(note.id);
-  note.labels = await getNoteLabels(note.id);
-  return note;
+/**
+ * Hydrates a list of note rows with their children in a bounded number of
+ * queries (one per child type, batched with IN (...)) instead of three
+ * queries per note.
+ */
+async function enrichNotes(
+  rows: Record<string, unknown>[],
+): Promise<Note[]> {
+  const notes = rows.map((row) => {
+    const note = Note.fromJson(row);
+    note.comments = [];
+    note.attachments = [];
+    note.labels = [];
+    return note;
+  });
+  if (notes.length === 0) {
+    return notes;
+  }
+  const dbType = DbUtilsGetType();
+  const placeholders = buildInPlaceholders(notes.length);
+  const ids = notes.map((n) => n.id);
+  const byId = new Map(notes.map((n) => [n.id, n]));
+
+  const [commentRows, attachmentRows, labelRows] = await Promise.all([
+    DbUtilsQuerySQL(
+      SQL_QUERIES.GET_NOTE_COMMENTS_BY_NOTE_IDS[dbType].replace(
+        ":ids",
+        placeholders,
+      ),
+      ids,
+    ),
+    DbUtilsQuerySQL(
+      SQL_QUERIES.GET_NOTE_ATTACHMENTS_BY_NOTE_IDS[dbType].replace(
+        ":ids",
+        placeholders,
+      ),
+      ids,
+    ),
+    DbUtilsQuerySQL(
+      SQL_QUERIES.GET_NOTE_LABELS_BY_NOTE_IDS[dbType].replace(
+        ":ids",
+        placeholders,
+      ),
+      ids,
+    ),
+  ]);
+
+  for (const row of commentRows) {
+    byId.get(row.noteId)?.comments.push({
+      id: row.id,
+      userId: row.userId,
+      userName: row.userName as string | undefined,
+      text: row.text,
+      dateCreated: row.dateCreated,
+      dateUpdated: row.dateUpdated as string | undefined,
+    });
+  }
+  for (const row of attachmentRows) {
+    byId.get(row.noteId)?.attachments.push({
+      id: row.id,
+      fileName: row.fileName,
+      filePath: row.filePath,
+      dateCreated: row.dateCreated,
+    });
+  }
+  for (const row of labelRows) {
+    byId.get(row.noteId)?.labels.push(row.name as string);
+  }
+  return notes;
 }
 
-async function getNoteComments(noteId: string): Promise<NoteComment[]> {
+async function getAttachments(
+  noteIds: string[],
+): Promise<{ filePath: string }[]> {
+  if (noteIds.length === 0) {
+    return [];
+  }
   const rows = await DbUtilsQuerySQL(
-    SQL_QUERIES.GET_NOTE_COMMENTS[DbUtilsGetType()],
-    [noteId],
+    SQL_QUERIES.GET_NOTE_ATTACHMENTS_BY_NOTE_IDS[DbUtilsGetType()].replace(
+      ":ids",
+      buildInPlaceholders(noteIds.length),
+    ),
+    noteIds,
   );
-  return rows.map((r) => ({
-    id: r.id,
-    userId: r.userId,
-    userName: r.userName as string | undefined,
-    text: r.text,
-    dateCreated: r.dateCreated,
-    dateUpdated: r.dateUpdated as string | undefined,
-  }));
-}
-
-async function getNoteAttachments(
-  noteId: string,
-): Promise<
-  { id: string; fileName: string; filePath: string; dateCreated: string }[]
-> {
-  const rows = await DbUtilsQuerySQL(
-    SQL_QUERIES.GET_NOTE_ATTACHMENTS[DbUtilsGetType()],
-    [noteId],
-  );
-  return rows.map((r) => ({
-    id: r.id,
-    fileName: r.fileName,
-    filePath: r.filePath,
-    dateCreated: r.dateCreated,
-  }));
-}
-
-async function getNoteLabels(noteId: string): Promise<string[]> {
-  const rows = await DbUtilsQuerySQL(
-    SQL_QUERIES.GET_NOTE_LABELS[DbUtilsGetType()],
-    [noteId],
-  );
-  return rows.map((r) => r.name as string);
+  return rows.map((r) => ({ filePath: r.filePath }));
 }
 
 // ==================== SQL ====================
@@ -325,15 +397,15 @@ const SQL_QUERIES = {
     sqlite:
       "UPDATE note_comments SET text = ?, dateUpdated = ? WHERE id = ?",
   },
-  GET_NOTE_COMMENTS: {
+  GET_NOTE_COMMENTS_BY_NOTE_IDS: {
     postgres:
-      'SELECT nc.*, u."name" AS "userName" FROM note_comments nc LEFT JOIN users u ON nc."userId" = u."id" WHERE nc."noteId" = $1 ORDER BY nc."dateCreated"',
+      'SELECT nc.*, u."name" AS "userName" FROM note_comments nc LEFT JOIN users u ON nc."userId" = u."id" WHERE nc."noteId" IN (:ids) ORDER BY nc."dateCreated"',
     sqlite:
-      "SELECT nc.*, u.name AS userName FROM note_comments nc LEFT JOIN users u ON nc.userId = u.id WHERE nc.noteId = ? ORDER BY nc.dateCreated",
+      "SELECT nc.*, u.name AS userName FROM note_comments nc LEFT JOIN users u ON nc.userId = u.id WHERE nc.noteId IN (:ids) ORDER BY nc.dateCreated",
   },
-  GET_NOTE_ATTACHMENTS: {
-    postgres: 'SELECT * FROM note_attachments WHERE "noteId" = $1',
-    sqlite: "SELECT * FROM note_attachments WHERE noteId = ?",
+  GET_NOTE_ATTACHMENTS_BY_NOTE_IDS: {
+    postgres: 'SELECT * FROM note_attachments WHERE "noteId" IN (:ids)',
+    sqlite: "SELECT * FROM note_attachments WHERE noteId IN (:ids)",
   },
   INSERT_NOTE_ATTACHMENT: {
     postgres:
@@ -354,8 +426,8 @@ const SQL_QUERIES = {
       'INSERT INTO note_labels ("id", "noteId", "name") VALUES ($1, $2, $3)',
     sqlite: "INSERT INTO note_labels (id, noteId, name) VALUES (?, ?, ?)",
   },
-  GET_NOTE_LABELS: {
-    postgres: 'SELECT * FROM note_labels WHERE "noteId" = $1',
-    sqlite: "SELECT * FROM note_labels WHERE noteId = ?",
+  GET_NOTE_LABELS_BY_NOTE_IDS: {
+    postgres: 'SELECT * FROM note_labels WHERE "noteId" IN (:ids)',
+    sqlite: "SELECT * FROM note_labels WHERE noteId IN (:ids)",
   },
 };

@@ -4,6 +4,7 @@ import * as path from "path";
 import * as cron from "node-cron";
 import { Config } from "../Config";
 import { DbUtilsQuerySQL, DbUtilsGetType } from "../utils/DbUtils";
+import { buildInPlaceholders } from "../tasks/TasksData";
 
 const logger = console;
 
@@ -78,6 +79,31 @@ export async function RecommendationGenerateAll(): Promise<void> {
 }
 
 // ── Generate for a single user ────────────────────────────────────────────────
+
+const inFlightGenerations = new Map<string, Promise<void>>();
+
+/**
+ * Starts a background regeneration for the user unless one is already
+ * running (per-user single-flight). Returns true when a new generation was
+ * started, false when the running one was kept. The result is picked up by
+ * polling the cached recommendation.
+ */
+export function RecommendationRegenerateForUser(userId: string): boolean {
+  if (inFlightGenerations.has(userId)) {
+    return false;
+  }
+  const pending = RecommendationGenerateForUser(userId)
+    .catch((error) => {
+      logger.error(
+        `[Recommendation] Background regeneration failed for user ${userId}: ${error.message}`,
+      );
+    })
+    .finally(() => {
+      inFlightGenerations.delete(userId);
+    });
+  inFlightGenerations.set(userId, pending);
+  return true;
+}
 
 export async function RecommendationGenerateForUser(
   userId: string,
@@ -360,25 +386,7 @@ async function getTasksForUser(
     : SQL_QUERIES.TASKS_BY_USER_NOT_DONE[dbType];
 
   const rows = await DbUtilsQuerySQL(sql, [userId]);
-
-  const tasks: TaskStats[] = [];
-  for (const row of rows) {
-    const labelRows = await DbUtilsQuerySQL(SQL_QUERIES.GET_LABELS[dbType], [
-      row.id,
-    ]);
-    tasks.push({
-      id: row.id,
-      title: row.title,
-      status: row.status,
-      priority: row.priority,
-      dueDate: row.dueDate || undefined,
-      labels: labelRows.map((l) => l.name),
-      projectId: row.projectId,
-      dateCreated: row.dateCreated,
-      dateUpdated: row.dateUpdated,
-    });
-  }
-  return tasks;
+  return rowsToTaskStats(rows);
 }
 
 async function getAllTasks(doneOnly: boolean): Promise<TaskStats[]> {
@@ -388,25 +396,42 @@ async function getAllTasks(doneOnly: boolean): Promise<TaskStats[]> {
     : SQL_QUERIES.ALL_TASKS_NOT_DONE[dbType];
 
   const rows = await DbUtilsQuerySQL(sql);
+  return rowsToTaskStats(rows);
+}
 
-  const tasks: TaskStats[] = [];
-  for (const row of rows) {
-    const labelRows = await DbUtilsQuerySQL(SQL_QUERIES.GET_LABELS[dbType], [
-      row.id,
-    ]);
-    tasks.push({
-      id: row.id,
-      title: row.title,
-      status: row.status,
-      priority: row.priority,
-      dueDate: row.dueDate || undefined,
-      labels: labelRows.map((l) => l.name),
-      projectId: row.projectId,
-      dateCreated: row.dateCreated,
-      dateUpdated: row.dateUpdated,
-    });
+/** Maps task rows to TaskStats with one batched labels query for all rows. */
+async function rowsToTaskStats(
+  rows: Record<string, unknown>[],
+): Promise<TaskStats[]> {
+  if (rows.length === 0) {
+    return [];
   }
-  return tasks;
+  const dbType = DbUtilsGetType();
+  const ids = rows.map((row) => row.id as string);
+  const labelRows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_LABELS_BY_TASK_IDS[dbType].replace(
+      ":ids",
+      buildInPlaceholders(ids.length),
+    ),
+    ids,
+  );
+  const labelsByTask = new Map<string, string[]>();
+  for (const labelRow of labelRows) {
+    const list = labelsByTask.get(labelRow.taskId as string) || [];
+    list.push(labelRow.name as string);
+    labelsByTask.set(labelRow.taskId as string, list);
+  }
+  return rows.map((row) => ({
+    id: row.id as string,
+    title: row.title as string,
+    status: row.status as string,
+    priority: row.priority as string,
+    dueDate: (row.dueDate as string) || undefined,
+    labels: labelsByTask.get(row.id as string) || [],
+    projectId: row.projectId as string,
+    dateCreated: row.dateCreated as string,
+    dateUpdated: row.dateUpdated as string,
+  }));
 }
 
 // ── Prompt Builder ────────────────────────────────────────────────────────────
@@ -542,8 +567,8 @@ const SQL_QUERIES = {
       "SELECT t.id, t.projectId, t.title, t.status, t.priority, t.dueDate, t.dateCreated, t.dateUpdated " +
       "FROM tasks t WHERE t.status = 'Done'",
   },
-  GET_LABELS: {
-    postgres: 'SELECT name FROM task_labels WHERE "taskId" = $1',
-    sqlite: "SELECT name FROM task_labels WHERE taskId = ?",
+  GET_LABELS_BY_TASK_IDS: {
+    postgres: 'SELECT "taskId", name FROM task_labels WHERE "taskId" IN (:ids)',
+    sqlite: "SELECT taskId, name FROM task_labels WHERE taskId IN (:ids)",
   },
 };

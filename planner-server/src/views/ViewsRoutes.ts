@@ -15,7 +15,7 @@ export class ViewsRoutes {
     }>("/dashboard", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       const labels = req.query.labels
         ? req.query.labels.split(",").map((l) => l.trim())
@@ -36,7 +36,7 @@ export class ViewsRoutes {
     fastify.get("/next", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       const filters: DashboardFilters =
         userSession.role !== "admin"

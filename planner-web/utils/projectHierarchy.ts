@@ -38,7 +38,7 @@ export function displayName(name: string): string {
 /** Last segment — the label shown for a node inside a tree. */
 export function leafName(name: string): string {
   const segments = pathSegments(name);
-  return segments.length > 0 ? segments[segments.length - 1] : "";
+  return segments[segments.length - 1] ?? "";
 }
 
 /** The path of the parent project, or "" for a root. */
