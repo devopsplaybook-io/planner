@@ -15,7 +15,7 @@ export class NotificationsRoutes {
     fastify.get("/config", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       return res.status(200).send({
         enabled: NotificationsIsEnabled(),
@@ -33,7 +33,7 @@ export class NotificationsRoutes {
     fastify.post<PostSubscription>("/subscriptions", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       if (!NotificationsIsEnabled()) {
         return res
@@ -67,7 +67,7 @@ export class NotificationsRoutes {
     fastify.delete<DeleteSubscription>("/subscriptions", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       if (!req.body?.endpoint) {
         return res.status(400).send({ error: "Missing: endpoint" });

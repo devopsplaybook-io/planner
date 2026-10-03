@@ -6,7 +6,7 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      charset: "utf-16",
+      charset: "utf-8",
       viewport:
         "width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no",
       title: "Planner",
@@ -27,15 +27,16 @@ export default defineNuxtConfig({
   imports: {
     dirs: ["./stores"],
   },
-  pinia: {
-    autoImports: ["defineStore", "acceptHMRUpdate"],
-  },
   pwa: {
     registerType: "autoUpdate",
     workbox: {
-      // Precache the app icons so notification icon/badge resolve offline too
-      globPatterns: ["images/*.{png,svg}"],
-      navigateFallback: undefined,
+      // Precache the built app shell (HTML/JS/CSS) so the SPA loads offline,
+      // plus the app icons so notification icon/badge resolve offline too
+      globPatterns: ["**/*.{js,css,html}", "images/*.{png,svg}"],
+      // Offline navigations fall back to the cached app shell; API calls are
+      // never navigation requests and stay excluded
+      navigateFallback: "/",
+      navigateFallbackDenylist: [/^\/api\//],
       skipWaiting: true,
       clientsClaim: true,
       importScripts: ["sw-push.js"],

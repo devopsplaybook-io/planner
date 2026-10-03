@@ -3,8 +3,10 @@ import {
   DbUtilsExecSQL,
   DbUtilsQuerySQL,
   DbUtilsGetType,
+  DbUtilsTransaction,
 } from "../utils/DbUtils";
 import { visibleProjectsCondition } from "../projects/ProjectVisibility";
+import { removeFilesQuietly } from "../utils/FileUtils";
 
 export async function TasksDataGet(id: string): Promise<Task> {
   const rows = await DbUtilsQuerySQL(SQL_QUERIES.GET_TASK[DbUtilsGetType()], [
@@ -13,7 +15,8 @@ export async function TasksDataGet(id: string): Promise<Task> {
   if (rows.length === 0) {
     return null;
   }
-  return enrichTask(rows[0]);
+  const tasks = await enrichTasks(rows);
+  return tasks[0];
 }
 
 export interface TaskListFilters {
@@ -25,6 +28,9 @@ export interface TaskListFilters {
   q?: string;
   /** When set, restricts results to projects visible to this user (non-admin viewers). */
   visibleTo?: { userId: string };
+  /** Maximum number of rows returned (pagination). */
+  limit?: number;
+  offset?: number;
 }
 
 /**
@@ -76,8 +82,17 @@ export function buildListTasksQuery(
   }
   const whereClause =
     conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  let limitClause = "";
+  if (typeof filters.limit === "number" && filters.limit > 0) {
+    limitClause = ` LIMIT ?`;
+    params.push(filters.limit);
+    if (typeof filters.offset === "number" && filters.offset > 0) {
+      limitClause += ` OFFSET ?`;
+      params.push(filters.offset);
+    }
+  }
   return {
-    sql: `SELECT * FROM tasks${whereClause} ORDER BY ${quote("dateCreated")} DESC`,
+    sql: `SELECT * FROM tasks${whereClause} ORDER BY ${quote("dateCreated")} DESC${limitClause}`,
     params,
   };
 }
@@ -87,11 +102,7 @@ export async function TasksDataList(
 ): Promise<Task[]> {
   const { sql, params } = buildListTasksQuery(filters);
   const rows = await DbUtilsQuerySQL(sql, params);
-  const tasks: Task[] = [];
-  for (const row of rows) {
-    tasks.push(await enrichTask(row));
-  }
-  return tasks;
+  return enrichTasks(rows);
 }
 
 export async function TasksDataAdd(task: Task): Promise<void> {
@@ -142,18 +153,29 @@ export async function TasksDataTouch(taskId: string): Promise<void> {
   ]);
 }
 
+/**
+ * Deletes the task, its child rows (in one transaction) and the attachment
+ * files on disk.
+ */
 export async function TasksDataDelete(id: string): Promise<void> {
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_LABELS[DbUtilsGetType()], [id]);
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_ASSIGNEES[DbUtilsGetType()], [
-    id,
-  ]);
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_COMMENTS[DbUtilsGetType()], [
-    id,
-  ]);
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_ATTACHMENTS[DbUtilsGetType()], [
-    id,
-  ]);
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK[DbUtilsGetType()], [id]);
+  const attachments = await getAttachments([id]);
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_LABELS[DbUtilsGetType()], [
+      id,
+    ]);
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_ASSIGNEES[DbUtilsGetType()], [
+      id,
+    ]);
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_COMMENTS[DbUtilsGetType()], [
+      id,
+    ]);
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TASK_ATTACHMENTS[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK[DbUtilsGetType()], [id]);
+  });
+  await removeFilesQuietly(attachments.map((a) => a.filePath));
 }
 
 // ==================== ASSIGNEES ====================
@@ -243,6 +265,29 @@ export async function clearLabels(taskId: string): Promise<void> {
   ]);
 }
 
+/**
+ * Replaces the task labels atomically: the clear and the inserts run in one
+ * transaction, so a failure cannot leave the task label-less.
+ */
+export async function replaceLabels(
+  taskId: string,
+  labels: string[],
+): Promise<void> {
+  const { v4: uuidv4 } = await import("uuid");
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_LABELS[DbUtilsGetType()], [
+      taskId,
+    ]);
+    for (const label of labels) {
+      await DbUtilsExecSQL(SQL_QUERIES.INSERT_LABEL[DbUtilsGetType()], [
+        uuidv4(),
+        taskId,
+        label,
+      ]);
+    }
+  });
+}
+
 // ==================== ATTACHMENTS ====================
 
 export async function addTaskAttachment(
@@ -291,69 +336,115 @@ export async function getTaskAttachment(attachmentId: string): Promise<{
 
 // ==================== HELPERS ====================
 
-async function enrichTask(row: Record<string, unknown>): Promise<Task> {
-  const task = Task.fromJson(row);
-  task.checklist =
-    typeof row.checklist === "string"
-      ? JSON.parse(row.checklist as string)
-      : (row.checklist as ChecklistItem[]) || [];
-  task.assignees = await getAssignees(task.id);
-  task.comments = await getComments(task.id);
-  task.attachments = await getAttachments(task.id);
-  task.labels = await getLabels(task.id);
-  return task;
+/** IN (...) placeholder list for a batch of ids ("?" style). */
+export function buildInPlaceholders(count: number): string {
+  return Array.from({ length: count }, () => "?").join(", ");
 }
 
-async function getAssignees(
-  taskId: string,
-): Promise<{ userId: string; userName?: string }[]> {
-  const rows = await DbUtilsQuerySQL(
-    SQL_QUERIES.GET_ASSIGNEES[DbUtilsGetType()],
-    [taskId],
-  );
-  return rows.map((r) => ({
-    userId: r.userId,
-    userName: r.userName as string | undefined,
-  }));
-}
+/**
+ * Hydrates a list of task rows with their children in a bounded number of
+ * queries (one per child type, batched with IN (...)) instead of four
+ * queries per task.
+ */
+async function enrichTasks(
+  rows: Record<string, unknown>[],
+): Promise<Task[]> {
+  const tasks = rows.map((row) => {
+    const task = Task.fromJson(row);
+    task.checklist =
+      typeof row.checklist === "string"
+        ? JSON.parse(row.checklist as string)
+        : (row.checklist as ChecklistItem[]) || [];
+    task.assignees = [];
+    task.comments = [];
+    task.attachments = [];
+    task.labels = [];
+    return task;
+  });
+  if (tasks.length === 0) {
+    return tasks;
+  }
+  const dbType = DbUtilsGetType();
+  const placeholders = buildInPlaceholders(tasks.length);
+  const ids = tasks.map((t) => t.id);
+  const byId = new Map(tasks.map((t) => [t.id, t]));
 
-async function getComments(taskId: string): Promise<TaskComment[]> {
-  const rows = await DbUtilsQuerySQL(
-    SQL_QUERIES.GET_COMMENTS[DbUtilsGetType()],
-    [taskId],
-  );
-  return rows.map((r) => ({
-    id: r.id,
-    userId: r.userId,
-    userName: r.userName as string | undefined,
-    text: r.text,
-    dateCreated: r.dateCreated,
-    dateUpdated: r.dateUpdated as string | undefined,
-  }));
+  const [assigneeRows, commentRows, attachmentRows, labelRows] =
+    await Promise.all([
+      DbUtilsQuerySQL(
+        SQL_QUERIES.GET_ASSIGNEES_BY_TASK_IDS[dbType].replace(
+          ":ids",
+          placeholders,
+        ),
+        ids,
+      ),
+      DbUtilsQuerySQL(
+        SQL_QUERIES.GET_COMMENTS_BY_TASK_IDS[dbType].replace(
+          ":ids",
+          placeholders,
+        ),
+        ids,
+      ),
+      DbUtilsQuerySQL(
+        SQL_QUERIES.GET_ATTACHMENTS_BY_TASK_IDS[dbType].replace(
+          ":ids",
+          placeholders,
+        ),
+        ids,
+      ),
+      DbUtilsQuerySQL(
+        SQL_QUERIES.GET_LABELS_BY_TASK_IDS[dbType].replace(
+          ":ids",
+          placeholders,
+        ),
+        ids,
+      ),
+    ]);
+
+  for (const row of assigneeRows) {
+    byId.get(row.taskId)?.assignees.push({
+      userId: row.userId,
+      userName: row.userName as string | undefined,
+    });
+  }
+  for (const row of commentRows) {
+    byId.get(row.taskId)?.comments.push({
+      id: row.id,
+      userId: row.userId,
+      userName: row.userName as string | undefined,
+      text: row.text,
+      dateCreated: row.dateCreated,
+      dateUpdated: row.dateUpdated as string | undefined,
+    });
+  }
+  for (const row of attachmentRows) {
+    byId.get(row.taskId)?.attachments.push({
+      id: row.id,
+      fileName: row.fileName,
+      filePath: row.filePath,
+      dateCreated: row.dateCreated,
+    });
+  }
+  for (const row of labelRows) {
+    byId.get(row.taskId)?.labels.push(row.name as string);
+  }
+  return tasks;
 }
 
 async function getAttachments(
-  taskId: string,
-): Promise<
-  { id: string; fileName: string; filePath: string; dateCreated: string }[]
-> {
+  taskIds: string[],
+): Promise<{ filePath: string }[]> {
+  if (taskIds.length === 0) {
+    return [];
+  }
   const rows = await DbUtilsQuerySQL(
-    SQL_QUERIES.GET_ATTACHMENTS[DbUtilsGetType()],
-    [taskId],
+    SQL_QUERIES.GET_ATTACHMENTS_BY_TASK_IDS[DbUtilsGetType()].replace(
+      ":ids",
+      buildInPlaceholders(taskIds.length),
+    ),
+    taskIds,
   );
-  return rows.map((r) => ({
-    id: r.id,
-    fileName: r.fileName,
-    filePath: r.filePath,
-    dateCreated: r.dateCreated,
-  }));
-}
-
-async function getLabels(taskId: string): Promise<string[]> {
-  const rows = await DbUtilsQuerySQL(SQL_QUERIES.GET_LABELS[DbUtilsGetType()], [
-    taskId,
-  ]);
-  return rows.map((r) => r.name as string);
+  return rows.map((r) => ({ filePath: r.filePath }));
 }
 
 // ==================== SQL ====================
@@ -408,11 +499,11 @@ const SQL_QUERIES = {
       'DELETE FROM task_assignees WHERE "taskId" = $1 AND "userId" = $2',
     sqlite: "DELETE FROM task_assignees WHERE taskId = ? AND userId = ?",
   },
-  GET_ASSIGNEES: {
+  GET_ASSIGNEES_BY_TASK_IDS: {
     postgres:
-      'SELECT ta."userId", u."name" AS "userName" FROM task_assignees ta LEFT JOIN users u ON ta."userId" = u."id" WHERE ta."taskId" = $1',
+      'SELECT ta."taskId", ta."userId", u."name" AS "userName" FROM task_assignees ta LEFT JOIN users u ON ta."userId" = u."id" WHERE ta."taskId" IN (:ids)',
     sqlite:
-      "SELECT ta.userId, u.name AS userName FROM task_assignees ta LEFT JOIN users u ON ta.userId = u.id WHERE ta.taskId = ?",
+      "SELECT ta.taskId, ta.userId, u.name AS userName FROM task_assignees ta LEFT JOIN users u ON ta.userId = u.id WHERE ta.taskId IN (:ids)",
   },
   INSERT_COMMENT: {
     postgres:
@@ -436,15 +527,15 @@ const SQL_QUERIES = {
     sqlite:
       "UPDATE task_comments SET text = ?, dateUpdated = ? WHERE id = ?",
   },
-  GET_COMMENTS: {
+  GET_COMMENTS_BY_TASK_IDS: {
     postgres:
-      'SELECT tc.*, u."name" AS "userName" FROM task_comments tc LEFT JOIN users u ON tc."userId" = u."id" WHERE tc."taskId" = $1 ORDER BY tc."dateCreated"',
+      'SELECT tc.*, u."name" AS "userName" FROM task_comments tc LEFT JOIN users u ON tc."userId" = u."id" WHERE tc."taskId" IN (:ids) ORDER BY tc."dateCreated"',
     sqlite:
-      "SELECT tc.*, u.name AS userName FROM task_comments tc LEFT JOIN users u ON tc.userId = u.id WHERE tc.taskId = ? ORDER BY tc.dateCreated",
+      "SELECT tc.*, u.name AS userName FROM task_comments tc LEFT JOIN users u ON tc.userId = u.id WHERE tc.taskId IN (:ids) ORDER BY tc.dateCreated",
   },
-  GET_ATTACHMENTS: {
-    postgres: 'SELECT * FROM task_attachments WHERE "taskId" = $1',
-    sqlite: "SELECT * FROM task_attachments WHERE taskId = ?",
+  GET_ATTACHMENTS_BY_TASK_IDS: {
+    postgres: 'SELECT * FROM task_attachments WHERE "taskId" IN (:ids)',
+    sqlite: "SELECT * FROM task_attachments WHERE taskId IN (:ids)",
   },
   INSERT_ATTACHMENT: {
     postgres:
@@ -465,8 +556,8 @@ const SQL_QUERIES = {
       'INSERT INTO task_labels ("id", "taskId", "name") VALUES ($1, $2, $3)',
     sqlite: "INSERT INTO task_labels (id, taskId, name) VALUES (?, ?, ?)",
   },
-  GET_LABELS: {
-    postgres: 'SELECT * FROM task_labels WHERE "taskId" = $1',
-    sqlite: "SELECT * FROM task_labels WHERE taskId = ?",
+  GET_LABELS_BY_TASK_IDS: {
+    postgres: 'SELECT * FROM task_labels WHERE "taskId" IN (:ids)',
+    sqlite: "SELECT * FROM task_labels WHERE taskId IN (:ids)",
   },
 };

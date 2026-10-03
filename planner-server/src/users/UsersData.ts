@@ -3,6 +3,7 @@ import {
   DbUtilsExecSQL,
   DbUtilsQuerySQL,
   DbUtilsGetType,
+  DbUtilsTransaction,
 } from "../utils/DbUtils";
 
 export async function UsersDataGet(id: string): Promise<User> {
@@ -51,6 +52,7 @@ export async function UsersDataUpdatePassword(user: User): Promise<void> {
   ]);
 }
 
+/** Updates the role and revokes every outstanding session of the user. */
 export async function UsersDataUpdateUser(user: User): Promise<void> {
   await DbUtilsExecSQL(SQL_QUERIES.UPDATE_USER[DbUtilsGetType()], [
     user.role,
@@ -58,8 +60,30 @@ export async function UsersDataUpdateUser(user: User): Promise<void> {
   ]);
 }
 
+/**
+ * Deletes the user and every row referencing it that would otherwise be
+ * orphaned (task assignments, project access, API key, push subscriptions).
+ * Comments are kept (their author is resolved through a join).
+ */
 export async function UsersDataDelete(id: string): Promise<void> {
-  await DbUtilsExecSQL(SQL_QUERIES.DELETE_USER[DbUtilsGetType()], [id]);
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_USER_TASK_ASSIGNEES[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_USER_PROJECT_USERS[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_USER_API_KEYS[DbUtilsGetType()], [
+      id,
+    ]);
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_USER_PUSH_SUBSCRIPTIONS[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(SQL_QUERIES.DELETE_USER[DbUtilsGetType()], [id]);
+  });
 }
 
 const SQL_QUERIES = {
@@ -82,15 +106,34 @@ const SQL_QUERIES = {
       "INSERT INTO users (id, name, passwordEncrypted, role, dateCreated) VALUES (?, ?, ?, ?, ?)",
   },
   UPDATE_USER: {
-    postgres: 'UPDATE users SET "role" = $1 WHERE "id" = $2',
-    sqlite: "UPDATE users SET role = ? WHERE id = ?",
+    postgres:
+      'UPDATE users SET "role" = $1, "tokenVersion" = "tokenVersion" + 1 WHERE "id" = $2',
+    sqlite: "UPDATE users SET role = ?, tokenVersion = tokenVersion + 1 WHERE id = ?",
   },
   UPDATE_PASSWORD: {
-    postgres: 'UPDATE users SET "passwordEncrypted" = $1 WHERE "id" = $2',
-    sqlite: "UPDATE users SET passwordEncrypted = ? WHERE id = ?",
+    postgres:
+      'UPDATE users SET "passwordEncrypted" = $1, "tokenVersion" = "tokenVersion" + 1 WHERE "id" = $2',
+    sqlite:
+      "UPDATE users SET passwordEncrypted = ?, tokenVersion = tokenVersion + 1 WHERE id = ?",
   },
   DELETE_USER: {
     postgres: 'DELETE FROM users WHERE "id" = $1',
     sqlite: "DELETE FROM users WHERE id = ?",
+  },
+  DELETE_USER_TASK_ASSIGNEES: {
+    postgres: 'DELETE FROM task_assignees WHERE "userId" = $1',
+    sqlite: "DELETE FROM task_assignees WHERE userId = ?",
+  },
+  DELETE_USER_PROJECT_USERS: {
+    postgres: 'DELETE FROM project_users WHERE "userId" = $1',
+    sqlite: "DELETE FROM project_users WHERE userId = ?",
+  },
+  DELETE_USER_API_KEYS: {
+    postgres: 'DELETE FROM api_keys WHERE "userId" = $1',
+    sqlite: "DELETE FROM api_keys WHERE userId = ?",
+  },
+  DELETE_USER_PUSH_SUBSCRIPTIONS: {
+    postgres: 'DELETE FROM push_subscriptions WHERE "userId" = $1',
+    sqlite: "DELETE FROM push_subscriptions WHERE userId = ?",
   },
 };

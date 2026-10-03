@@ -2,8 +2,9 @@
 // from very light to very dark), so colored chips stay readable
 export function readableTextColor(hex: string): string {
   const match = /^#([0-9a-f]{6})$/i.exec((hex || "").trim());
-  if (!match) return "#ffffff";
-  const value = parseInt(match[1], 16);
+  const hexDigits = match?.[1];
+  if (!hexDigits) return "#ffffff";
+  const value = parseInt(hexDigits, 16);
   const r = (value >> 16) & 0xff;
   const g = (value >> 8) & 0xff;
   const b = value & 0xff;

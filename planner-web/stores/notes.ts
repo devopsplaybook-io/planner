@@ -81,7 +81,7 @@ export const useNotesStore = defineStore("notes", {
       const res = await api.post(`/notes/${noteId}/comments`, { text });
       const noteIdx = this.notes.findIndex((n) => n.id === noteId);
       if (noteIdx >= 0) {
-        this.notes[noteIdx].comments.push(res.data);
+        this.notes[noteIdx]?.comments.push(res.data);
       }
       if (this.currentNote?.id === noteId) {
         this.currentNote.comments.push(res.data);

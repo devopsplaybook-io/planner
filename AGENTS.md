@@ -71,7 +71,7 @@ planner/
 - **Language**: TypeScript
 - **Framework**: Fastify
 - **Database**: SQLite via `better-sqlite3` (with optional PostgreSQL support)
-- **Libraries**: `@devopsplaybook.io/common-utils`, `@devopsplaybook.io/otel-utils-fastify`
+- **Libraries**: `@devopsplaybook.io/otel-utils`, `@devopsplaybook.io/otel-utils-fastify`
 - **Build**: `tsc` (compiles `src/` to `dist/`) + spec type-check (`tsc --noEmit`)
 - **Dev mode**: `tsx watch` (hot-reload)
 - **Tests**: Jest with `@swc/jest` (v8 coverage), files named `*.spec.ts` alongside source
@@ -97,16 +97,15 @@ planner/
 
 ### Docker
 
-- Multi-stage build: builder stage compiles server + generates web, runtime stage uses `node:24-alpine`
-- Single container serves both API and static web files
-- Entrypoint replaces placeholder `APPLICATION_TITLE` in PWA manifest at startup
+- Multi-stage build: builder stage compiles server + generates web, runtime stage uses `node:26-alpine`
+- Single container serves both API and static web files (`dist/App.js` serves the API and the generated `web/` directory)
 
 ## CI/CD
 
 GitHub Actions workflows are defined in `.github/workflows/`, reusing shared workflows from `devopsplaybook-io/common-utils`:
 
-- **`main-build.yml`**: On push to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server`, then builds & pushes multi-arch Docker image to Docker Hub.
-- **`pr-check.yml`**: On PR to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server`, then builds & pushes a `beta` Docker image.
+- **`main-build.yml`**: On push to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server` and `planner-web`, then builds & pushes multi-arch Docker image to Docker Hub.
+- **`pr-check.yml`**: On PR to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server` and `planner-web`, then builds & pushes a `beta` Docker image.
 - **`npm-upgrade.yml`**: Weekly schedule (Mon 6:00). Runs `npx npm-check-updates -u` on all npm services and creates an upgrade PR.
 
 Secrets required in GitHub repository:
@@ -121,4 +120,4 @@ Secrets required in GitHub repository:
 Refer to the **After implementation** workflow above for the standard validation sequence. The project-specific commands for running checks are:
 
 - **Server update**: Run `npm run test`, `npm run build`, and `npm run lint` in `planner-server/`. Also update unit tests: remove unused tests and add new coverage for new code.
-- **Web update**: Run `npm run build` (or `npm run generate`) in `planner-web/`
+- **Web update**: Run `npm run test` (Nuxt type-check + Vitest), `npm run lint` and `npm run build` (or `npm run generate`) in `planner-web/`

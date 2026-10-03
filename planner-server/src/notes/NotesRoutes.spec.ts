@@ -8,9 +8,9 @@ import {
   NotesDataList,
   NotesDataUpdate,
   addNoteComment,
-  clearNoteLabels,
   deleteNoteAttachment,
   getNoteAttachment,
+  replaceNoteLabels,
 } from "./NotesData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { ProjectsDataGet } from "../projects/ProjectsData";
@@ -29,7 +29,7 @@ jest.mock("./NotesData", () => ({
   deleteNoteComment: jest.fn(),
   getNoteComment: jest.fn(),
   updateNoteComment: jest.fn(),
-  clearNoteLabels: jest.fn(),
+  replaceNoteLabels: jest.fn(),
   addNoteLabel: jest.fn(),
   addNoteAttachment: jest.fn(),
   deleteNoteAttachment: jest.fn(),
@@ -290,6 +290,24 @@ describe("NotesRoutes project visibility", () => {
     expect(NotesDataDelete).not.toHaveBeenCalled();
   });
 
+  it("should reject the list for unauthenticated requests with 401", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const res = await app.inject({ method: "GET", url: "/" });
+    expect(res.statusCode).toBe(401);
+    expect(NotesDataList).not.toHaveBeenCalled();
+  });
+
+  it("should reject reading a note without a session with 401", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const res = await app.inject({ method: "GET", url: "/note-1" });
+    expect(res.statusCode).toBe(401);
+    expect(NotesDataGet).not.toHaveBeenCalled();
+  });
+
   // ==================== SUB-RESOURCES ====================
   it("should reject comments on a note the user cannot see", async () => {
     const note = makeNote(hiddenProject);
@@ -314,7 +332,54 @@ describe("NotesRoutes project visibility", () => {
       payload: { labels: ["idea"] },
     });
     expect(res.statusCode).toBe(404);
-    expect(clearNoteLabels).not.toHaveBeenCalled();
+    expect(replaceNoteLabels).not.toHaveBeenCalled();
+  });
+
+  it("should replace the note labels atomically with a single call", async () => {
+    const note = makeNote(publicProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${note.id}/labels`,
+      payload: { labels: ["idea", "draft"] },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(replaceNoteLabels).toHaveBeenCalledTimes(1);
+    expect(replaceNoteLabels).toHaveBeenCalledWith(note.id, ["idea", "draft"]);
+  });
+
+  it("should accept an empty labels array as clearing all labels", async () => {
+    const note = makeNote(publicProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${note.id}/labels`,
+      payload: { labels: [] },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(replaceNoteLabels).toHaveBeenCalledWith(note.id, []);
+  });
+
+  it("should answer 400 when labels is not an array of strings", async () => {
+    const note = makeNote(publicProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    for (const labels of [null, "idea", [1], [{}]]) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/${note.id}/labels`,
+        payload: { labels },
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    expect(replaceNoteLabels).not.toHaveBeenCalled();
   });
 
   it("should reject attachment deletion on a note the user cannot see", async () => {
@@ -441,7 +506,7 @@ describe("NotesRoutes archived project guard", () => {
       payload: { labels: ["important"] },
     });
     expect(res.statusCode).toBe(400);
-    expect(clearNoteLabels).not.toHaveBeenCalled();
+    expect(replaceNoteLabels).not.toHaveBeenCalled();
   });
 
   it("should still read a note in an archived project", async () => {

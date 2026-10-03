@@ -56,7 +56,7 @@ export class ProjectsRoutes {
     fastify.get("/", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       // Admins bypass visibility and manage every project; other users only
       // see public projects and restricted projects they are a member of.
@@ -70,7 +70,7 @@ export class ProjectsRoutes {
     fastify.get<{ Params: { id: string } }>("/:id", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
-        return res.status(403).send({ error: "Access Denied" });
+        return res.status(401).send({ error: "Access Denied" });
       }
       const project = await ProjectsDataGet(req.params.id);
       if (!project || !isProjectVisible(project, userSession)) {

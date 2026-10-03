@@ -16,19 +16,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for error handling
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 403) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
-      }
+/**
+ * Response error handling. Only 401 ends the session; 403 is an ordinary
+ * permission error that individual call sites handle (e.g. hiding an
+ * admin-only view).
+ */
+export function handleResponseError(error: unknown): Promise<never> {
+  const status = (error as { response?: { status?: number } })?.response
+    ?.status;
+  if (status === 401) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
     }
-    return Promise.reject(error);
-  },
-);
+  }
+  return Promise.reject(error);
+}
+
+api.interceptors.response.use((response) => response, handleResponseError);
 
 export default api;

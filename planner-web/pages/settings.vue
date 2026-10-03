@@ -69,17 +69,16 @@
       </p>
       <div v-if="apiKey" class="api-key-display">
         <label>
-          Your API key
+          Your API key (masked)
           <div class="api-key-input-row">
+            <!-- Only the masked prefix is stored server-side; the full key
+                 exists only in the one-time "New API key" block below -->
             <input
               :value="apiKey.key"
               type="text"
               readonly
               class="api-key-input"
             />
-            <button class="btn-copy" @click="copyApiKey">
-              <i class="bi bi-clipboard" /> Copy
-            </button>
           </div>
         </label>
         <small class="api-key-date"
@@ -237,10 +236,6 @@ async function deleteApiKey() {
   } finally {
     deletingKey.value = false;
   }
-}
-
-function copyApiKey() {
-  navigator.clipboard.writeText(apiKey.value.key);
 }
 
 function copyNewKey() {

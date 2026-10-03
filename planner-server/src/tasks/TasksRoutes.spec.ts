@@ -1,7 +1,28 @@
 import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
-import { parseDoneSince, parseProjectIds, TasksRoutes } from "./TasksRoutes";
-import { TasksDataAdd, TasksDataDelete, TasksDataGet, TasksDataList, TasksDataUpdate, addAssignee, addComment, addLabel, addTaskAttachment, clearLabels, deleteTaskAttachment, getTaskAttachment, removeAssignee } from "./TasksData";
+import { Readable } from "stream";
+import {
+  parseDoneSince,
+  parseLimit,
+  parseOffset,
+  parseProjectIds,
+  TASKS_DEFAULT_LIMIT,
+  TasksRoutes,
+} from "./TasksRoutes";
+import {
+  TasksDataAdd,
+  TasksDataDelete,
+  TasksDataGet,
+  TasksDataList,
+  TasksDataUpdate,
+  addAssignee,
+  addComment,
+  addTaskAttachment,
+  deleteTaskAttachment,
+  getTaskAttachment,
+  removeAssignee,
+  replaceLabels,
+} from "./TasksData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { ProjectsDataGet } from "../projects/ProjectsData";
 import { TaskImproveText } from "./TaskImprove";
@@ -23,8 +44,7 @@ jest.mock("./TasksData", () => ({
   deleteComment: jest.fn(),
   getComment: jest.fn(),
   updateComment: jest.fn(),
-  clearLabels: jest.fn(),
-  addLabel: jest.fn(),
+  replaceLabels: jest.fn(),
   addTaskAttachment: jest.fn(),
   deleteTaskAttachment: jest.fn(),
   getTaskAttachment: jest.fn(),
@@ -112,6 +132,45 @@ describe("parseProjectIds", () => {
   });
 });
 
+describe("parseLimit", () => {
+  it("should default when absent or empty", () => {
+    expect(parseLimit(undefined)).toBe(TASKS_DEFAULT_LIMIT);
+    expect(parseLimit(null)).toBe(TASKS_DEFAULT_LIMIT);
+    expect(parseLimit("")).toBe(TASKS_DEFAULT_LIMIT);
+  });
+
+  it("should accept positive integers", () => {
+    expect(parseLimit("1")).toBe(1);
+    expect(parseLimit("250")).toBe(250);
+  });
+
+  it("should reject zero, negatives and non-integers", () => {
+    expect(() => parseLimit("0")).toThrow();
+    expect(() => parseLimit("-5")).toThrow();
+    expect(() => parseLimit("1.5")).toThrow();
+    expect(() => parseLimit("abc")).toThrow();
+  });
+});
+
+describe("parseOffset", () => {
+  it("should default to 0 when absent or empty", () => {
+    expect(parseOffset(undefined)).toBe(0);
+    expect(parseOffset(null)).toBe(0);
+    expect(parseOffset("")).toBe(0);
+  });
+
+  it("should accept non-negative integers", () => {
+    expect(parseOffset("0")).toBe(0);
+    expect(parseOffset("40")).toBe(40);
+  });
+
+  it("should reject negatives and non-integers", () => {
+    expect(() => parseOffset("-1")).toThrow();
+    expect(() => parseOffset("2.5")).toThrow();
+    expect(() => parseOffset("abc")).toThrow();
+  });
+});
+
 describe("TasksRoutes project visibility", () => {
   let app: FastifyInstance;
 
@@ -170,7 +229,11 @@ describe("TasksRoutes project visibility", () => {
     expect(res.statusCode).toBe(200);
     expect(TasksDataList).toHaveBeenCalledWith({
       projectId: undefined,
+      projectIds: undefined,
       doneSince: undefined,
+      q: undefined,
+      limit: TASKS_DEFAULT_LIMIT,
+      offset: 0,
       visibleTo: { userId: "user-1" },
     });
   });
@@ -180,17 +243,21 @@ describe("TasksRoutes project visibility", () => {
     await app.inject({ method: "GET", url: "/" });
     expect(TasksDataList).toHaveBeenCalledWith({
       projectId: undefined,
+      projectIds: undefined,
       doneSince: undefined,
+      q: undefined,
+      limit: TASKS_DEFAULT_LIMIT,
+      offset: 0,
       visibleTo: undefined,
     });
   });
 
-  it("should reject the list for unauthenticated requests", async () => {
+  it("should reject the list for unauthenticated requests with 401", async () => {
     (AuthGetUserSession as jest.Mock).mockResolvedValue({
       isAuthenticated: false,
     });
     const res = await app.inject({ method: "GET", url: "/" });
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).toBe(401);
     expect(TasksDataList).not.toHaveBeenCalled();
   });
 
@@ -198,8 +265,11 @@ describe("TasksRoutes project visibility", () => {
     await app.inject({ method: "GET", url: "/?q=report" });
     expect(TasksDataList).toHaveBeenCalledWith({
       projectId: undefined,
+      projectIds: undefined,
       doneSince: undefined,
       q: "report",
+      limit: TASKS_DEFAULT_LIMIT,
+      offset: 0,
       visibleTo: { userId: "user-1" },
     });
   });
@@ -208,8 +278,11 @@ describe("TasksRoutes project visibility", () => {
     await app.inject({ method: "GET", url: "/?q=%20%20" });
     expect(TasksDataList).toHaveBeenCalledWith({
       projectId: undefined,
+      projectIds: undefined,
       doneSince: undefined,
       q: undefined,
+      limit: TASKS_DEFAULT_LIMIT,
+      offset: 0,
       visibleTo: { userId: "user-1" },
     });
   });
@@ -224,6 +297,8 @@ describe("TasksRoutes project visibility", () => {
       projectIds: ["proj-1", "proj-2"],
       doneSince: undefined,
       q: undefined,
+      limit: TASKS_DEFAULT_LIMIT,
+      offset: 0,
       visibleTo: { userId: "user-1" },
     });
   });
@@ -231,7 +306,35 @@ describe("TasksRoutes project visibility", () => {
   it("should not set projectIds when the param is absent", async () => {
     await app.inject({ method: "GET", url: "/" });
     expect(TasksDataList).toHaveBeenCalledWith(
-      expect.not.objectContaining({ projectIds: expect.anything() }),
+      expect.objectContaining({ projectIds: undefined }),
+    );
+  });
+
+  it("should forward limit and offset for pagination", async () => {
+    await app.inject({ method: "GET", url: "/?limit=5&offset=10" });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 5, offset: 10 }),
+    );
+  });
+
+  it("should answer 400 for an invalid limit or offset", async () => {
+    for (const url of ["/?limit=0", "/?limit=abc", "/?limit=-1", "/?offset=-1", "/?offset=1.5"]) {
+      const res = await app.inject({ method: "GET", url });
+      expect(res.statusCode).toBe(400);
+    }
+    expect(TasksDataList).not.toHaveBeenCalled();
+  });
+
+  it("should answer 400 for an invalid doneSince", async () => {
+    const res = await app.inject({ method: "GET", url: "/?doneSince=garbage" });
+    expect(res.statusCode).toBe(400);
+    expect(TasksDataList).not.toHaveBeenCalled();
+  });
+
+  it("should forward a normalized doneSince", async () => {
+    await app.inject({ method: "GET", url: "/?doneSince=2026-08-14" });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      expect.objectContaining({ doneSince: "2026-08-14T00:00:00.000Z" }),
     );
   });
 
@@ -296,6 +399,33 @@ describe("TasksRoutes project visibility", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(TasksDataAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it("should reject creating a task with a status outside the project catalog", async () => {
+    const project = makeProject("public", []);
+    project.statuses = ["To Do", "Done"];
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: project.id, title: "New", status: "Nonsense" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("status");
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should create a task with a status from the project catalog", async () => {
+    const project = makeProject("public", []);
+    project.statuses = ["To Do", "Done"];
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: project.id, title: "New", status: "Done" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect((TasksDataAdd as jest.Mock).mock.calls[0][0].status).toBe("Done");
   });
 
   // ==================== UPDATE / DELETE ====================
@@ -482,6 +612,76 @@ describe("TasksRoutes project visibility", () => {
     expect(TasksDataUpdate).toHaveBeenCalledTimes(1);
   });
 
+  // ==================== STATUS VALIDATION ====================
+  it("should reject updating a task to a status outside the project catalog", async () => {
+    const project = makeProject("public", []);
+    project.statuses = ["To Do", "Done"];
+    const task = makeTask(project);
+    task.status = "To Do";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Nonsense" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("status");
+    expect(TasksDataUpdate).not.toHaveBeenCalled();
+    expect(task.status).toBe("To Do");
+  });
+
+  it("should accept updating a task to a status from the project catalog", async () => {
+    const project = makeProject("public", []);
+    project.statuses = ["To Do", "Done"];
+    const task = makeTask(project);
+    task.status = "To Do";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done" },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(task.status).toBe("Done");
+    expect(TasksDataUpdate).toHaveBeenCalledWith(task);
+  });
+
+  it("should validate the status against the move target project", async () => {
+    const from = makeProject("public", []);
+    from.statuses = ["To Do"];
+    const to = makeProject("public", []);
+    to.statuses = ["Backlog", "Done"];
+    const task = makeTask(from);
+    task.status = "To Do";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === to.id ? to : from,
+    );
+
+    const rejected = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { projectId: to.id, status: "Nonsense" },
+    });
+    expect(rejected.statusCode).toBe(400);
+    expect(task.projectId).toBe(from.id);
+
+    const accepted = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { projectId: to.id, status: "Done" },
+    });
+    expect(accepted.statusCode).toBe(201);
+    expect(task.projectId).toBe(to.id);
+    expect(task.status).toBe("Done");
+  });
+
   // ==================== SUB-RESOURCES ====================
   it("should reject comments on a task the user cannot see", async () => {
     const task = makeTask(hiddenProject);
@@ -519,8 +719,147 @@ describe("TasksRoutes project visibility", () => {
       payload: { labels: ["urgent"] },
     });
     expect(res.statusCode).toBe(404);
-    expect(clearLabels).not.toHaveBeenCalled();
-    expect(addLabel).not.toHaveBeenCalled();
+    expect(replaceLabels).not.toHaveBeenCalled();
+  });
+
+  it("should replace the labels atomically with a single call", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/labels`,
+      payload: { labels: ["urgent", "bug"] },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(replaceLabels).toHaveBeenCalledTimes(1);
+    expect(replaceLabels).toHaveBeenCalledWith(task.id, ["urgent", "bug"]);
+  });
+
+  it("should accept an empty labels array as clearing all labels", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/labels`,
+      payload: { labels: [] },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(replaceLabels).toHaveBeenCalledWith(task.id, []);
+  });
+
+  it("should answer 400 when labels is not an array of strings", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    for (const labels of [null, "urgent", [1, 2], [{}], [["nested"]]]) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/${task.id}/labels`,
+        payload: { labels },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain("labels");
+    }
+    expect(replaceLabels).not.toHaveBeenCalled();
+  });
+
+  // ==================== ATTACHMENTS ====================
+  it("should answer 401 for attachment downloads without a session", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/task-1/attachments/att-1",
+    });
+    expect(res.statusCode).toBe(401);
+    expect(getTaskAttachment).not.toHaveBeenCalled();
+  });
+
+  it("should serve a raster image inline with a sandbox CSP", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (getTaskAttachment as jest.Mock).mockResolvedValue({
+      id: "att-1",
+      taskId: task.id,
+      fileName: "photo.png",
+      filePath: "/data/attachments/tasks/att-1.png",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["fake-bytes"]));
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/${task.id}/attachments/att-1?inline=true`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("image/png");
+    expect(res.headers["content-disposition"]).toContain("inline");
+    expect(res.headers["content-security-policy"]).toBe("sandbox");
+  });
+
+  it("should always force SVG files to download, even with inline=true", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (getTaskAttachment as jest.Mock).mockResolvedValue({
+      id: "att-2",
+      taskId: task.id,
+      fileName: "logo.svg",
+      filePath: "/data/attachments/tasks/att-2.svg",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["<svg/>"]));
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/${task.id}/attachments/att-2?inline=true`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-disposition"]).toContain("attachment");
+    expect(res.headers["content-disposition"]).not.toContain("inline");
+    expect(res.headers["content-security-policy"]).toBeUndefined();
+  });
+
+  it("should serve non-image files as attachments", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (getTaskAttachment as jest.Mock).mockResolvedValue({
+      id: "att-3",
+      taskId: task.id,
+      fileName: "spec.pdf",
+      filePath: "/data/attachments/tasks/att-3.pdf",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["pdf"]));
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/${task.id}/attachments/att-3`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-disposition"]).toContain("attachment");
   });
 
   it("should reject assignee removal on a task the user cannot see", async () => {
@@ -791,7 +1130,7 @@ describe("TasksRoutes archived project guard", () => {
       payload: { labels: ["urgent"] },
     });
     expect(res.statusCode).toBe(400);
-    expect(clearLabels).not.toHaveBeenCalled();
+    expect(replaceLabels).not.toHaveBeenCalled();
   });
 
   it("should still read a task in an archived project", async () => {

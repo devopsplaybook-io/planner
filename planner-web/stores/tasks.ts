@@ -166,7 +166,7 @@ export const useTasksStore = defineStore("tasks", {
       const res = await api.post(`/tasks/${taskId}/comments`, { text });
       const taskIdx = this.tasks.findIndex((t) => t.id === taskId);
       if (taskIdx >= 0) {
-        this.tasks[taskIdx].comments.push(res.data);
+        this.tasks[taskIdx]?.comments.push(res.data);
       }
       if (this.currentTask?.id === taskId) {
         this.currentTask.comments.push(res.data);

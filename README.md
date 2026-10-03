@@ -59,15 +59,18 @@ See [`docs/deployments`](docs/deployments) for additional deployment options.
 
 Configuration can be provided via a JSON configuration file (e.g., using a ConfigMap) or environment variables.
 
-| Parameter             | Description                            | Default             | Availability                        |
-| --------------------- | -------------------------------------- | ------------------- | ----------------------------------- |
-| APPLICATION_TITLE     | Application title                      | Planner             | Config file or environment variable |
-| API_PORT              | API server port                        | 8080                | Config file or environment variable |
-| CORS_POLICY_ORIGIN    | CORS origin policy                     |                     | Config file or environment variable |
-| JWT_KEY               | JWT signing key                        | dev                 | Config file or environment variable |
-| JWT_VALIDITY_DURATION | JWT token validity duration in seconds | `2592000` (30 days) | Config file or environment variable |
-| DATABASE_TYPE         | Database type (`sqlite` or `postgres`) | sqlite              | Config file or environment variable |
-| DATA_DIR              | Data directory                         | /data               | Config file or environment variable |
+| Parameter             | Description                                          | Default             | Availability                        |
+| --------------------- | ---------------------------------------------------- | ------------------- | ----------------------------------- |
+| API_PORT              | API server port                                      | 8080                | Config file or environment variable |
+| ATTACHMENT_MAX_SIZE   | Maximum attachment size in megabytes                 | `10`                | Config file or environment variable |
+| CORS_POLICY_ORIGIN    | CORS origin policy (empty = same-origin only)        |                     | Config file or environment variable |
+| DATABASE_TYPE         | Database type (`sqlite` or `postgres`)               | sqlite              | Config file or environment variable |
+| DATA_DIR              | Data directory                                       | /data               | Config file or environment variable |
+| DEV_MODE              | Skip the JWT_KEY requirement (local development)     | `false`             | Environment variable                |
+| JWT_KEY               | JWT signing key (required; refuses empty or `"dev"`) |                     | Config file or environment variable |
+| JWT_VALIDITY_DURATION | JWT token validity duration in seconds               | `2592000` (30 days) | Config file or environment variable |
+
+> **JWT_KEY is mandatory**: the server refuses to start when `JWT_KEY` is empty or set to the placeholder `"dev"` (unless `DEV_MODE=true`). Generate one with `openssl rand -hex 32` and provide it via a Secret / environment variable. To rotate it, change the value and restart the server: all user sessions are invalidated (API keys are unaffected).
 
 ## LLM Recommendation
 
@@ -80,6 +83,8 @@ Planner can generate task recommendations using any OpenAI-compatible chat compl
 | `LLM_MODEL`                        | Model name to use                                      | `deepseek-chat`                             |
 | `LLM_RECOMMENDATION_ENABLED`       | Enable LLM-based task recommendations                  | `false`                                     |
 | `LLM_RECOMMENDATION_SCHEDULE_CRON` | Cron expression for recommendation schedule (UTC time) | `0 0 * * *` (daily at midnight)             |
+| `RATE_LIMIT_LLM_IMPROVE_MAX`       | Max `improve` requests per user per hour               | `30`                                        |
+| `RATE_LIMIT_LLM_REGENERATE_MAX`    | Max recommendation regenerations per user per hour     | `5`                                         |
 
 ## Web Push Notifications
 
