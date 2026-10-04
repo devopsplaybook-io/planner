@@ -50,6 +50,7 @@ Each view provides a different perspective on the same task data.
 - [x] Each entry shows a short description of the change (the same human-readable summaries the server computes for the task-update notifications)
 - [x] The page shows a loading indicator while fetching and an empty state when there are no updates
 - [x] Entries are grouped per calendar day in the user's timezone: each group has a day header ("Today", "Yesterday", otherwise the full localized date), newest day first and newest entries first within a day
+- [x] Consecutive entries made by the same user on the same task at the same displayed relative time are collapsed into a single card that lists one summary line per change; an update by a different user or on a different task in between keeps the following entries separate, and grouping never crosses a day header (computed client-side)
 - [x] Older pages load automatically with infinite scroll as the user nears the bottom of the feed (offset-based pagination, 50 entries per page); a manual "Load more" retry is shown if loading a page fails
 - [x] The layout is responsive (single-column list on mobile)
 
