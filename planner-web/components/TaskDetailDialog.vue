@@ -1484,7 +1484,7 @@ async function downloadAttachment(att) {
 
 .meta-section {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: var(--space-xs);
   margin-bottom: var(--space-sm);
   padding: var(--space-2xs) var(--space-sm);
@@ -1512,6 +1512,12 @@ async function downloadAttachment(att) {
 .meta-field select,
 .meta-field input {
   margin: 0;
+}
+
+/* ProjectSelect sets min-width: 10rem; let it shrink to its grid track so it
+   cannot overlap the neighboring meta field on narrow tracks */
+.meta-field :deep(.project-select) {
+  min-width: 0;
 }
 
 section {

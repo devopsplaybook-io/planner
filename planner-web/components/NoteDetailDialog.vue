@@ -660,7 +660,7 @@ async function downloadAttachment(att) {
 
 .meta-section {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
   padding: var(--space-sm);
