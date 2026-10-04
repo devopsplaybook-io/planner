@@ -19,13 +19,16 @@ import {
   addComment,
   addTaskAttachment,
   deleteTaskAttachment,
+  getComment,
   getTaskAttachment,
   removeAssignee,
   replaceLabels,
 } from "./TasksData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
+import { UsersDataGet } from "../users/UsersData";
 import { ProjectsDataGet } from "../projects/ProjectsData";
 import { TaskImproveText } from "./TaskImprove";
+import { TaskActivityDataAdd, TaskActivityDataList } from "./TaskActivityData";
 import { Task } from "../model/Task";
 import { Project } from "../model/Project";
 
@@ -52,6 +55,11 @@ jest.mock("./TasksData", () => ({
 
 jest.mock("./TaskImprove", () => ({
   TaskImproveText: jest.fn(),
+}));
+
+jest.mock("./TaskActivityData", () => ({
+  TaskActivityDataAdd: jest.fn(),
+  TaskActivityDataList: jest.fn(async () => []),
 }));
 
 jest.mock("../users/Auth", () => ({
@@ -1168,5 +1176,320 @@ describe("TasksRoutes archived project guard", () => {
     const res = await app.inject({ method: "DELETE", url: `/${task.id}` });
     expect(res.statusCode).toBe(201);
     expect(TasksDataDelete).toHaveBeenCalledWith(task.id);
+  });
+});
+
+describe("TasksRoutes update feed (activity)", () => {
+  let app: FastifyInstance;
+
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const adminSession = {
+    isAuthenticated: true,
+    userId: "admin-1",
+    userName: "Admin",
+    role: "admin" as const,
+  };
+
+  function makeTask(project: Project): Task {
+    const task = new Task();
+    task.projectId = project.id;
+    task.title = "Task";
+    return task;
+  }
+
+  function makeProject(visibility: string, userAccess: string[]): Project {
+    const project = new Project();
+    project.name = "P";
+    project.visibility = visibility;
+    project.userAccess = userAccess;
+    return project;
+  }
+
+  const publicProject = makeProject("public", []);
+
+  beforeAll(async () => {
+    app = Fastify();
+    await new TasksRoutes().getRoutes(app);
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (AuthMustBeAuthenticated as jest.Mock).mockResolvedValue(undefined);
+    (TaskActivityDataList as jest.Mock).mockResolvedValue([]);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  // ==================== GET /activity ====================
+  it("should answer 401 for unauthenticated requests", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const res = await app.inject({ method: "GET", url: "/activity" });
+    expect(res.statusCode).toBe(401);
+    expect(TaskActivityDataList).not.toHaveBeenCalled();
+  });
+
+  it("should scope the feed to the tasks the user is assigned to, visible projects only", async () => {
+    const res = await app.inject({ method: "GET", url: "/activity" });
+    expect(res.statusCode).toBe(200);
+    expect(TaskActivityDataList).toHaveBeenCalledWith({
+      assigneeUserId: "user-1",
+      limit: TASKS_DEFAULT_LIMIT,
+      offset: 0,
+      visibleTo: { userId: "user-1" },
+    });
+  });
+
+  it("should give admins the visibility bypass but keep the assignee scope", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(adminSession);
+    await app.inject({ method: "GET", url: "/activity" });
+    expect(TaskActivityDataList).toHaveBeenCalledWith({
+      assigneeUserId: "admin-1",
+      limit: TASKS_DEFAULT_LIMIT,
+      offset: 0,
+      visibleTo: undefined,
+    });
+  });
+
+  it("should forward limit and offset for pagination", async () => {
+    await app.inject({ method: "GET", url: "/activity?limit=5&offset=10" });
+    expect(TaskActivityDataList).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assigneeUserId: "user-1",
+        limit: 5,
+        offset: 10,
+      }),
+    );
+  });
+
+  it("should answer 400 for an invalid limit or offset", async () => {
+    for (const url of [
+      "/activity?limit=0",
+      "/activity?limit=abc",
+      "/activity?offset=-1",
+      "/activity?offset=1.5",
+    ]) {
+      const res = await app.inject({ method: "GET", url });
+      expect(res.statusCode).toBe(400);
+    }
+    expect(TaskActivityDataList).not.toHaveBeenCalled();
+  });
+
+  it("should return the feed entries", async () => {
+    const entries = [
+      {
+        id: "act-1",
+        taskId: "task-1",
+        taskTitle: "Write report",
+        actorName: "User",
+        summary: "New comment",
+        dateCreated: "2026-10-04T08:00:00.000Z",
+      },
+    ];
+    (TaskActivityDataList as jest.Mock).mockResolvedValue(entries);
+    const res = await app.inject({ method: "GET", url: "/activity" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(entries);
+  });
+
+  // ==================== RECORDING ====================
+  it("should record an activity entry with the change summary on task update", async () => {
+    const task = makeTask(publicProject);
+    task.status = "To Do";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done", dueDate: "2026-10-10" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "status: Done, due date",
+    );
+  });
+
+  it("should not record an activity entry when a task update changes nothing", async () => {
+    const task = makeTask(publicProject);
+    task.status = "To Do";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    await app.inject({ method: "PUT", url: `/${task.id}`, payload: {} });
+    expect(TaskActivityDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should not record an activity entry on task creation", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: publicProject.id, title: "New" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TaskActivityDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should record an activity entry when a comment is added", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (UsersDataGet as jest.Mock).mockResolvedValue({ name: "User" });
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/comments`,
+      payload: { text: "Hello" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "New comment",
+    );
+  });
+
+  it("should record an activity entry when a comment is updated", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (getComment as jest.Mock).mockResolvedValue({
+      id: "c-1",
+      userId: "user-1",
+      text: "Hello",
+    });
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}/comments/c-1`,
+      payload: { text: "Edited" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "Comment updated",
+    );
+  });
+
+  it("should record an activity entry when a comment is deleted", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (getComment as jest.Mock).mockResolvedValue({
+      id: "c-1",
+      userId: "user-1",
+      text: "Hello",
+    });
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/${task.id}/comments/c-1`,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "Comment deleted",
+    );
+  });
+
+  it("should record an activity entry when an assignee is added", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/assignees`,
+      payload: { userId: "user-2" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "Assignees updated",
+    );
+  });
+
+  it("should record an activity entry when an assignee is removed", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/${task.id}/assignees/user-2`,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "Assignees updated",
+    );
+  });
+
+  it("should record an activity entry when labels are updated", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/labels`,
+      payload: { labels: ["urgent"] },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "Labels updated",
+    );
+  });
+
+  it("should record an activity entry when an attachment is deleted", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (getTaskAttachment as jest.Mock).mockResolvedValue({
+      id: "att-1",
+      fileName: "f.pdf",
+      filePath: "/data/attachments/tasks/att-1.pdf",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+      taskId: task.id,
+    });
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/${task.id}/attachments/att-1`,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "Attachment deleted",
+    );
+  });
+
+  it("should not fail the mutation when recording the activity fails", async () => {
+    const task = makeTask(publicProject);
+    task.status = "To Do";
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (TaskActivityDataAdd as jest.Mock).mockRejectedValueOnce(
+      new Error("db down"),
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TasksDataUpdate).toHaveBeenCalledWith(task);
   });
 });

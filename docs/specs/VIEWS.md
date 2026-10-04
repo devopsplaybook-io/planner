@@ -38,6 +38,19 @@ Each view provides a different perspective on the same task data.
 - [x] The task-name column has the same width for every row and never exceeds 30% of the timeline's width; long titles and assignee lists are truncated with an ellipsis
 - [x] The History page is computed client-side from the existing tasks API (no server-side changes); a loading indicator is shown while fetching
 
+### Update Feed View
+
+- [x] The Update Feed page is reachable from a link at the very bottom of the dashboard, next to the History link (no side-menu entry); both links have comfortable spacing at the bottom of the page
+- [x] The feed lists the latest activity (comments and task updates) on the tasks the current user is assigned to
+- [x] The feed is scoped to the tasks the user is assigned to and to projects visible to the user (see [PROJECTS.md](PROJECTS.md)); admins get the visibility bypass but the feed still only covers their assigned tasks
+- [x] Entries are sorted by date, newest first
+- [x] Each entry shows the task title, opens the task detail dialog when clicked (same `?taskId=` deep-link as everywhere else)
+- [x] Each entry shows the date of the update (relative time with the full date on hover)
+- [x] Each entry shows a short description of the change (the same human-readable summaries the server computes for the task-update notifications)
+- [x] The page shows a loading indicator while fetching and an empty state when there are no updates
+- [x] Older entries are loaded with a "Load more" button (offset-based pagination, 50 entries per page)
+- [x] The layout is responsive (single-column list on mobile)
+
 ### Calendar View
 
 - [x] Displays tasks on a calendar based on their due dates.
@@ -56,4 +69,4 @@ Each view provides a different perspective on the same task data.
 - [x] Each kanban column has a max-height of 90% of the board height; the task list inside the column scrolls with an internal vertical scrollbar while the column header stays visible; on mobile (viewport ≤ 767px) the column minimum height is increased to 300px
 - [x] Tasks in each column are ordered by last update date, newest first (the most recently updated task appears at the top of its column).
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-20_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-04_
