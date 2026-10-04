@@ -1,5 +1,5 @@
 <template>
-  <div class="update-feed-page">
+  <div ref="pageRoot" class="update-feed-page">
     <header class="page-header">
       <hgroup>
         <h1>Update Feed</h1>
@@ -17,61 +17,69 @@
 
       <template v-else>
         <div class="feed-list">
-          <!-- div, not article: the shared item-card pattern is built for divs
-               (bare <article> carries Pico's own card padding and header/footer
-               margins — same reason TaskCard/NoteCard/ProjectCard are divs) -->
-          <div
-            v-for="entry in entries"
-            :key="entry.id"
-            class="item-card feed-entry"
-            role="button"
-            tabindex="0"
-            :title="entry.taskTitle"
-            @click="openTask(entry.taskId)"
-            @keydown.enter="openTask(entry.taskId)"
+          <section
+            v-for="group in groups"
+            :key="group.key"
+            class="day-group"
           >
-            <div class="card-accent" />
-            <div class="card-body">
-              <header>
-                <div class="card-title-row">
-                  <span class="item-icon"><i class="bi bi-kanban" /></span>
-                  <span class="item-title">{{ entry.taskTitle }}</span>
-                </div>
-                <small
-                  class="card-date"
-                  :title="formatFullDate(entry.dateCreated)"
-                >
-                  {{ formatRelativeTime(entry.dateCreated) }}
-                </small>
-              </header>
-              <p class="card-desc">
-                <span v-if="entry.actorName" class="entry-actor">
-                  <i class="bi bi-person-fill" /> {{ entry.actorName }}
-                </span>
-                {{ entry.summary }}
-              </p>
-              <footer>
-                <span
-                  class="status-badge"
-                  :style="statusBadgeStyle(entry.status)"
-                  :title="entry.status"
-                  >{{ entry.status }}</span
-                >
-                <span
-                  v-if="projectName(entry.projectId)"
-                  class="project-name"
-                  :title="projectName(entry.projectId)"
-                  >{{ projectName(entry.projectId) }}</span
-                >
-              </footer>
+            <h2 class="day-header">{{ group.label }}</h2>
+            <!-- div, not article: the shared item-card pattern is built for divs
+                 (bare <article> carries Pico's own card padding and header/footer
+                 margins — same reason TaskCard/NoteCard/ProjectCard are divs) -->
+            <div
+              v-for="entry in group.entries"
+              :key="entry.id"
+              class="item-card feed-entry"
+              role="button"
+              tabindex="0"
+              :title="entry.taskTitle"
+              @click="openTask(entry.taskId)"
+              @keydown.enter="openTask(entry.taskId)"
+            >
+              <div class="card-accent" />
+              <div class="card-body">
+                <header>
+                  <div class="card-title-row">
+                    <span class="item-icon"><i class="bi bi-kanban" /></span>
+                    <span class="item-title">{{ entry.taskTitle }}</span>
+                  </div>
+                  <small
+                    class="card-date"
+                    :title="formatFullDate(entry.dateCreated)"
+                  >
+                    {{ formatRelativeTime(entry.dateCreated) }}
+                  </small>
+                </header>
+                <p class="card-desc">
+                  <span v-if="entry.actorName" class="entry-actor">
+                    <i class="bi bi-person-fill" /> {{ entry.actorName }}
+                  </span>
+                  {{ entry.summary }}
+                </p>
+                <footer>
+                  <span
+                    class="status-badge"
+                    :style="statusBadgeStyle(entry.status)"
+                    :title="entry.status"
+                    >{{ entry.status }}</span
+                  >
+                  <span
+                    v-if="projectName(entry.projectId)"
+                    class="project-name"
+                    :title="projectName(entry.projectId)"
+                    >{{ projectName(entry.projectId) }}</span
+                  >
+                </footer>
+              </div>
             </div>
-          </div>
+          </section>
         </div>
 
-        <div v-if="hasMore" class="load-more">
-          <button :disabled="loadingMore" @click="loadMore">
-            {{ loadingMore ? "Loading…" : "Load more" }}
-          </button>
+        <div v-if="loadingMore" class="loading-more-row">
+          <span class="spinner" aria-hidden="true" /> Loading…
+        </div>
+        <div v-if="loadError && hasMore" class="load-more">
+          <button :disabled="loadingMore" @click="loadMore">Load more</button>
         </div>
       </template>
     </template>
@@ -79,9 +87,11 @@
 </template>
 
 <script setup>
+import { useInfiniteScroll } from "@vueuse/core";
 import { readableTextColor } from "../utils/statusColor";
 import { displayName } from "../utils/projectHierarchy";
 import { formatRelativeTime } from "../utils/relativeTime";
+import { groupEntriesByDay } from "../utils/updateFeedGroups";
 
 const PAGE_SIZE = 50;
 
@@ -94,10 +104,33 @@ const route = useRoute();
 const loading = ref(true);
 const loadingMore = ref(false);
 const entries = ref([]);
+const loadError = ref(false);
+const refreshing = ref(false);
+const pageRoot = ref(null);
+const scroller = ref(null);
 
 // The server answers at most `limit` rows per page: a full page means there
 // may be more
 const hasMore = computed(() => entries.value.length >= PAGE_SIZE);
+
+// Day grouping is derived from the flat entries list, so appending a page
+// never needs merge logic (entries from one day across a page boundary
+// merge naturally)
+const groups = computed(() => groupEntriesByDay(entries.value));
+
+const { reset: resetInfiniteScroll } = useInfiniteScroll(
+  scroller,
+  () => loadMore(),
+  {
+    distance: 400,
+    // Keep the flat entry count (not the day groups) as the paging signal
+    canLoadMore: () =>
+      hasMore.value &&
+      !loading.value &&
+      !loadingMore.value &&
+      !refreshing.value,
+  },
+);
 
 // Same status badge as TaskCard: colored from the status catalog
 function statusBadgeStyle(status) {
@@ -129,19 +162,28 @@ async function fetchFeed({ silent = false } = {}) {
   if (!silent) {
     loading.value = true;
     entries.value = [];
+  } else {
+    // A silent refresh replaces the flat list: pause paging until it lands,
+    // then re-arm the scroll check
+    refreshing.value = true;
   }
   try {
     entries.value = await tasksStore.fetchUpdateFeed({ limit: PAGE_SIZE });
+    loadError.value = false;
   } catch {
     // Handle error silently
   } finally {
     if (!silent) {
       loading.value = false;
+    } else {
+      refreshing.value = false;
+      resetInfiniteScroll();
     }
   }
 }
 
 async function loadMore() {
+  if (loading.value || loadingMore.value || refreshing.value) return;
   loadingMore.value = true;
   try {
     const next = await tasksStore.fetchUpdateFeed({
@@ -149,14 +191,20 @@ async function loadMore() {
       offset: entries.value.length,
     });
     entries.value = entries.value.concat(next);
+    loadError.value = false;
   } catch {
-    // Keep the current entries on failure
+    // Keep the current entries on failure; the retry button covers the edge
+    // where no further scroll event fires after an error
+    loadError.value = true;
   } finally {
     loadingMore.value = false;
   }
 }
 
 onMounted(async () => {
+  // The app shell scrolls inside <main> (app.vue, overflow-y: auto), not the
+  // window: the infinite scroll must observe it
+  scroller.value = pageRoot.value?.closest("main") ?? null;
   // Status colors and project names for the entries (same as history page)
   try {
     await Promise.all([projectsStore.fetchAll(), statusesStore.fetchAll()]);
@@ -180,6 +228,20 @@ useDialogCloseRefresh("taskId", () => fetchFeed({ silent: true }));
 .feed-list {
   display: grid;
   gap: var(--space-xs);
+}
+
+.day-group {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+/* Compact section header, visually subordinate to the page h1 */
+.day-header {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  letter-spacing: var(--tracking-wide);
+  margin: var(--space-sm) 0 var(--space-xs);
 }
 
 .feed-entry:focus-visible {
@@ -240,6 +302,27 @@ useDialogCloseRefresh("taskId", () => fetchFeed({ silent: true }));
   color: var(--color-text-muted);
 }
 
+.loading-more-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: var(--space-md) 0 var(--space-xl);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.loading-more-row .spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  animation: busy-spinner 0.75s linear infinite;
+}
+
+/* Manual retry for a failed page (infinite scroll handles the normal flow) */
 .load-more {
   text-align: center;
   margin: var(--space-md) 0 var(--space-xl);
