@@ -49,7 +49,8 @@ Each view provides a different perspective on the same task data.
 - [x] Each entry shows the date of the update (relative time with the full date on hover)
 - [x] Each entry shows a short description of the change (the same human-readable summaries the server computes for the task-update notifications)
 - [x] The page shows a loading indicator while fetching and an empty state when there are no updates
-- [x] Older entries are loaded with a "Load more" button (offset-based pagination, 50 entries per page)
+- [x] Entries are grouped per calendar day in the user's timezone: each group has a day header ("Today", "Yesterday", otherwise the full localized date), newest day first and newest entries first within a day
+- [x] Older pages load automatically with infinite scroll as the user nears the bottom of the feed (offset-based pagination, 50 entries per page); a manual "Load more" retry is shown if loading a page fails
 - [x] The layout is responsive (single-column list on mobile)
 
 ### Calendar View
