@@ -42,6 +42,15 @@ export interface Task {
   dateUpdated: string;
 }
 
+export interface UpdateFeedEntry {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  actorName: string | null;
+  summary: string;
+  dateCreated: string;
+}
+
 export const useTasksStore = defineStore("tasks", {
   state: () => ({
     tasks: [] as Task[],
@@ -70,6 +79,18 @@ export const useTasksStore = defineStore("tasks", {
     async fetchNextView() {
       const res = await api.get("/views/next");
       return res.data;
+    },
+
+    async fetchUpdateFeed(params?: { limit?: number; offset?: number }) {
+      const query: Record<string, string> = {};
+      if (params?.limit !== undefined) {
+        query.limit = String(params.limit);
+      }
+      if (params?.offset !== undefined) {
+        query.offset = String(params.offset);
+      }
+      const res = await api.get("/tasks/activity", { params: query });
+      return res.data as UpdateFeedEntry[];
     },
 
     async fetchDashboard(params?: {

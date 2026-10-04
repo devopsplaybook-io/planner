@@ -38,6 +38,11 @@ import * as fs from "fs-extra";
 import * as path from "path";
 import { buildAttachmentCopyPath, cloneTaskFrom } from "./TasksClone";
 import { TaskImproveText } from "./TaskImprove";
+import {
+  TaskActivityDataAdd,
+  TaskActivityDataList,
+  TaskActivityListFilters,
+} from "./TaskActivityData";
 
 /**
  * Fire-and-forget push notification to the task assignees (excluding the
@@ -64,6 +69,27 @@ function notifyAssignees(
   })().catch(() => {
     // Notification failures are logged inside NotificationsTaskUpdated
   });
+}
+
+/**
+ * Records a task mutation in the Update Feed (a single awaited insert, so
+ * the entry exists when the client refetches) then pushes the notification
+ * to the assignees. The feed entry is auxiliary: a failure to record it is
+ * logged and never fails the mutation itself.
+ */
+async function recordTaskUpdate(
+  taskId: string,
+  actorUserId: string,
+  summary: string,
+): Promise<void> {
+  try {
+    await TaskActivityDataAdd(taskId, actorUserId, summary);
+  } catch (error) {
+    console.error(
+      `[Tasks] Failed to record task activity: ${(error as Error).message}`,
+    );
+  }
+  notifyAssignees(taskId, actorUserId, summary);
 }
 
 /**
@@ -211,6 +237,36 @@ export class TasksRoutes {
       }
       const tasks = await TasksDataList(filters);
       return res.status(200).send(tasks.map((t) => t.toTransportJson()));
+    });
+
+    // ==================== ACTIVITY (Update Feed) ====================
+    fastify.get<{
+      Querystring: { limit?: string; offset?: string };
+    }>("/activity", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(401).send({ error: "Access Denied" });
+      }
+      let limit: number;
+      let offset: number;
+      try {
+        limit = parseLimit(req.query.limit);
+        offset = parseOffset(req.query.offset);
+      } catch (error) {
+        return res.status(400).send({ error: (error as Error).message });
+      }
+      // The feed is always scoped to the tasks the user is assigned to —
+      // admins get the visibility bypass, not a scope bypass.
+      const filters: TaskActivityListFilters = {
+        assigneeUserId: userSession.userId,
+        limit,
+        offset,
+      };
+      if (userSession.role !== "admin") {
+        filters.visibleTo = { userId: userSession.userId };
+      }
+      const entries = await TaskActivityDataList(filters);
+      return res.status(200).send(entries);
     });
 
     // ==================== GET BY ID ====================
@@ -461,7 +517,7 @@ export class TasksRoutes {
         changes.push("checklist");
       if (movedToProject) changes.push(`project: ${movedToProject.name}`);
       if (changes.length > 0) {
-        notifyAssignees(
+        await recordTaskUpdate(
           req.params.id,
           userSession.userId,
           changes.join(", "),
@@ -514,7 +570,7 @@ export class TasksRoutes {
       };
       await addComment(req.params.id, comment);
       await TasksDataTouch(req.params.id);
-      notifyAssignees(req.params.id, userSession.userId, "New comment");
+      await recordTaskUpdate(req.params.id, userSession.userId, "New comment");
       return res.status(201).send(comment);
     });
 
@@ -542,7 +598,7 @@ export class TasksRoutes {
         }
         await deleteComment(req.params.commentId);
         await TasksDataTouch(req.params.id);
-        notifyAssignees(
+        await recordTaskUpdate(
           req.params.id,
           userSession.userId,
           "Comment deleted",
@@ -579,7 +635,11 @@ export class TasksRoutes {
         return res.status(400).send({ error: "Missing: text" });
       await updateComment(req.params.commentId, req.body.text);
       await TasksDataTouch(req.params.id);
-      notifyAssignees(req.params.id, userSession.userId, "Comment updated");
+      await recordTaskUpdate(
+        req.params.id,
+        userSession.userId,
+        "Comment updated",
+      );
       const updated = await getComment(req.params.commentId);
       return res.status(200).send(updated);
     });
@@ -606,7 +666,11 @@ export class TasksRoutes {
         return res.status(400).send({ error: "Missing: userId" });
       await addAssignee(req.params.id, req.body.userId);
       await TasksDataTouch(req.params.id);
-      notifyAssignees(req.params.id, userSession.userId, "Assignees updated");
+      await recordTaskUpdate(
+        req.params.id,
+        userSession.userId,
+        "Assignees updated",
+      );
       return res.status(201).send({});
     });
 
@@ -627,7 +691,11 @@ export class TasksRoutes {
         }
         await removeAssignee(req.params.id, req.params.userId);
         await TasksDataTouch(req.params.id);
-        notifyAssignees(req.params.id, userSession.userId, "Assignees updated");
+        await recordTaskUpdate(
+          req.params.id,
+          userSession.userId,
+          "Assignees updated",
+        );
         return res.status(201).send({});
       },
     );
@@ -661,7 +729,11 @@ export class TasksRoutes {
       }
       await replaceLabels(req.params.id, labels);
       await TasksDataTouch(req.params.id);
-      notifyAssignees(req.params.id, userSession.userId, "Labels updated");
+      await recordTaskUpdate(
+        req.params.id,
+        userSession.userId,
+        "Labels updated",
+      );
       return res.status(201).send({});
     });
 
@@ -712,7 +784,11 @@ export class TasksRoutes {
           attachmentId,
         );
         await TasksDataTouch(req.params.id);
-        notifyAssignees(req.params.id, userSession.userId, "Attachment added");
+        await recordTaskUpdate(
+          req.params.id,
+          userSession.userId,
+          "Attachment added",
+        );
 
         return res.status(201).send({
           id: attachmentId,
@@ -809,7 +885,11 @@ export class TasksRoutes {
         }
         await deleteTaskAttachment(req.params.attachmentId);
         await TasksDataTouch(attachment.taskId);
-        notifyAssignees(attachment.taskId, userSession.userId, "Attachment deleted");
+        await recordTaskUpdate(
+          attachment.taskId,
+          userSession.userId,
+          "Attachment deleted",
+        );
         return res.status(201).send({});
       },
     );

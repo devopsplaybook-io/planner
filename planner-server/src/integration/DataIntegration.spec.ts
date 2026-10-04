@@ -14,6 +14,10 @@ import { Config } from "../Config";
 import { NotesDataDelete, NotesDataList } from "../notes/NotesData";
 import { ProjectsDataDelete } from "../projects/ProjectsData";
 import { TasksDataDelete, TasksDataList } from "../tasks/TasksData";
+import {
+  TaskActivityDataAdd,
+  TaskActivityDataList,
+} from "../tasks/TaskActivityData";
 import { UsersDataDelete } from "../users/UsersData";
 import { ViewsDataGetDashboard } from "../views/ViewsData";
 
@@ -446,5 +450,157 @@ describe("dashboard recently-done window (integration)", () => {
     expect(data.overdue).toHaveLength(50);
     expect(data.noDate).toHaveLength(0);
     expect(data.upcoming).toHaveLength(0);
+  });
+});
+
+describe("task activity feed (integration)", () => {
+  beforeAll(async () => {
+    await fs.remove(dir);
+    await fs.ensureDir(dir);
+    const config = new Config();
+    config.DATA_DIR = dir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(dir);
+  });
+
+  it("should list the assigned tasks' activity newest first with actor and task title", async () => {
+    await insertUser("u-feed-1");
+    await insertUser("u-feed-2");
+    await insertProject("p-feed");
+    await insertTask("t-feed-1", "p-feed");
+    await insertTask("t-feed-2", "p-feed");
+    await insertTask("t-feed-3", "p-feed");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_assignees (taskId, userId) VALUES (?,?)",
+      ["t-feed-1", "u-feed-1"],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_assignees (taskId, userId) VALUES (?,?)",
+      ["t-feed-2", "u-feed-1"],
+    );
+    // u-feed-2 is only assigned to t-feed-3: its activity must not leak
+    await DbUtilsExecSQL(
+      "INSERT INTO task_assignees (taskId, userId) VALUES (?,?)",
+      ["t-feed-3", "u-feed-2"],
+    );
+    // Explicit dates: the list is ordered by dateCreated DESC
+    const minutesAgo = (m: number) => isoMinutesAgo(m);
+    await DbUtilsExecSQL(
+      "INSERT INTO task_activity (id, taskId, actorUserId, summary, dateCreated) VALUES (?,?,?,?,?)",
+      ["act-feed-1", "t-feed-1", "u-feed-2", "status: Done", minutesAgo(30)],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_activity (id, taskId, actorUserId, summary, dateCreated) VALUES (?,?,?,?,?)",
+      ["act-feed-2", "t-feed-2", "u-feed-2", "New comment", minutesAgo(5)],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_activity (id, taskId, actorUserId, summary, dateCreated) VALUES (?,?,?,?,?)",
+      ["act-feed-3", "t-feed-3", "u-feed-1", "Labels updated", minutesAgo(1)],
+    );
+
+    const feed = await TaskActivityDataList({
+      assigneeUserId: "u-feed-1",
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(feed.map((e) => e.id)).toEqual(["act-feed-2", "act-feed-1"]);
+    expect(feed[0]).toMatchObject({
+      taskId: "t-feed-2",
+      taskTitle: "task-t-feed-2",
+      actorName: "user-u-feed-2",
+      summary: "New comment",
+    });
+    // Pagination picks up where the first page stopped
+    const page2 = await TaskActivityDataList({
+      assigneeUserId: "u-feed-1",
+      limit: 1,
+      offset: 1,
+    });
+    expect(page2.map((e) => e.id)).toEqual(["act-feed-1"]);
+  });
+
+  it("should hide activity in projects the user cannot see", async () => {
+    await insertUser("u-feed-vis");
+    await insertProject("p-feed-public");
+    await DbUtilsExecSQL(
+      "INSERT INTO projects (id, name, description, isDefault, statuses, dateCreated, visibility) VALUES (?,?,?,?,?,?,?)",
+      ["p-feed-hidden", "hidden", "", 0, '["To Do", "Done"]', now, "restricted"],
+    );
+    await insertTask("t-feed-pub", "p-feed-public");
+    await insertTask("t-feed-hid", "p-feed-hidden");
+    for (const taskId of ["t-feed-pub", "t-feed-hid"]) {
+      await DbUtilsExecSQL(
+        "INSERT INTO task_assignees (taskId, userId) VALUES (?,?)",
+        [taskId, "u-feed-vis"],
+      );
+      await DbUtilsExecSQL(
+        "INSERT INTO task_activity (id, taskId, actorUserId, summary, dateCreated) VALUES (?,?,?,?,?)",
+        [`act-${taskId}`, taskId, "u-feed-vis", "New comment", now],
+      );
+    }
+
+    const feed = await TaskActivityDataList({
+      assigneeUserId: "u-feed-vis",
+      visibleTo: { userId: "u-feed-vis" },
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(feed.map((e) => e.taskId)).toEqual(["t-feed-pub"]);
+  });
+
+  it("should cascade task_activity rows when the task is deleted", async () => {
+    await insertUser("u-feed-cascade");
+    await insertProject("p-feed-cascade");
+    await insertTask("t-feed-cascade", "p-feed-cascade");
+    await TaskActivityDataAdd("t-feed-cascade", "u-feed-cascade", "New comment");
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_activity WHERE taskId = ?", [
+        "t-feed-cascade",
+      ]),
+    ).toBe(1);
+
+    await TasksDataDelete("t-feed-cascade");
+
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_activity WHERE taskId = ?", [
+        "t-feed-cascade",
+      ]),
+    ).toBe(0);
+  });
+
+  it("should keep task_activity rows when the actor is deleted", async () => {
+    await insertUser("u-feed-gone");
+    await insertUser("u-feed-watcher");
+    await insertProject("p-feed-gone");
+    await insertTask("t-feed-gone", "p-feed-gone");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_assignees (taskId, userId) VALUES (?,?)",
+      ["t-feed-gone", "u-feed-watcher"],
+    );
+    await TaskActivityDataAdd("t-feed-gone", "u-feed-gone", "New comment");
+
+    await UsersDataDelete("u-feed-gone");
+
+    expect(
+      await count(
+        "SELECT COUNT(*) AS c FROM task_activity WHERE actorUserId = ?",
+        ["u-feed-gone"],
+      ),
+    ).toBe(1);
+    const feed = await TaskActivityDataList({
+      assigneeUserId: "u-feed-watcher",
+      limit: 50,
+      offset: 0,
+    });
+    expect(feed).toHaveLength(1);
+    // The deleted actor's name falls back to null instead of erasing history
+    expect(feed[0].actorName).toBeNull();
   });
 });

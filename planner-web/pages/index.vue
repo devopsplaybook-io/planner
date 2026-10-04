@@ -179,11 +179,14 @@
           <p>All caught up! No tasks need immediate attention.</p>
         </div>
 
-        <div class="history-link">
+        <nav class="page-links" aria-label="Dashboard views">
           <NuxtLink to="/history">
             <i class="bi bi-clock-history" /> History
           </NuxtLink>
-        </div>
+          <NuxtLink to="/update-feed">
+            <i class="bi bi-activity" /> Update Feed
+          </NuxtLink>
+        </nav>
       </template>
     </template>
   </div>
@@ -462,12 +465,18 @@ section h2 {
   color: var(--color-text-muted);
 }
 
-.history-link {
-  text-align: center;
-  margin: var(--space-xl) 0 var(--space-lg);
+/* Bottom links row (History, Update Feed): flex-wrap so both links stay
+   reachable on narrow screens. The extra bottom margin keeps the links
+   from sitting against the main container's small (0.5em) padding. */
+.page-links {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-md) var(--space-lg);
+  margin: var(--space-xl) 0 var(--space-xl);
 }
 
-.history-link a {
+.page-links a {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2xs);
@@ -476,7 +485,7 @@ section h2 {
   font-weight: var(--weight-medium);
 }
 
-.history-link a:hover {
+.page-links a:hover {
   text-decoration: underline;
 }
 
