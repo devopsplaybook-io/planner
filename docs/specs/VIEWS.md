@@ -45,6 +45,7 @@ Each view provides a different perspective on the same task data.
 - [x] The feed is scoped to the tasks the user is assigned to and to projects visible to the user (see [PROJECTS.md](PROJECTS.md)); admins get the visibility bypass but the feed still only covers their assigned tasks
 - [x] Entries are sorted by date, newest first
 - [x] Each entry shows the task title, opens the task detail dialog when clicked (same `?taskId=` deep-link as everywhere else)
+- [x] Entries reuse the application's shared item-card design (accent stripe, task icon and title, date in the header, actor and change summary as the body, status badge and project name in the footer)
 - [x] Each entry shows the date of the update (relative time with the full date on hover)
 - [x] Each entry shows a short description of the change (the same human-readable summaries the server computes for the task-update notifications)
 - [x] The page shows a loading indicator while fetching and an empty state when there are no updates

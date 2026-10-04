@@ -2,7 +2,8 @@ import { buildListActivityQuery } from "./TaskActivityData";
 
 const SQL_PREFIX =
   "SELECT a.id, a.taskId, a.summary, a.dateCreated, u.name AS actorName, " +
-  "t.title AS taskTitle FROM task_activity a " +
+  "t.title AS taskTitle, t.projectId AS projectId, t.status AS status " +
+  "FROM task_activity a " +
   "JOIN tasks t ON t.id = a.taskId LEFT JOIN users u ON u.id = a.actorUserId WHERE ";
 
 describe("buildListActivityQuery", () => {
@@ -79,7 +80,8 @@ describe("buildListActivityQuery", () => {
     );
     expect(sql).toBe(
       'SELECT a."id", a."taskId", a."summary", a."dateCreated", u."name" AS "actorName", ' +
-        't."title" AS "taskTitle" FROM "task_activity" a ' +
+        't."title" AS "taskTitle", t."projectId" AS "projectId", t."status" AS "status" ' +
+        'FROM "task_activity" a ' +
         'JOIN "tasks" t ON t."id" = a."taskId" LEFT JOIN "users" u ON u."id" = a."actorUserId" WHERE ' +
         'EXISTS (SELECT 1 FROM "task_assignees" ta WHERE ta."taskId" = a."taskId" AND ta."userId" = ?) ' +
         'AND ("projectId" IN (SELECT "id" FROM "projects" WHERE "visibility" = \'public\') ' +

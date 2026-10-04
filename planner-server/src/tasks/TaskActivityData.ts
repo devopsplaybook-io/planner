@@ -20,6 +20,8 @@ export interface TaskActivityEntry {
   id: string;
   taskId: string;
   taskTitle: string;
+  projectId: string;
+  status: string;
   actorName: string | null;
   summary: string;
   dateCreated: string;
@@ -76,7 +78,8 @@ export function buildListActivityQuery(
   return {
     sql:
       `SELECT a.${quote("id")}, a.${quote("taskId")}, a.${quote("summary")}, a.${quote("dateCreated")}, ` +
-      `u.${quote("name")} AS ${quote("actorName")}, t.${quote("title")} AS ${quote("taskTitle")} ` +
+      `u.${quote("name")} AS ${quote("actorName")}, t.${quote("title")} AS ${quote("taskTitle")}, ` +
+      `t.${quote("projectId")} AS ${quote("projectId")}, t.${quote("status")} AS ${quote("status")} ` +
       `FROM ${quote("task_activity")} a ` +
       `JOIN ${quote("tasks")} t ON t.${quote("id")} = a.${quote("taskId")} ` +
       `LEFT JOIN ${quote("users")} u ON u.${quote("id")} = a.${quote("actorUserId")} ` +
@@ -95,6 +98,8 @@ export async function TaskActivityDataList(
     id: row.id,
     taskId: row.taskId,
     taskTitle: row.taskTitle,
+    projectId: row.projectId,
+    status: row.status,
     actorName: (row.actorName as string | null) ?? null,
     summary: row.summary,
     dateCreated: row.dateCreated,
