@@ -26,31 +26,39 @@
             <!-- div, not article: the shared item-card pattern is built for divs
                  (bare <article> carries Pico's own card padding and header/footer
                  margins — same reason TaskCard/NoteCard/ProjectCard are divs) -->
+            <!-- One card per group of consecutive updates by the same user on
+                 the same task at the same displayed time -->
             <div
-              v-for="entry in group.entries"
-              :key="entry.id"
+              v-for="updateGroup in group.updateGroups"
+              :key="updateGroup.key"
               class="item-card feed-entry"
               role="button"
               tabindex="0"
-              :title="entry.taskTitle"
-              @click="openTask(entry.taskId)"
-              @keydown.enter="openTask(entry.taskId)"
+              :title="updateGroup.taskTitle"
+              @click="openTask(updateGroup.taskId)"
+              @keydown.enter="openTask(updateGroup.taskId)"
             >
               <div class="card-accent" />
               <div class="card-body">
                 <header>
                   <div class="card-title-row">
                     <span class="item-icon"><i class="bi bi-kanban" /></span>
-                    <span class="item-title">{{ entry.taskTitle }}</span>
+                    <span class="item-title">{{ updateGroup.taskTitle }}</span>
                   </div>
                   <small
                     class="card-date"
-                    :title="formatFullDate(entry.dateCreated)"
+                    :title="formatFullDate(updateGroup.dateCreated)"
                   >
-                    {{ formatRelativeTime(entry.dateCreated) }}
+                    {{ formatRelativeTime(updateGroup.dateCreated) }}
                   </small>
                 </header>
-                <p class="card-desc">
+                <!-- One summary line per change of the group (the common
+                     single-update group renders exactly one line) -->
+                <p
+                  v-for="entry in updateGroup.entries"
+                  :key="entry.id"
+                  class="card-desc"
+                >
                   <span v-if="entry.actorName" class="entry-actor">
                     <i class="bi bi-person-fill" /> {{ entry.actorName }}
                   </span>
@@ -59,15 +67,15 @@
                 <footer>
                   <span
                     class="status-badge"
-                    :style="statusBadgeStyle(entry.status)"
-                    :title="entry.status"
-                    >{{ entry.status }}</span
+                    :style="statusBadgeStyle(updateGroup.status)"
+                    :title="updateGroup.status"
+                    >{{ updateGroup.status }}</span
                   >
                   <span
-                    v-if="projectName(entry.projectId)"
+                    v-if="projectName(updateGroup.projectId)"
                     class="project-name"
-                    :title="projectName(entry.projectId)"
-                    >{{ projectName(entry.projectId) }}</span
+                    :title="projectName(updateGroup.projectId)"
+                    >{{ projectName(updateGroup.projectId) }}</span
                   >
                 </footer>
               </div>

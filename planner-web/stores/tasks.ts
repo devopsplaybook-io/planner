@@ -49,6 +49,9 @@ export interface UpdateFeedEntry {
   actorName: string | null;
   summary: string;
   dateCreated: string;
+  /** Current state of the task, joined by /tasks/activity (identical for all entries of a task in a fetch). */
+  status?: string;
+  projectId?: string;
 }
 
 export const useTasksStore = defineStore("tasks", {

@@ -1,12 +1,28 @@
 import { formatLocalDate } from "./date";
+import { formatRelativeTime } from "./relativeTime";
 import type { UpdateFeedEntry } from "../stores/tasks";
+
+export interface UpdateFeedEntryGroup {
+  /** id of the first (newest) entry of the group: stable key for rendering. */
+  key: string;
+  taskId: string;
+  taskTitle: string;
+  actorName: string | null;
+  status?: string;
+  projectId?: string;
+  /** dateCreated of the first (newest) entry: the time shown on the card. */
+  dateCreated: string;
+  /** Entries of the group, in feed order (newest first). */
+  entries: UpdateFeedEntry[];
+}
 
 export interface UpdateFeedDayGroup {
   /** Local calendar day of the group, "YYYY-MM-DD" (formatLocalDate). */
   key: string;
   /** "Today", "Yesterday", or the full localized date of the day. */
   label: string;
-  entries: UpdateFeedEntry[];
+  /** Consecutive-update groups within the day, in feed order. */
+  updateGroups: UpdateFeedEntryGroup[];
 }
 
 /**
@@ -36,26 +52,70 @@ export function formatDayGroupLabel(dayKey: string, now: Date = new Date()): str
 }
 
 /**
+ * Collapses consecutive entries made by the same user on the same task at
+ * the same displayed relative time into one group (one feed card listing
+ * each change summary). Only adjacent entries merge: an entry by another
+ * user or on another task in between starts a new group, so the feed
+ * sequence is preserved.
+ */
+export function groupConsecutiveUpdates(
+  entries: UpdateFeedEntry[],
+  now: Date = new Date(),
+): UpdateFeedEntryGroup[] {
+  const groups: UpdateFeedEntryGroup[] = [];
+  for (const entry of entries) {
+    const last = groups[groups.length - 1];
+    const sameUpdate =
+      last !== undefined &&
+      last.taskId === entry.taskId &&
+      last.actorName === entry.actorName &&
+      formatRelativeTime(last.dateCreated, now) ===
+        formatRelativeTime(entry.dateCreated, now);
+    if (sameUpdate && last) {
+      last.entries.push(entry);
+    } else {
+      groups.push({
+        key: entry.id,
+        taskId: entry.taskId,
+        taskTitle: entry.taskTitle,
+        actorName: entry.actorName,
+        status: entry.status,
+        projectId: entry.projectId,
+        dateCreated: entry.dateCreated,
+        entries: [entry],
+      });
+    }
+  }
+  return groups;
+}
+
+/**
  * Groups feed entries (newest-first from the server) per local calendar day:
  * a new group starts whenever the day of entry.dateCreated changes. Entries
  * from one day that straddle a page boundary merge naturally because the
- * page calls this on the accumulated flat list.
+ * page calls this on the accumulated flat list. Within a day, consecutive
+ * same-user/same-task/same-displayed-time entries are collapsed into one
+ * update group (grouping never crosses a day header).
  */
 export function groupEntriesByDay(
   entries: UpdateFeedEntry[],
   now: Date = new Date(),
 ): UpdateFeedDayGroup[] {
-  const groups: UpdateFeedDayGroup[] = [];
+  const days: { key: string; label: string; entries: UpdateFeedEntry[] }[] = [];
   for (const entry of entries) {
     const date = new Date(entry.dateCreated);
     if (Number.isNaN(date.getTime())) continue;
     const key = formatLocalDate(date);
-    const last = groups[groups.length - 1];
+    const last = days[days.length - 1];
     if (last && last.key === key) {
       last.entries.push(entry);
     } else {
-      groups.push({ key, label: formatDayGroupLabel(key, now), entries: [entry] });
+      days.push({ key, label: formatDayGroupLabel(key, now), entries: [entry] });
     }
   }
-  return groups;
+  return days.map((day) => ({
+    key: day.key,
+    label: day.label,
+    updateGroups: groupConsecutiveUpdates(day.entries, now),
+  }));
 }

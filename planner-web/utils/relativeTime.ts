@@ -7,14 +7,17 @@ const RELATIVE_CUTOFF_MS = 7 * DAY_MS;
 /**
  * Compact relative time ("just now", "5m ago", "3h ago", "2d ago") for
  * recent timestamps, absolute locale date otherwise. Callers show the full
- * date separately (e.g. a title tooltip).
+ * date separately (e.g. a title tooltip). `now` is injectable for tests.
  */
-export function formatRelativeTime(dateStr: string | null | undefined): string {
+export function formatRelativeTime(
+  dateStr: string | null | undefined,
+  now: Date = new Date(),
+): string {
   if (!dateStr) return "";
   const date = new Date(dateStr);
   const time = date.getTime();
   if (Number.isNaN(time)) return "";
-  const elapsed = Date.now() - time;
+  const elapsed = now.getTime() - time;
   if (elapsed < MINUTE_MS) {
     // Not yet a minute old (or clock skew in the future): "just now"
     return "just now";
