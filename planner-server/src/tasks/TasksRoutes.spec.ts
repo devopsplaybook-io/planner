@@ -6,6 +6,7 @@ import {
   parseLimit,
   parseOffset,
   parseProjectIds,
+  resolveTaskStatus,
   TASKS_DEFAULT_LIMIT,
   TasksRoutes,
 } from "./TasksRoutes";
@@ -176,6 +177,37 @@ describe("parseOffset", () => {
     expect(() => parseOffset("-1")).toThrow();
     expect(() => parseOffset("2.5")).toThrow();
     expect(() => parseOffset("abc")).toThrow();
+  });
+});
+
+describe("resolveTaskStatus", () => {
+  function projectWithStatuses(statuses: string[]): Project {
+    const project = new Project();
+    project.statuses = statuses;
+    return project;
+  }
+
+  it("should return the requested status when the project uses it", () => {
+    const project = projectWithStatuses(["Backlog", "In Progress", "Done"]);
+    expect(resolveTaskStatus(project, "In Progress")).toBe("In Progress");
+  });
+
+  it("should return the project's first status when no status is requested", () => {
+    const project = projectWithStatuses(["Backlog", "In Progress", "Done"]);
+    expect(resolveTaskStatus(project)).toBe("Backlog");
+    expect(resolveTaskStatus(project, undefined)).toBe("Backlog");
+    expect(resolveTaskStatus(project, "")).toBe("Backlog");
+  });
+
+  it("should return the project's first status when the requested status is not in the project's list", () => {
+    const project = projectWithStatuses(["Backlog", "In Progress", "Done"]);
+    expect(resolveTaskStatus(project, "To Do")).toBe("Backlog");
+  });
+
+  it("should fall back to the requested status, then To Do, for a project with an empty statuses list", () => {
+    const project = projectWithStatuses([]);
+    expect(resolveTaskStatus(project, "Done")).toBe("Done");
+    expect(resolveTaskStatus(project)).toBe("To Do");
   });
 });
 
@@ -434,6 +466,34 @@ describe("TasksRoutes project visibility", () => {
     });
     expect(res.statusCode).toBe(201);
     expect((TasksDataAdd as jest.Mock).mock.calls[0][0].status).toBe("Done");
+  });
+
+  it("should start a task without a status in the first status of a project without To Do", async () => {
+    const project = makeProject("public", []);
+    project.statuses = ["Backlog", "In Progress", "Done"];
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: project.id, title: "New" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().status).toBe("Backlog");
+    expect((TasksDataAdd as jest.Mock).mock.calls[0][0].status).toBe("Backlog");
+  });
+
+  it("should start a task without a status in To Do for a standard project", async () => {
+    const project = makeProject("public", []);
+    project.statuses = ["To Do", "In Progress", "Done"];
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: project.id, title: "New" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().status).toBe("To Do");
+    expect((TasksDataAdd as jest.Mock).mock.calls[0][0].status).toBe("To Do");
   });
 
   // ==================== UPDATE / DELETE ====================
