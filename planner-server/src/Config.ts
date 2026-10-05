@@ -26,6 +26,16 @@ export class Config {
   public RATE_LIMIT_LLM_IMPROVE_MAX: number;
   public RATE_LIMIT_LLM_REGENERATE_MAX: number;
 
+  // Dictation (voice to text)
+  public DICTATION_ENABLED: boolean;
+  public STT_API_URL: string;
+  public STT_API_KEY: string;
+  public STT_MODEL: string;
+  public DICTATION_LANGUAGE: string;
+  public DICTATION_MAX_DURATION_SECONDS: number;
+  public DICTATION_MAX_UPLOAD_MB: number;
+  public RATE_LIMIT_DICTATION_MAX: number;
+
   // Web Push Notifications
   public WEB_PUSH_ENABLED: boolean;
   public WEB_PUSH_SUBJECT: string;
@@ -57,6 +67,14 @@ export class Config {
     this.LLM_RECOMMENDATION_SCHEDULE_CRON = "0 0 * * *"; // daily at midnight
     this.RATE_LIMIT_LLM_IMPROVE_MAX = 30;
     this.RATE_LIMIT_LLM_REGENERATE_MAX = 5;
+    this.DICTATION_ENABLED = false;
+    this.STT_API_URL = "";
+    this.STT_API_KEY = "";
+    this.STT_MODEL = "whisper-large-v3-turbo";
+    this.DICTATION_LANGUAGE = "auto";
+    this.DICTATION_MAX_DURATION_SECONDS = 120;
+    this.DICTATION_MAX_UPLOAD_MB = 10;
+    this.RATE_LIMIT_DICTATION_MAX = 30;
     this.WEB_PUSH_ENABLED = true;
     this.WEB_PUSH_SUBJECT = "mailto:admin@localhost";
     this.WEB_PUSH_NOTIFY_HOUR = 9; // send notifications from 9:00
@@ -87,6 +105,15 @@ export class Config {
     this.RATE_LIMIT_LLM_IMPROVE_MAX = config.RATE_LIMIT_LLM_IMPROVE_MAX || 30;
     this.RATE_LIMIT_LLM_REGENERATE_MAX =
       config.RATE_LIMIT_LLM_REGENERATE_MAX || 5;
+    this.DICTATION_ENABLED = config.DICTATION_ENABLED ?? false;
+    this.STT_API_URL = config.STT_API_URL || "";
+    this.STT_API_KEY = config.STT_API_KEY || "";
+    this.STT_MODEL = config.STT_MODEL || "whisper-large-v3-turbo";
+    this.DICTATION_LANGUAGE = config.DICTATION_LANGUAGE || "auto";
+    this.DICTATION_MAX_DURATION_SECONDS =
+      config.DICTATION_MAX_DURATION_SECONDS || 120;
+    this.DICTATION_MAX_UPLOAD_MB = config.DICTATION_MAX_UPLOAD_MB || 10;
+    this.RATE_LIMIT_DICTATION_MAX = config.RATE_LIMIT_DICTATION_MAX || 30;
     this.WEB_PUSH_ENABLED = config.WEB_PUSH_ENABLED ?? true;
     this.WEB_PUSH_SUBJECT = config.WEB_PUSH_SUBJECT || "mailto:admin@localhost";
     this.WEB_PUSH_NOTIFY_HOUR = config.WEB_PUSH_NOTIFY_HOUR ?? 9;
@@ -151,6 +178,36 @@ export class Config {
       this.RATE_LIMIT_LLM_REGENERATE_MAX =
         parseInt(process.env.RATE_LIMIT_LLM_REGENERATE_MAX) ||
         this.RATE_LIMIT_LLM_REGENERATE_MAX;
+    }
+    if (process.env.DICTATION_ENABLED) {
+      this.DICTATION_ENABLED = process.env.DICTATION_ENABLED === "true";
+    }
+    if (process.env.STT_API_URL) {
+      this.STT_API_URL = process.env.STT_API_URL;
+    }
+    if (process.env.STT_API_KEY) {
+      this.STT_API_KEY = process.env.STT_API_KEY;
+    }
+    if (process.env.STT_MODEL) {
+      this.STT_MODEL = process.env.STT_MODEL;
+    }
+    if (process.env.DICTATION_LANGUAGE) {
+      this.DICTATION_LANGUAGE = process.env.DICTATION_LANGUAGE;
+    }
+    if (process.env.DICTATION_MAX_DURATION_SECONDS) {
+      this.DICTATION_MAX_DURATION_SECONDS =
+        parseInt(process.env.DICTATION_MAX_DURATION_SECONDS) ||
+        this.DICTATION_MAX_DURATION_SECONDS;
+    }
+    if (process.env.DICTATION_MAX_UPLOAD_MB) {
+      this.DICTATION_MAX_UPLOAD_MB =
+        parseInt(process.env.DICTATION_MAX_UPLOAD_MB) ||
+        this.DICTATION_MAX_UPLOAD_MB;
+    }
+    if (process.env.RATE_LIMIT_DICTATION_MAX) {
+      this.RATE_LIMIT_DICTATION_MAX =
+        parseInt(process.env.RATE_LIMIT_DICTATION_MAX) ||
+        this.RATE_LIMIT_DICTATION_MAX;
     }
     if (process.env.WEB_PUSH_ENABLED) {
       this.WEB_PUSH_ENABLED = process.env.WEB_PUSH_ENABLED === "true";

@@ -39,6 +39,14 @@ describe("Config", () => {
       expect(config.LLM_RECOMMENDATION_SCHEDULE_CRON).toBe("0 0 * * *");
       expect(config.RATE_LIMIT_LLM_IMPROVE_MAX).toBe(30);
       expect(config.RATE_LIMIT_LLM_REGENERATE_MAX).toBe(5);
+      expect(config.DICTATION_ENABLED).toBe(false);
+      expect(config.STT_API_URL).toBe("");
+      expect(config.STT_API_KEY).toBe("");
+      expect(config.STT_MODEL).toBe("whisper-large-v3-turbo");
+      expect(config.DICTATION_LANGUAGE).toBe("auto");
+      expect(config.DICTATION_MAX_DURATION_SECONDS).toBe(120);
+      expect(config.DICTATION_MAX_UPLOAD_MB).toBe(10);
+      expect(config.RATE_LIMIT_DICTATION_MAX).toBe(30);
     });
 
     it("should respect environment variables in constructor", () => {
@@ -116,23 +124,56 @@ describe("Config", () => {
         RATE_LIMIT_LLM_IMPROVE_MAX: 7,
         RATE_LIMIT_LLM_REGENERATE_MAX: 2,
         ATTACHMENT_MAX_SIZE: 25,
+        DICTATION_ENABLED: true,
+        STT_API_URL: "https://stt.local",
+        STT_API_KEY: "stt-secret",
+        STT_MODEL: "whisper-small",
+        DICTATION_LANGUAGE: "fr",
+        DICTATION_MAX_DURATION_SECONDS: 60,
+        DICTATION_MAX_UPLOAD_MB: 5,
+        RATE_LIMIT_DICTATION_MAX: 12,
       });
       expect(config.RATE_LIMIT_LLM_IMPROVE_MAX).toBe(7);
       expect(config.RATE_LIMIT_LLM_REGENERATE_MAX).toBe(2);
       expect(config.ATTACHMENT_MAX_SIZE).toBe(25);
+      expect(config.DICTATION_ENABLED).toBe(true);
+      expect(config.STT_API_URL).toBe("https://stt.local");
+      expect(config.STT_API_KEY).toBe("stt-secret");
+      expect(config.STT_MODEL).toBe("whisper-small");
+      expect(config.DICTATION_LANGUAGE).toBe("fr");
+      expect(config.DICTATION_MAX_DURATION_SECONDS).toBe(60);
+      expect(config.DICTATION_MAX_UPLOAD_MB).toBe(5);
+      expect(config.RATE_LIMIT_DICTATION_MAX).toBe(12);
     });
 
     it("should let env variables override the rate limits", async () => {
       process.env.DEV_MODE = "true";
       process.env.RATE_LIMIT_LLM_IMPROVE_MAX = "11";
       process.env.RATE_LIMIT_LLM_REGENERATE_MAX = "3";
+      process.env.DICTATION_ENABLED = "true";
+      process.env.STT_API_URL = "https://stt-env.local";
+      process.env.STT_API_KEY = "stt-env-secret";
+      process.env.STT_MODEL = "whisper-env";
+      process.env.DICTATION_LANGUAGE = "de";
+      process.env.DICTATION_MAX_DURATION_SECONDS = "90";
+      process.env.DICTATION_MAX_UPLOAD_MB = "7";
+      process.env.RATE_LIMIT_DICTATION_MAX = "21";
       const config = await writeConfig({
         JWT_KEY: "k",
         RATE_LIMIT_LLM_IMPROVE_MAX: 7,
         RATE_LIMIT_LLM_REGENERATE_MAX: 2,
+        RATE_LIMIT_DICTATION_MAX: 12,
       });
       expect(config.RATE_LIMIT_LLM_IMPROVE_MAX).toBe(11);
       expect(config.RATE_LIMIT_LLM_REGENERATE_MAX).toBe(3);
+      expect(config.DICTATION_ENABLED).toBe(true);
+      expect(config.STT_API_URL).toBe("https://stt-env.local");
+      expect(config.STT_API_KEY).toBe("stt-env-secret");
+      expect(config.STT_MODEL).toBe("whisper-env");
+      expect(config.DICTATION_LANGUAGE).toBe("de");
+      expect(config.DICTATION_MAX_DURATION_SECONDS).toBe(90);
+      expect(config.DICTATION_MAX_UPLOAD_MB).toBe(7);
+      expect(config.RATE_LIMIT_DICTATION_MAX).toBe(21);
     });
 
     it("should default CORS to no origin (same-origin only)", async () => {

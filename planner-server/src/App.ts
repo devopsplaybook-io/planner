@@ -22,6 +22,8 @@ import { StatusesCatalogSeedIfEmpty } from "./statuses/StatusesData";
 import { RecommendationInit } from "./recommendation/Recommendation";
 import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
 import { TaskImproveInit } from "./tasks/TaskImprove";
+import { DictationInit } from "./dictation/Dictation";
+import { DictationRoutes } from "./dictation/DictationRoutes";
 import { NotificationsInit } from "./notifications/Notifications";
 import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
 import { StandardLogger, StandardTracer } from "@devopsplaybook.io/otel-utils";
@@ -63,6 +65,7 @@ Promise.resolve()
     await StatusesCatalogSeedIfEmpty();
     await RecommendationInit(config);
     await TaskImproveInit(config);
+    await DictationInit(config);
     await NotificationsInit(config);
 
     // Ensure a default project exists
@@ -142,6 +145,9 @@ Promise.resolve()
         llmRecommendationEnabled:
           config.LLM_RECOMMENDATION_ENABLED && !!config.LLM_API_KEY,
         llmImproveEnabled: !!config.LLM_API_KEY,
+        dictationEnabled: config.DICTATION_ENABLED,
+        dictationSttConfigured:
+          !!config.STT_API_URL && !!config.STT_API_KEY && !!config.STT_MODEL,
       });
     });
 
@@ -204,6 +210,13 @@ Promise.resolve()
         ).getRoutes(instance);
       },
       { prefix: "/api/recommendation" },
+    );
+
+    await fastify.register(
+      async (instance) => {
+        await new DictationRoutes(config).getRoutes(instance);
+      },
+      { prefix: "/api/dictation" },
     );
 
     await fastify.register(

@@ -86,6 +86,32 @@ Planner can generate task recommendations using any OpenAI-compatible chat compl
 | `RATE_LIMIT_LLM_IMPROVE_MAX`       | Max `improve` requests per user per hour               | `30`                                        |
 | `RATE_LIMIT_LLM_REGENERATE_MAX`    | Max recommendation regenerations per user per hour     | `5`                                         |
 
+## Voice Dictation
+
+Planner offers advanced voice dictation: the user records a voice clip in the browser, the audio is transcribed by a speech-to-text engine, an LLM polishes the transcript, and a second LLM call proposes follow-up actions (create tasks or notes). The user reviews everything before anything is created. Dictation is enabled when `DICTATION_ENABLED` is set to `true` and both `STT_API_URL` and `STT_API_KEY` are configured.
+
+The server is engine-agnostic: `STT_API_URL` is the base URL of any OpenAI-compatible speech-to-text service (the server appends `/v1/audio/transcriptions`).
+
+| Variable                         | Description                                              | Default                   |
+| -------------------------------- | -------------------------------------------------------- | ------------------------- |
+| `DICTATION_ENABLED`              | Enable the dictation feature                             | `false`                   |
+| `STT_API_URL`                    | Base URL of the OpenAI-compatible STT service            |                           |
+| `STT_API_KEY`                    | API key for the STT service (provide via a Secret)       |                           |
+| `STT_MODEL`                      | STT model name                                           | `whisper-large-v3-turbo`  |
+| `DICTATION_LANGUAGE`             | Default STT language (`auto` = engine-side detection)    | `auto`                    |
+| `DICTATION_MAX_DURATION_SECONDS` | Maximum recording duration (client-side auto-stop)       | `120`                     |
+| `DICTATION_MAX_UPLOAD_MB`        | Maximum audio upload size in megabytes                   | `10`                      |
+| `RATE_LIMIT_DICTATION_MAX`       | Max dictation uploads per user per hour                  | `30`                      |
+
+Audio is never persisted: the uploaded file is deleted immediately after transcription, and transcripts are never logged.
+
+Example setups:
+
+- **Self-hosted**: run [Speaches](https://github.com/speaches-ai/speaches) (OpenAI-compatible, faster-whisper) in your cluster and set `STT_API_URL=http://speaches:8000`, `STT_API_KEY` (as required by your deployment) and `STT_MODEL=whisper-large-v3-turbo` — the audio never leaves your homelab.
+- **Cloud**: point `STT_API_URL` at an OpenAI-compatible cloud endpoint (e.g. Groq `https://api.groq.com`) with `STT_MODEL=whisper-large-v3-turbo` and a Groq API key.
+
+Always provide `STT_API_KEY` via an environment variable or a Kubernetes Secret — never commit it to `config.json`.
+
 ## Web Push Notifications
 
 Planner sends browser push notifications for tasks due today or tomorrow, and to task assignees when their task is updated by another user (status change, comment, assignee, label or attachment change). Notifications are enabled when `WEB_PUSH_ENABLED` is set to `true`. Users opt in from the Settings page.
@@ -138,6 +164,8 @@ Planner exposes a RESTful API under the `/api/` prefix:
 | GET /api/status      | Health check endpoint                                   |
 | GET /api/statuses    | Get the global, ordered status catalog (any user)       |
 | PUT /api/statuses    | Replace the global status catalog (admin only)          |
+| POST /api/dictation  | Upload a dictation audio clip and start a job           |
+| GET /api/dictation/:jobId | Poll the state/stage/result of a dictation job     |
 
 Additional API endpoints for projects, tasks, notes, and users will be available as the implementation progresses.
 
