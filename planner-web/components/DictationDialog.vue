@@ -55,8 +55,8 @@
           </footer>
         </template>
         <template v-else>
+          <div class="loading-indicator" aria-hidden="true" />
           <p class="dictation-status" aria-live="polite">
-            <i class="bi bi-hourglass-split processing-icon" />
             {{ processingStatus }}
           </p>
           <ol class="stages">
@@ -553,18 +553,8 @@ onUnmounted(() => {
   transition: width 0.15s ease;
 }
 
-.processing-icon {
-  animation: processing-spin 1.2s infinite linear;
-  display: inline-block;
-}
-
-@keyframes processing-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.dictation-processing .loading-indicator {
+  margin: var(--space-md) auto;
 }
 
 .stages {
