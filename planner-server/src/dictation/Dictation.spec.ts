@@ -3,6 +3,7 @@ import * as fs from "fs-extra";
 
 jest.mock("axios");
 jest.mock("fs-extra");
+jest.mock("./SttWhisperCpp");
 
 const mockAxios = axios as jest.Mocked<typeof axios>;
 const mockReadFile = (fs as any).readFile as jest.Mock;
@@ -15,7 +16,10 @@ import {
   DictationStartJob,
   DictationSweepExpiredJobs,
 } from "./Dictation";
+import { SttWhisperCppTranscribe } from "./SttWhisperCpp";
 import { Config } from "../Config";
+
+const mockSttWhisperCpp = SttWhisperCppTranscribe as jest.Mock;
 
 function deferred<T = unknown>() {
   let resolve!: (value: T) => void;
@@ -139,6 +143,45 @@ describe("Dictation pipeline", () => {
 
     // Single-flight cleared after completion
     expect(DictationGetInFlightJobId("user-1")).toBeNull();
+  });
+
+  it("should transcribe through the embedded engine when STT_MODE is embedded", async () => {
+    const embeddedConfig = new Config();
+    embeddedConfig.DICTATION_ENABLED = true;
+    embeddedConfig.STT_MODE = "embedded";
+    embeddedConfig.STT_EMBEDDED_MODEL = "ggml-base";
+    embeddedConfig.LLM_API_KEY = "llm-key";
+    embeddedConfig.LLM_API_URL = "https://llm.test/chat";
+    embeddedConfig.LLM_MODEL = "llm-test";
+    await DictationInit(embeddedConfig);
+
+    mockSttWhisperCpp.mockResolvedValueOnce("embedded transcript" as never);
+    mockAxios.post.mockResolvedValueOnce(llmResponse('{"text": "Embedded!"}') as never);
+    mockAxios.post.mockResolvedValueOnce(llmResponse('{"actions": []}') as never);
+
+    const jobId = DictationStartJob("user-emb", "/tmp/dictation/e1.audio", "audio/webm", "en");
+    await flush();
+
+    expect(DictationGetJob("user-emb", jobId)).toMatchObject({
+      status: "done",
+      result: {
+        rawTranscript: "embedded transcript",
+        polishedText: "Embedded!",
+        polished: true,
+        actions: [],
+        actionsAvailable: true,
+      },
+    });
+    expect(mockSttWhisperCpp).toHaveBeenCalledWith(
+      expect.objectContaining({ STT_MODE: "embedded" }),
+      "/tmp/dictation/e1.audio",
+      "audio/webm",
+      "en",
+    );
+    // axios is used only for the LLM stages, never for the STT call
+    expect(mockAxios.post).toHaveBeenCalledTimes(2);
+    expect(mockAxios.post.mock.calls[0][0]).toBe("https://llm.test/chat");
+    expect(mockRemove).toHaveBeenCalledWith("/tmp/dictation/e1.audio");
   });
 
   it("should omit the STT language parameter in auto mode", async () => {

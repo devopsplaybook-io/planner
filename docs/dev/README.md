@@ -27,3 +27,15 @@ priority (rule length), which is unrelated to the order in the file.
 The proxy is only used in development — the production all-in-one container
 serves the API and static web itself. Traefik watches the rules file
 (`providers.file.watch=true`), so edits take effect without a restart.
+
+## Embedded speech-to-text (dictation)
+
+The server can transcribe dictations itself (`STT_MODE=embedded`, see the main
+README) instead of calling an external STT API. The all-in-one container ships
+everything needed; for development on the host you need:
+
+- `ffmpeg` installed and available on the `PATH`.
+- a `whisper-cli` binary (built from [whisper.cpp](https://github.com/ggml-org/whisper.cpp))
+  at `planner-server/bin/whisper-cli`, or any location via `STT_EMBEDDED_BIN_PATH`.
+
+The Whisper model is downloaded on first use into `DATA_DIR/stt-models/`.

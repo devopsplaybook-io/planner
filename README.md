@@ -88,16 +88,19 @@ Planner can generate task recommendations using any OpenAI-compatible chat compl
 
 ## Voice Dictation
 
-Planner offers advanced voice dictation: the user records a voice clip in the browser, the audio is transcribed by a speech-to-text engine, an LLM polishes the transcript, and a second LLM call proposes follow-up actions (create tasks or notes). The user reviews everything before anything is created. Dictation is enabled when `DICTATION_ENABLED` is set to `true` and both `STT_API_URL` and `STT_API_KEY` are configured.
+Planner offers advanced voice dictation: the user records a voice clip in the browser, the audio is transcribed by a speech-to-text engine, an LLM polishes the transcript, and a second LLM call proposes follow-up actions (create tasks or notes). The user reviews everything before anything is created. Dictation is enabled when `DICTATION_ENABLED` is set to `true` and a speech-to-text engine is available: `STT_MODE=embedded` (the engine embedded in the server, see below) or the default `external` mode with `STT_API_URL` and `STT_API_KEY`.
 
-The server is engine-agnostic: `STT_API_URL` is the base URL of any OpenAI-compatible speech-to-text service (the server appends `/v1/audio/transcriptions`).
+The server is engine-agnostic in `external` mode: `STT_API_URL` is the base URL of any OpenAI-compatible speech-to-text service (the server appends `/v1/audio/transcriptions`).
 
 | Variable                         | Description                                              | Default                   |
 | -------------------------------- | -------------------------------------------------------- | ------------------------- |
 | `DICTATION_ENABLED`              | Enable the dictation feature                             | `false`                   |
-| `STT_API_URL`                    | Base URL of the OpenAI-compatible STT service            |                           |
+| `STT_MODE`                       | Speech-to-text mode: `external` (API service) or `embedded` (built-in whisper.cpp engine) | `external`                |
+| `STT_API_URL`                    | Base URL of the OpenAI-compatible STT service (external mode) |                      |
 | `STT_API_KEY`                    | API key for the STT service (provide via a Secret)       |                           |
-| `STT_MODEL`                      | STT model name                                           | `whisper-large-v3-turbo`  |
+| `STT_MODEL`                      | STT model name (external mode)                           | `whisper-large-v3-turbo`  |
+| `STT_EMBEDDED_MODEL`             | Embedded whisper.cpp model (embedded mode)               | `ggml-base`               |
+| `STT_EMBEDDED_BIN_PATH`          | Path to a custom `whisper-cli` binary (embedded mode; defaults to the binary bundled in the image) | bundled binary |
 | `DICTATION_LANGUAGE`             | Default STT language (`auto` = engine-side detection)    | `auto`                    |
 | `DICTATION_MAX_DURATION_SECONDS` | Maximum recording duration (client-side auto-stop)       | `120`                     |
 | `DICTATION_MAX_UPLOAD_MB`        | Maximum audio upload size in megabytes                   | `10`                      |
@@ -111,6 +114,14 @@ Example setups:
 - **Cloud**: point `STT_API_URL` at an OpenAI-compatible cloud endpoint (e.g. Groq `https://api.groq.com`) with `STT_MODEL=whisper-large-v3-turbo` and a Groq API key.
 
 Always provide `STT_API_KEY` via an environment variable or a Kubernetes Secret — never commit it to `config.json`.
+
+### Embedded STT mode (`STT_MODE=embedded`)
+
+With `STT_MODE=embedded`, Planner embeds its own speech-to-text engine ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)): no external STT service is needed, `STT_API_URL`/`STT_API_KEY` become unnecessary, and audio never leaves the host.
+
+- **Nothing runs by default.** The engine ships as a `whisper-cli` binary inside the image and stays dormant until a dictation needs transcription: a short-lived transcription process is spawned for the duration of the dictation and shuts down immediately afterwards. No engine process or memory is used between dictations.
+- **Model downloaded on demand.** The selected `STT_EMBEDDED_MODEL` (`ggml-base` by default, ≈ 148 MB; other options include `ggml-tiny`, `ggml-small`, `ggml-large-v3-turbo`) is downloaded once on the first dictation into the persistent `DATA_DIR` volume (`stt-models/`). This requires outbound internet exactly once; afterwards dictation works fully offline. If a downloaded model is corrupted, delete the file from `stt-models/` and it is fetched again on the next dictation.
+- **CPU-only and serialized.** Transcriptions run on CPU, one at a time; uploads of any common format (webm, mp4, …) are decoded through the `ffmpeg` bundled in the image.
 
 ## Web Push Notifications
 

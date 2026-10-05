@@ -11,6 +11,7 @@ import {
   ParsePolishedText,
   POLISH_SYSTEM_PROMPT,
 } from "./DictationLlm";
+import { SttWhisperCppTranscribe } from "./SttWhisperCpp";
 
 const logger = console;
 
@@ -40,7 +41,11 @@ export interface DictationJobView {
 export async function DictationInit(configIn: Config): Promise<void> {
   config = configIn;
   startSweepTimer();
-  if (configIn.DICTATION_ENABLED && configIn.STT_API_URL && configIn.STT_API_KEY) {
+  if (configIn.DICTATION_ENABLED && configIn.STT_MODE === "embedded" && configIn.STT_EMBEDDED_MODEL) {
+    logger.info(
+      `[Dictation] Enabled (embedded STT model: ${configIn.STT_EMBEDDED_MODEL}, language: ${configIn.DICTATION_LANGUAGE})`,
+    );
+  } else if (configIn.DICTATION_ENABLED && configIn.STT_API_URL && configIn.STT_API_KEY) {
     logger.info(
       `[Dictation] Enabled (STT model: ${configIn.STT_MODEL}, language: ${configIn.DICTATION_LANGUAGE})`,
     );
@@ -273,6 +278,9 @@ async function transcribeAudio(
   audioMimeType: string,
   language: string | null,
 ): Promise<string> {
+  if (config.STT_MODE === "embedded") {
+    return SttWhisperCppTranscribe(config, audioFilePath, audioMimeType, language);
+  }
   const url = `${config.STT_API_URL.replace(/\/+$/, "")}/v1/audio/transcriptions`;
   const audioBuffer = await fs.readFile(audioFilePath);
   const form = new FormData();
