@@ -1,156 +1,201 @@
 <template>
-  <div class="settings">
+  <div class="settings" :class="{ wide: activeTab !== 'profile' }">
     <h1><i class="bi bi-gear" /> Settings</h1>
 
-    <section>
-      <h2>Appearance</h2>
-      <div class="setting-row">
-        <span class="setting-label"><i class="bi bi-palette" /> Theme</span>
-        <div class="theme-controls">
-          <span class="theme-name">{{ themeLabel }}</span>
-          <button class="btn-theme" @click="toggleTheme()">
-            <i :class="getThemeIcon()" />
-            {{
-              themeLabel === "System"
-                ? "Follow system"
-                : themeLabel === "Dark"
-                  ? "Switch to light"
-                  : "Switch to dark"
-            }}
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <section v-if="authStore.isAuthenticated && recommendationStore.isDictationEnabled">
-      <h2>Dictation</h2>
-      <label>
-        Dictation language
-        <select v-model="dictationLanguage">
-          <option value="auto">Automatic detection</option>
-          <option value="en">English</option>
-          <option value="fr">French</option>
-          <option value="de">German</option>
-          <option value="es">Spanish</option>
-          <option value="it">Italian</option>
-          <option value="pt">Portuguese</option>
-          <option value="nl">Dutch</option>
-        </select>
-      </label>
-      <p class="setting-hint">
-        <i class="bi bi-info-circle" />
-        Picking the language explicitly is recommended: short clips can be
-        misdetected when the language is set to automatic detection.
-      </p>
-    </section>
-
-    <section v-if="authStore.isAuthenticated && notificationsStore.supported">
-      <h2>Notifications</h2>
-      <div class="setting-row">
-        <span class="setting-label"
-          ><i class="bi bi-bell" /> Task reminders</span
-        >
-        <button
-          class="btn-theme"
-          :disabled="
-            notificationsStore.loading || !notificationsStore.serverEnabled
-          "
-          @click="toggleNotifications"
-        >
-          <i
-            :class="
-              notificationsStore.active ? 'bi bi-bell-slash' : 'bi bi-bell'
-            "
-          />
-          {{ notificationsStore.active ? "Disable" : "Enable" }}
-        </button>
-      </div>
-      <p
-        class="notification-status"
-        :class="{ 'notification-status--error': notificationsStore.lastError }"
+    <div class="admin-tabs" role="tablist">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        class="admin-tab"
+        :class="{ active: activeTab === tab.id }"
+        role="tab"
+        :aria-selected="activeTab === tab.id"
+        @click="activeTab = tab.id"
       >
-        {{ notificationStatus }}
-      </p>
-    </section>
-
-    <section v-if="authStore.isAuthenticated">
-      <h2>Account</h2>
-      <p class="user-info" v-if="authStore.currentUser">
-        Signed in as <strong>{{ authStore.currentUser.name }}</strong>
-      </p>
-      <button class="btn-logout" @click="handleLogout">
-        <i class="bi bi-box-arrow-right" /> Logout
+        {{ tab.label }}
       </button>
-    </section>
+    </div>
 
-    <section v-if="authStore.isAuthenticated">
-      <h2>API Key</h2>
-      <p class="api-key-info">
-        Use an API key to authenticate API calls. The key has the same
-        permissions as your user account.
-      </p>
-      <div v-if="apiKey" class="api-key-display">
-        <label>
-          Your API key (masked)
-          <div class="api-key-input-row">
-            <!-- Only the masked prefix is stored server-side; the full key
-                 exists only in the one-time "New API key" block below -->
-            <input
-              :value="apiKey.key"
-              type="text"
-              readonly
-              class="api-key-input"
-            />
-          </div>
-        </label>
-        <small class="api-key-date"
-          >Created {{ formatDate(apiKey.dateCreated) }}</small
-        >
-        <div class="api-key-actions">
-          <button class="secondary" :aria-busy="regenerating" @click="regenerateApiKey">
-            <i class="bi bi-arrow-clockwise" /> Regenerate
-          </button>
-          <button class="contrast" :aria-busy="deletingKey" @click="deleteApiKey">
-            <i class="bi bi-trash" /> Delete
-          </button>
-        </div>
-      </div>
-      <div v-else class="api-key-generate">
-        <p>No API key yet.</p>
-        <button :aria-busy="generating" @click="generateApiKey">
-          <i class="bi bi-key" /> Generate API Key
-        </button>
-      </div>
-      <div v-if="newlyGeneratedKey" class="api-key-new">
-        <label>
-          <strong>New API key</strong> — copy it now, it won't be shown again:
-          <div class="api-key-input-row">
-            <input
-              :value="newlyGeneratedKey"
-              type="text"
-              readonly
-              class="api-key-input"
-            />
-            <button class="btn-copy" @click="copyNewKey">
-              <i class="bi bi-clipboard" /> Copy
+    <div v-if="activeTab === 'profile'" class="profile-panel">
+      <section>
+        <h2>Appearance</h2>
+        <div class="setting-row">
+          <span class="setting-label"><i class="bi bi-palette" /> Theme</span>
+          <div class="theme-controls">
+            <span class="theme-name">{{ themeLabel }}</span>
+            <button class="btn-theme" @click="toggleTheme()">
+              <i :class="getThemeIcon()" />
+              {{
+                themeLabel === "System"
+                  ? "Follow system"
+                  : themeLabel === "Dark"
+                    ? "Switch to light"
+                    : "Switch to dark"
+              }}
             </button>
           </div>
+        </div>
+      </section>
+
+      <section v-if="authStore.isAuthenticated && recommendationStore.isDictationEnabled">
+        <h2>Dictation</h2>
+        <label>
+          Dictation language
+          <select v-model="dictationLanguage">
+            <option value="auto">Automatic detection</option>
+            <option value="en">English</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="es">Spanish</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="nl">Dutch</option>
+          </select>
         </label>
-      </div>
-    </section>
+        <p class="setting-hint">
+          <i class="bi bi-info-circle" />
+          Picking the language explicitly is recommended: short clips can be
+          misdetected when the language is set to automatic detection.
+        </p>
+      </section>
+
+      <section v-if="authStore.isAuthenticated && notificationsStore.supported">
+        <h2>Notifications</h2>
+        <div class="setting-row">
+          <span class="setting-label"
+            ><i class="bi bi-bell" /> Task reminders</span
+          >
+          <button
+            class="btn-theme"
+            :disabled="
+              notificationsStore.loading || !notificationsStore.serverEnabled
+            "
+            @click="toggleNotifications"
+          >
+            <i
+              :class="
+                notificationsStore.active ? 'bi bi-bell-slash' : 'bi bi-bell'
+              "
+            />
+            {{ notificationsStore.active ? "Disable" : "Enable" }}
+          </button>
+        </div>
+        <p
+          class="notification-status"
+          :class="{ 'notification-status--error': notificationsStore.lastError }"
+        >
+          {{ notificationStatus }}
+        </p>
+      </section>
+
+      <section v-if="authStore.isAuthenticated">
+        <h2>Account</h2>
+        <p class="user-info" v-if="authStore.currentUser">
+          Signed in as <strong>{{ authStore.currentUser.name }}</strong>
+        </p>
+        <button class="btn-logout" @click="handleLogout">
+          <i class="bi bi-box-arrow-right" /> Logout
+        </button>
+      </section>
+
+      <section v-if="authStore.isAuthenticated">
+        <h2>API Key</h2>
+        <p class="api-key-info">
+          Use an API key to authenticate API calls. The key has the same
+          permissions as your user account.
+        </p>
+        <div v-if="apiKey" class="api-key-display">
+          <label>
+            Your API key (masked)
+            <div class="api-key-input-row">
+              <!-- Only the masked prefix is stored server-side; the full key
+                   exists only in the one-time "New API key" block below -->
+              <input
+                :value="apiKey.key"
+                type="text"
+                readonly
+                class="api-key-input"
+              />
+            </div>
+          </label>
+          <small class="api-key-date"
+            >Created {{ formatDate(apiKey.dateCreated) }}</small
+          >
+          <div class="api-key-actions">
+            <button class="secondary" :aria-busy="regenerating" @click="regenerateApiKey">
+              <i class="bi bi-arrow-clockwise" /> Regenerate
+            </button>
+            <button class="contrast" :aria-busy="deletingKey" @click="deleteApiKey">
+              <i class="bi bi-trash" /> Delete
+            </button>
+          </div>
+        </div>
+        <div v-else class="api-key-generate">
+          <p>No API key yet.</p>
+          <button :aria-busy="generating" @click="generateApiKey">
+            <i class="bi bi-key" /> Generate API Key
+          </button>
+        </div>
+        <div v-if="newlyGeneratedKey" class="api-key-new">
+          <label>
+            <strong>New API key</strong> — copy it now, it won't be shown again:
+            <div class="api-key-input-row">
+              <input
+                :value="newlyGeneratedKey"
+                type="text"
+                readonly
+                class="api-key-input"
+              />
+              <button class="btn-copy" @click="copyNewKey">
+                <i class="bi bi-clipboard" /> Copy
+              </button>
+            </div>
+          </label>
+        </div>
+      </section>
+    </div>
+    <AdminUsersTab v-else-if="activeTab === 'users' && authStore.isAdmin" />
+    <AdminProjectsTab
+      v-else-if="activeTab === 'projects' && authStore.isAdmin"
+    />
+    <AdminStatusesTab
+      v-else-if="activeTab === 'statuses' && authStore.isAdmin"
+    />
   </div>
 </template>
 
 <script setup>
 import api from "../utils/api";
+import { getSettingsTabs, normalizeSettingsTab } from "../utils/settingsTabs";
 
 const authStore = useAuthStore();
 const notificationsStore = useNotificationsStore();
 const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
 const router = useRouter();
+const route = useRoute();
 const toggleTheme = inject("toggleTheme");
 const theme = inject("theme");
+
+const tabs = computed(() => getSettingsTabs(authStore.isAdmin));
+const activeTab = ref(normalizeSettingsTab(route.query.tab, authStore.isAdmin));
+
+// Keep the selected tab in the URL so a refresh or returning to the page
+// via browser navigation restores it
+watch(activeTab, (tab) => {
+  router.replace({ path: route.path, query: { ...route.query, tab } });
+});
+
+// Follow URL changes to ?tab= (browser back/forward, shared links)
+watch(
+  () => route.query.tab,
+  (tab) => {
+    const normalized = normalizeSettingsTab(tab, authStore.isAdmin);
+    if (normalized !== activeTab.value) {
+      activeTab.value = normalized;
+    }
+  },
+);
 
 const dictationLanguage = computed({
   get: () => dictationStore.language,
@@ -283,6 +328,12 @@ function formatDate(dateStr) {
   margin: 0 auto;
 }
 
+/* Admin tab content (Users, Projects, Statuses) needs the full page width,
+   like the former standalone /admin page */
+.settings.wide {
+  max-width: none;
+}
+
 .settings h1 {
   font-size: var(--text-xl);
   margin-bottom: var(--space-lg);
@@ -291,7 +342,34 @@ function formatDate(dateStr) {
   gap: var(--space-xs);
 }
 
-section {
+.admin-tabs {
+  display: flex;
+  gap: var(--space-2xs);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-lg);
+}
+
+.admin-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: var(--space-xs) var(--space-md);
+  color: var(--color-text-muted);
+  font-weight: var(--weight-medium);
+  margin-bottom: -1px;
+}
+
+.admin-tab:hover {
+  color: var(--color-primary);
+}
+
+.admin-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.profile-panel section {
   margin-bottom: var(--space-lg);
   padding: var(--space-md);
   border: 1px solid var(--color-border);
@@ -299,7 +377,7 @@ section {
   background: var(--color-surface);
 }
 
-section h2 {
+.profile-panel section h2 {
   font-size: var(--text-default);
   margin-bottom: var(--space-sm);
   color: var(--color-text-muted);

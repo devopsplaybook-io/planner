@@ -1,15 +1,15 @@
 # Admin
 
-The admin section centralizes application-wide configuration. It is organized as one tab per configuration type.
+The admin tabs live in the Settings page (see [USER_INTERFACE.md](USER_INTERFACE.md)) and centralize application-wide configuration. They are organized as one tab per configuration type, after the Profile tab.
 
-- [x] The admin section is accessible only to users with the admin role and presents one tab per configuration type.
+- [x] The admin tabs are accessible only to users with the admin role and present one tab per configuration type; they are hidden from non-admin users, who only see the Profile tab in Settings (server-side admin authorization is unchanged).
 - [x] Users tab: user management (create users, change roles, delete users, manage API keys).
 
 ## Projects tab
 
-Projects are created and managed by admins in the admin section (see [PROJECTS.md](PROJECTS.md)).
+Projects are created and managed by admins in the Settings admin tabs (see [PROJECTS.md](PROJECTS.md)).
 
-- [x] The admin section has a "Projects" tab where projects are created and managed.
+- [x] Settings has a "Projects" admin tab where projects are created and managed.
 - [x] The tab order is: Users, Projects, Statuses.
 - [x] The selected tab is reflected in the URL (query parameter) and is kept when the page is refreshed or reached again through browser navigation.
 - [x] Project management covers: create, edit (name and description, visibility and user access, status selection, Active/Archived switch &mdash; all edited in the project dialog's Edit mode and saved with one Save), delete.
@@ -27,9 +27,9 @@ Projects are created and managed by admins in the admin section (see [PROJECTS.m
 
 ## Statuses tab
 
-Statuses are defined, managed and ordered globally in the admin section. Projects do not create statuses; they select which statuses from the catalog they use (see [PROJECTS.md](PROJECTS.md)).
+Statuses are defined, managed and ordered globally in the Settings admin tabs. Projects do not create statuses; they select which statuses from the catalog they use (see [PROJECTS.md](PROJECTS.md)).
 
-- [x] The admin section has a "Statuses" tab where the global status catalog is managed.
+- [x] Settings has a "Statuses" admin tab where the global status catalog is managed.
 - [x] The status catalog is a single, cross-project, ordered list of status names.
 - [x] Only admins can edit the status catalog; the catalog itself is readable by all authenticated users.
 - [x] The catalog is saved on the server and reflected in the UI (Tasks kanban, project status selection).
@@ -41,4 +41,4 @@ Statuses are defined, managed and ordered globally in the admin section. Project
 - [x] The admin chooses a status color from a simplified preset-swatch picker (main colors, a few shades per color).
 - [x] The exact hex color code of each status is stored server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-20_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-05_
