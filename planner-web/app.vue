@@ -26,12 +26,18 @@
       @close="closeDialog('projectId')"
       @updated="onDialogUpdated"
     />
+    <!-- Global dictation dialog, opened from the navigation mic button -->
+    <DictationDialog
+      :open="dictationStore.dialogOpen"
+      @close="dictationStore.closeDialog()"
+    />
   </div>
 </template>
 
 <script setup>
 const route = useRoute();
 const router = useRouter();
+const dictationStore = useDictationStore();
 
 /**
  * Close a detail dialog by removing its query params from the URL.

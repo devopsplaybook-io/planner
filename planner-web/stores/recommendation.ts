@@ -19,6 +19,8 @@ export interface Recommendation {
 export interface AppConfig {
   llmRecommendationEnabled: boolean;
   llmImproveEnabled: boolean;
+  dictationEnabled: boolean;
+  dictationSttConfigured: boolean;
 }
 
 export const useRecommendationStore = defineStore("recommendation", {
@@ -33,6 +35,9 @@ export const useRecommendationStore = defineStore("recommendation", {
     isLlmEnabled: (state) => state.config?.llmRecommendationEnabled ?? false,
     isImproveEnabled: (state) => state.config?.llmImproveEnabled ?? false,
     hasRecommendation: (state) => !!state.recommendation?.generatedAt,
+    isDictationEnabled: (state) => state.config?.dictationEnabled ?? false,
+    isDictationSttConfigured: (state) =>
+      state.config?.dictationSttConfigured ?? false,
   },
 
   actions: {
@@ -44,6 +49,8 @@ export const useRecommendationStore = defineStore("recommendation", {
         this.config = {
           llmRecommendationEnabled: false,
           llmImproveEnabled: false,
+          dictationEnabled: false,
+          dictationSttConfigured: false,
         };
       }
     },
