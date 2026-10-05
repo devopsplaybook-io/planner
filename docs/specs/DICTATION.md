@@ -30,6 +30,7 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 - [x] The dialog records the user's voice in the browser (MediaRecorder, elapsed timer, visible recording state, auto-stop at the maximum duration).
 - [x] The dialog shows progressive processing stages (transcribing, improving text, finding actions) and resumes polling when closed and reopened mid-processing.
 - [x] The review step shows the polished text (editable) and the raw transcript (collapsible), plus action proposal cards (include checkbox, editable title and text).
+- [x] Task proposal cards offer a project selector (active projects only, shared project selection component) and a status selector listing the selected project's statuses; changing the project resets an incompatible status to the target project's first status; note proposals and "Save as note" keep using the default project.
 - [x] On confirm, the client creates the confirmed tasks and note via the existing authenticated APIs; proposals are never executed automatically by the server.
 - [x] A dictation language setting is available in the settings page when the feature is enabled.
 - [x] Microphone permission denial is reported with a clear message; recording stops cleanly on Escape.

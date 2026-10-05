@@ -144,6 +144,34 @@
                       : 'Note description'
                   "
                 />
+                <div
+                  v-if="action.type === 'create_task'"
+                  class="action-selects"
+                >
+                  <ProjectSelect
+                    :model-value="action.projectId"
+                    aria-label="Task project"
+                    @update:model-value="onActionProjectChange(action, $event)"
+                  />
+                  <span class="action-status">
+                    <span
+                      class="status-dot"
+                      :style="{
+                        backgroundColor: statusesStore.colorFor(action.status),
+                      }"
+                      :title="action.status"
+                    />
+                    <select v-model="action.status" aria-label="Task status">
+                      <option
+                        v-for="s in statusesForProject(action.projectId)"
+                        :key="s"
+                        :value="s"
+                      >
+                        {{ s }}
+                      </option>
+                    </select>
+                  </span>
+                </div>
                 <p v-if="action.dueDate || action.priority" class="action-meta">
                   <span v-if="action.priority" class="action-priority"
                     ><i class="bi bi-flag" /> {{ action.priority }}</span
@@ -199,6 +227,7 @@ const dictationStore = useDictationStore();
 const projectsStore = useProjectsStore();
 const tasksStore = useTasksStore();
 const notesStore = useNotesStore();
+const statusesStore = useStatusesStore();
 
 const DICTATION_MAX_DURATION_SECONDS = 120;
 const POLL_INTERVAL_MS = 1500;
@@ -297,10 +326,17 @@ const createButtonLabel = computed(() => {
 function enterReview() {
   const result = dictationStore.result;
   polishedText.value = result?.polishedText || "";
-  includedActions.value = (result?.actions || []).map((action) => ({
-    ...action,
-    included: true,
-  }));
+  const projectId = defaultProjectId();
+  includedActions.value = (result?.actions || []).map((action) =>
+    action.type === "create_task"
+      ? {
+          ...action,
+          included: true,
+          projectId,
+          status: firstStatusFor(projectId),
+        }
+      : { ...action, included: true },
+  );
   mode.value = "review";
 }
 
@@ -404,22 +440,48 @@ async function ensureProjectsLoaded() {
   }
 }
 
+function statusesForProject(projectId) {
+  const statuses = projectsStore.projects.find(
+    (p) => p.id === projectId,
+  )?.statuses;
+  return statuses?.length ? statuses : ["To Do", "In Progress", "Done"];
+}
+
+function firstStatusFor(projectId) {
+  return statusesForProject(projectId)[0];
+}
+
+function onActionProjectChange(action, projectId) {
+  action.projectId = projectId;
+  if (!statusesForProject(projectId).includes(action.status)) {
+    action.status = firstStatusFor(projectId);
+  }
+}
+
+function ensureStatusesLoaded() {
+  if (statusesStore.catalog.length === 0) {
+    statusesStore.fetchAll().catch(() => {});
+  }
+}
+
 async function commitSelected() {
   committing.value = true;
   try {
-    const projectId = defaultProjectId();
+    const fallbackProjectId = defaultProjectId();
     for (const action of selectedActions.value) {
       if (action.type === "create_task") {
+        const projectId = action.projectId || fallbackProjectId;
         await tasksStore.create({
           projectId,
           title: action.title,
           description: action.description,
+          status: action.status || firstStatusFor(projectId),
           priority: action.priority,
           dueDate: action.dueDate,
         });
       } else {
         await notesStore.create({
-          projectId,
+          projectId: fallbackProjectId,
           title: action.title,
           description: action.description,
         });
@@ -460,6 +522,7 @@ watch(
   async (isOpen) => {
     if (isOpen) {
       await ensureProjectsLoaded();
+      ensureStatusesLoaded();
       if (dictationStore.isProcessing) {
         mode.value = "processing";
         startPolling();
@@ -657,6 +720,34 @@ onUnmounted(() => {
 
 .action-title {
   font-weight: var(--weight-bold);
+}
+
+.action-selects {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-2xs);
+  align-items: center;
+}
+
+.action-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+
+.action-status select {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Color chip reflecting the selected status color */
+.status-dot {
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
 }
 
 .action-meta {
