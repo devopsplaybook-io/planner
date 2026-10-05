@@ -18,7 +18,7 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 ## Management of Tasks
 
-[x] Create: after creating a task, the task dialog opens on the new object.
+[x] Create: after creating a task, the task dialog opens on the new object; when no status is provided, the task starts in the project's first status (covers projects whose catalog does not include "To Do").
 
 [x] Update: when a task is clicked, the task is displayed and the user can edit the task.
 
@@ -58,4 +58,4 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 - [x] A task the user cannot see answers 404 on the task API, like a missing task.
 - [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-23_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-04_

@@ -164,6 +164,22 @@ export function parseProjectIds(value: unknown): string[] | undefined {
 }
 
 /**
+ * Resolves the effective status for a task in a project: the requested
+ * status when the project uses it, otherwise the project's first status —
+ * used when no status is given (creation default) or when a moved task's
+ * status is not available in the target project. Pure so it can be
+ * unit-tested without the route layer.
+ */
+export function resolveTaskStatus(project: Project, requested?: string): string {
+  if (requested && project.statuses.includes(requested)) {
+    return requested;
+  }
+  // Projects validated through the API always have >= 2 statuses; the
+  // fallbacks only cover rows written before that validation existed.
+  return project.statuses[0] || requested || "To Do";
+}
+
+/**
  * Loads a task and returns null when it does not exist or sits in a project
  * the user cannot see (admins bypass). Both cases answer 404 so restricted
  * tasks are not distinguishable from missing ones.
@@ -324,7 +340,7 @@ export class TasksRoutes {
       task.projectId = req.body.projectId;
       task.title = req.body.title;
       task.description = req.body.description || "";
-      if (req.body.status) task.status = req.body.status;
+      task.status = resolveTaskStatus(project, req.body.status);
       if (req.body.priority) task.priority = req.body.priority;
       if (req.body.dueDate) task.dueDate = req.body.dueDate;
       if (req.body.assignees)
@@ -498,11 +514,8 @@ export class TasksRoutes {
         task.projectId = req.body.projectId;
         // Without an explicit status, a status the target project does not
         // use falls back to its first status
-        if (
-          !req.body.status &&
-          !movedToProject.statuses.includes(task.status)
-        ) {
-          task.status = movedToProject.statuses[0];
+        if (!req.body.status) {
+          task.status = resolveTaskStatus(movedToProject, task.status);
         }
       }
       await TasksDataUpdate(task);
