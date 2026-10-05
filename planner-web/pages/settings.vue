@@ -22,6 +22,28 @@
       </div>
     </section>
 
+    <section v-if="authStore.isAuthenticated && recommendationStore.isDictationEnabled">
+      <h2>Dictation</h2>
+      <label>
+        Dictation language
+        <select v-model="dictationLanguage">
+          <option value="auto">Automatic detection</option>
+          <option value="en">English</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="es">Spanish</option>
+          <option value="it">Italian</option>
+          <option value="pt">Portuguese</option>
+          <option value="nl">Dutch</option>
+        </select>
+      </label>
+      <p class="setting-hint">
+        <i class="bi bi-info-circle" />
+        Picking the language explicitly is recommended: short clips can be
+        misdetected when the language is set to automatic detection.
+      </p>
+    </section>
+
     <section v-if="authStore.isAuthenticated && notificationsStore.supported">
       <h2>Notifications</h2>
       <div class="setting-row">
@@ -124,9 +146,16 @@ import api from "../utils/api";
 
 const authStore = useAuthStore();
 const notificationsStore = useNotificationsStore();
+const recommendationStore = useRecommendationStore();
+const dictationStore = useDictationStore();
 const router = useRouter();
 const toggleTheme = inject("toggleTheme");
 const theme = inject("theme");
+
+const dictationLanguage = computed({
+  get: () => dictationStore.language,
+  set: (value) => dictationStore.setLanguage(value),
+});
 
 const notificationStatus = computed(() => {
   if (!notificationsStore.serverEnabled) {
@@ -330,6 +359,13 @@ section h2 {
 
 .notification-status {
   margin-top: var(--space-sm);
+  margin-bottom: 0;
+  font-size: var(--text-sm);
+  opacity: 0.7;
+}
+
+.setting-hint {
+  margin-top: var(--space-2xs);
   margin-bottom: 0;
   font-size: var(--text-sm);
   opacity: 0.7;

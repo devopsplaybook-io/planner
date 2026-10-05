@@ -13,6 +13,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] There is a **left side menu** to switch between views
 - [x] On mobile, the menu auto-collapses to save screen space
 - [x] The menu provides access to: Tasks, Notes, Calendar, Kanban, and Settings (projects are managed by admins in the admin section, see [ADMIN.md](ADMIN.md))
+- [x] A global dictation button opens the shared dictation dialog when the dictation feature is enabled (see [DICTATION.md](DICTATION.md))
 - [x] Offline support (PWA configured with service worker, cache strategies)
 
 ### Project Selection
@@ -51,4 +52,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-20_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-05_

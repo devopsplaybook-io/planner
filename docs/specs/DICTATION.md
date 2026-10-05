@@ -26,13 +26,13 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 
 ### Web
 
-- [ ] A global dictation button in the navigation opens the dictation dialog (hidden when the feature is disabled, disabled with a tooltip when STT is not configured or the app is offline).
-- [ ] The dialog records the user's voice in the browser (MediaRecorder, elapsed timer, visible recording state, auto-stop at the maximum duration).
-- [ ] The dialog shows progressive processing stages (transcribing, improving text, finding actions) and resumes polling when closed and reopened mid-processing.
-- [ ] The review step shows the polished text (editable) and the raw transcript (collapsible), plus action proposal cards (include checkbox, editable title and text).
-- [ ] On confirm, the client creates the confirmed tasks and note via the existing authenticated APIs; proposals are never executed automatically by the server.
-- [ ] A dictation language setting is available in the settings page when the feature is enabled.
-- [ ] Microphone permission denial is reported with a clear message; recording stops cleanly on Escape.
+- [x] A global dictation button in the navigation opens the dictation dialog (hidden when the feature is disabled, disabled with a tooltip when STT is not configured or the app is offline).
+- [x] The dialog records the user's voice in the browser (MediaRecorder, elapsed timer, visible recording state, auto-stop at the maximum duration).
+- [x] The dialog shows progressive processing stages (transcribing, improving text, finding actions) and resumes polling when closed and reopened mid-processing.
+- [x] The review step shows the polished text (editable) and the raw transcript (collapsible), plus action proposal cards (include checkbox, editable title and text).
+- [x] On confirm, the client creates the confirmed tasks and note via the existing authenticated APIs; proposals are never executed automatically by the server.
+- [x] A dictation language setting is available in the settings page when the feature is enabled.
+- [x] Microphone permission denial is reported with a clear message; recording stops cleanly on Escape.
 
 ## Implementation Status
 
