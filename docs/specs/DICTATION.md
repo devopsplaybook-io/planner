@@ -24,6 +24,15 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 - [x] The dictation language can be set per request (`auto` by default, meaning engine-side detection; explicit languages are forwarded to the STT engine).
 - [x] Transcript and audio content are never logged.
 
+### Server — Embedded STT mode
+
+- [x] Speech-to-text can alternatively run embedded in the planner service itself (`STT_MODE=embedded`) with a bundled whisper.cpp engine; the default mode stays `external` and existing deployments behave identically until they opt in.
+- [x] In embedded mode the engine does not run by default: nothing engine-related is resident between dictations, a short-lived transcription process runs only while a dictation is being transcribed and shuts down right after.
+- [x] The embedded model (`STT_EMBEDDED_MODEL`, `ggml-base` by default) is downloaded once on first use into the persistent data directory and reused afterwards; a corrupted model file can be deleted to trigger a fresh download.
+- [x] Embedded transcriptions run one at a time; the uploaded audio is decoded to the engine's expected format before transcription and the decoded file is deleted immediately after.
+- [x] In embedded mode, STT is considered configured when the embedded model is set; the web UI's dictation availability logic keeps working without changes.
+- [x] The embedded model name and audio content are never logged.
+
 ### Web
 
 - [x] A global dictation button in the navigation opens the dictation dialog (hidden when the feature is disabled, disabled with a tooltip when STT is not configured or the app is offline).

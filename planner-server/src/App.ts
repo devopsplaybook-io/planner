@@ -147,7 +147,9 @@ Promise.resolve()
         llmImproveEnabled: !!config.LLM_API_KEY,
         dictationEnabled: config.DICTATION_ENABLED,
         dictationSttConfigured:
-          !!config.STT_API_URL && !!config.STT_API_KEY && !!config.STT_MODEL,
+          config.STT_MODE === "embedded"
+            ? !!config.STT_EMBEDDED_MODEL
+            : !!config.STT_API_URL && !!config.STT_API_KEY && !!config.STT_MODEL,
       });
     });
 
