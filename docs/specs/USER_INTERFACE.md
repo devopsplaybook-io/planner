@@ -12,9 +12,16 @@ It is installable on mobile and desktop devices and works offline.
 
 - [x] There is a **left side menu** to switch between views
 - [x] On mobile, the menu auto-collapses to save screen space
-- [x] The menu provides access to: Tasks, Notes, Calendar, Kanban, Update Feed, and Settings (projects are managed by admins in the admin section, see [ADMIN.md](ADMIN.md))
+- [x] The menu provides access to: Tasks, Notes, Calendar, Kanban, Update Feed, and Settings (projects are managed by admins in the Settings admin tabs, see [ADMIN.md](ADMIN.md))
 - [x] A global dictation button opens the shared dictation dialog when the dictation feature is enabled (see [DICTATION.md](DICTATION.md))
 - [x] Offline support (PWA configured with service worker, cache strategies)
+
+### Settings tabs
+
+- [x] Settings is a single page with permission-aware tabs: the **Profile** tab comes first and is the default for every user and holds all per-user settings (Appearance, Dictation, Notifications, Account, API Key); the **Users**, **Projects** and **Statuses** admin tabs are appended for admins only (see [ADMIN.md](ADMIN.md))
+- [x] Non-admin users only ever see the Profile tab (never the admin tabs); the server-side admin authorization on the admin APIs is unchanged
+- [x] The selected tab is reflected in the URL (`?tab=`) and restored on refresh and browser navigation; a deep link to an unknown or unauthorized tab (e.g. a non-admin opening `/settings?tab=users`) falls back to the Profile tab
+- [x] The former standalone `/admin` page redirects to `/settings` preserving the query parameters, so existing bookmarks and PWA-cached deep links keep working
 
 ### Project Selection
 
@@ -33,7 +40,7 @@ It is installable on mobile and desktop devices and works offline.
   - [x] When the detail is closed, the user is sent back to the previous page. If the previous page is not in the application, the user is sent to the page most related to the object
   - [x] From the detail a full edit mode can be triggered with more editing features
   - [x] When a Task, Note or Project is displayed, the URL reflects the object that is displayed and this URL can be shared and reused later or for other users to open the same object
-    - [x] Projects are managed by admins in the admin section; the admin URL reflects the selected tab and the displayed project (e.g. /admin?tab=projects&projectId=...)
+    - [x] Projects are managed by admins in the Settings admin tabs; the settings URL reflects the selected tab and the displayed project (e.g. /settings?tab=projects&projectId=...)
     - [x] Task comment permalinks extend the task URL with a comment id (e.g. /?taskId=…&commentId=…): opening it shows the task dialog with the Comments section expanded, scrolled to and briefly highlighting that comment; the parameter is stripped when the dialog closes and unknown comment ids are ignored
   - [x] The detail dialogs share a standardized header: icon-only Edit (pencil), Save (check) and Cancel (undo arrow) buttons that appear/disappear together when switching between display and Edit mode, an advanced (…) menu for destructive/rare actions, and a close button
 - [x] All markdown rendered in the app (task/note/project descriptions, comments, dashboard AI recommendations) goes through the shared sanitized rendering composable: output is filtered through a DOMPurify allow-list (safe tags and attributes, http/https/mailto URLs only, no event handlers); rendered markdown links open in a new tab with `rel="noopener noreferrer"`

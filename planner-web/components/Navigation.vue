@@ -59,14 +59,6 @@
           <span class="nav-label">Update Feed</span></NuxtLink
         >
       </li>
-      <li v-if="authStore.isAdmin">
-        <NuxtLink
-          to="/admin"
-          :class="activeRoute == '/admin' ? 'active' : 'inactive'"
-          ><i class="bi bi-gear"></i>
-          <span class="nav-label">Admin</span></NuxtLink
-        >
-      </li>
       <li>
         <NuxtLink
           to="/settings"
