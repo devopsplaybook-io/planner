@@ -12,7 +12,7 @@ It is installable on mobile and desktop devices and works offline.
 
 - [x] There is a **left side menu** to switch between views
 - [x] On mobile, the menu auto-collapses to save screen space
-- [x] The menu provides access to: Tasks, Notes, Calendar, Kanban, and Settings (projects are managed by admins in the Settings admin tabs, see [ADMIN.md](ADMIN.md))
+- [x] The menu provides access to: Tasks, Notes, Calendar, Kanban, Update Feed, and Settings (projects are managed by admins in the Settings admin tabs, see [ADMIN.md](ADMIN.md))
 - [x] A global dictation button opens the shared dictation dialog when the dictation feature is enabled (see [DICTATION.md](DICTATION.md))
 - [x] Offline support (PWA configured with service worker, cache strategies)
 

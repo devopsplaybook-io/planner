@@ -53,6 +53,14 @@
       </li>
       <li>
         <NuxtLink
+          to="/update-feed"
+          :class="activeRoute == '/update-feed' ? 'active' : 'inactive'"
+          ><i class="bi bi-activity"></i>
+          <span class="nav-label">Update Feed</span></NuxtLink
+        >
+      </li>
+      <li>
+        <NuxtLink
           to="/settings"
           :class="activeRoute == '/settings' ? 'active' : 'inactive'"
           ><i class="bi bi-three-dots"></i>
