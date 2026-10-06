@@ -56,9 +56,6 @@
         </template>
         <template v-else>
           <div class="loading-indicator" aria-hidden="true" />
-          <p class="dictation-status" aria-live="polite">
-            {{ processingStatus }}
-          </p>
           <ol class="stages">
             <li
               v-for="(stage, index) in processingStages"
@@ -290,12 +287,6 @@ function stageClass(index) {
     active: index === stageIndex.value,
   };
 }
-
-const processingStatus = computed(() => {
-  if (dictationStore.stage === "polishing") return "Improving text…";
-  if (dictationStore.stage === "actions") return "Finding actions…";
-  return "Transcribing…";
-});
 
 // ── Review state ──────────────────────────────────────────────────────────────
 

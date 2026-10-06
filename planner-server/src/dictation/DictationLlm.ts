@@ -29,7 +29,7 @@ export const ACTIONS_SYSTEM_PROMPT =
   '- "type" is either "create_task" or "create_note".\n' +
   '- "title" is a short summary; "description" is the detailed text.\n' +
   '- "priority" and "dueDate" are optional and only set when the text clearly implies them; ' +
-  '"dueDate" must be an ISO date (YYYY-MM-DD).\n' +
+  '"dueDate" must be an ISO date (YYYY-MM-DD) resolved against the current date provided in the message (e.g. "tomorrow", "next Monday" are relative to that date).\n' +
   "- Propose at most 5 actions; return an empty array when the text contains nothing actionable.\n" +
   "No markdown code fences, no commentary.";
 
@@ -54,11 +54,13 @@ export function BuildPolishPrompt(
 export function BuildActionsPrompt(
   text: string,
   language: string | null,
+  now: Date = new Date(),
 ): string {
   const hint = language
     ? `The dictated text is in language code "${language}".\n`
     : "";
-  return `${hint}Text:\n${text}`;
+  const today = now.toISOString().slice(0, 10);
+  return `Today's date is ${today} (YYYY-MM-DD). Resolve relative dates like "tomorrow" against it.\n${hint}Text:\n${text}`;
 }
 
 /**
