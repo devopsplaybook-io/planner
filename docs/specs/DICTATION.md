@@ -46,4 +46,4 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 
 ## Implementation Status
 
-`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-10-05
+`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-10-06

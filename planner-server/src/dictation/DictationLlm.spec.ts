@@ -34,6 +34,20 @@ describe("BuildActionsPrompt", () => {
     const prompt = BuildActionsPrompt("Acheter du lait", "fr");
     expect(prompt).toContain('"fr"');
   });
+
+  it("should include the date from the provided now", () => {
+    const prompt = BuildActionsPrompt(
+      "Buy milk",
+      null,
+      new Date("2026-10-06T12:00:00Z"),
+    );
+    expect(prompt).toContain("2026-10-06");
+  });
+
+  it("should default to the current date", () => {
+    const prompt = BuildActionsPrompt("Buy milk", null);
+    expect(prompt).toContain(new Date().toISOString().slice(0, 10));
+  });
 });
 
 describe("system prompts", () => {
@@ -44,6 +58,10 @@ describe("system prompts", () => {
 
   it("should cap the number of actions in the actions prompt", () => {
     expect(ACTIONS_SYSTEM_PROMPT).toContain("at most 5");
+  });
+
+  it("should resolve relative due dates against the current date", () => {
+    expect(ACTIONS_SYSTEM_PROMPT).toContain("current date");
   });
 });
 
