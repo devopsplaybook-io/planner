@@ -26,7 +26,7 @@ It is installable on mobile and desktop devices and works offline.
 ### Project Selection
 
 - [x] The user interface saves the selected project in the local storage and automatically keep this project selected. It should remember this across the entire UI for all task view: Tasks, Calender, Tasks
-- [x] The shared project selection component renders the projects as a searchable, collapsible tree: sub-projects are indented under their parent, each nested entry shows its last name segment with the full path (e.g. Home / Parents) as secondary text and tooltip — a root entry's label already is its full path, so it shows no repeated secondary text — and the search matches any segment of the path; orphaned projects are shown at the root with a warning marker. The popover stays inside the viewport (its right edge aligns with the trigger near the screen edge) and its inline search input is borderless; selecting a project or pressing Escape closes the popover, including when the component is embedded in a form label
+- [x] The shared project selection component renders the projects as a searchable, collapsible tree: sub-projects are indented under their parent, each nested entry shows its last name segment with the full path (e.g. Home / Parents) as secondary text and tooltip — a root entry's label already is its full path, so it shows no repeated secondary text — and the search matches any segment of the path; orphaned projects are shown at the root with a warning marker. The popover stays inside the viewport (its right edge aligns with the trigger near the screen edge) and its inline search input is borderless; while open it stays anchored to its trigger, repositioning when the surrounding layout shifts (e.g. a dialog entrance animation or content loaded after a dialog opens); selecting a project or pressing Escape closes the popover, including when the component is embedded in a form label
 - [x] The tree supports keyboard navigation: arrow keys move through the entries, Enter selects, Escape closes.
 - [x] Selecting a project in a list filter applies the filter to the project's whole subtree (see [PROJECTS.md](PROJECTS.md)); entity forms (task/note create and detail dialogs) keep selecting exactly one project.
 
@@ -59,4 +59,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-05_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-06_

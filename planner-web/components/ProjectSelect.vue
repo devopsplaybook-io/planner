@@ -252,22 +252,41 @@ function openPopover() {
     scrollActiveIntoView();
   });
   document.addEventListener("click", onDocumentClick);
-  window.addEventListener("resize", positionPopover);
-  window.addEventListener("scroll", positionPopover, true);
+  scheduleReposition();
 }
 
 function close() {
   open.value = false;
   search.value = "";
   document.removeEventListener("click", onDocumentClick);
-  window.removeEventListener("resize", positionPopover);
-  window.removeEventListener("scroll", positionPopover, true);
+  if (repositionFrame !== null) {
+    cancelAnimationFrame(repositionFrame);
+    repositionFrame = null;
+  }
+}
+
+function scheduleReposition() {
+  if (repositionFrame !== null) {
+    return;
+  }
+  repositionFrame = requestAnimationFrame(() => {
+    repositionFrame = null;
+    if (!open.value) {
+      return;
+    }
+    positionPopover();
+    scheduleReposition();
+  });
 }
 
 // The popover is fixed-positioned so page scroll containers cannot clip it;
 // it anchors to the trigger and flips to the left edge near the viewport's
-// right side
+// right side. While open, a per-frame loop refreshes the coordinates: in a
+// freshly opened dialog the trigger moves right after the first measurement
+// (entrance animation, async content re-centering the dialog).
 const popoverStyle = ref({});
+
+let repositionFrame = null;
 
 function positionPopover() {
   const trigger = rootEl.value?.querySelector(".project-select-trigger");
