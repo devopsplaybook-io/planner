@@ -54,6 +54,32 @@ export interface UpdateFeedEntry {
   projectId?: string;
 }
 
+/**
+ * Sparse fieldsets for list reads: everything the board, search results,
+ * history, calendar and tasks pages render, minus the heavy description/
+ * comments/attachments payload (the task dialog always re-fetches the full
+ * task by id).
+ */
+const TASK_LIST_FIELDS =
+  "id,projectId,title,status,priority,dueDate,checklist,assignees,labels,dateCreated,dateUpdated";
+
+/**
+ * The list response omits the keys not in TASK_LIST_FIELDS; default them
+ * so the store's mutation helpers (comments, attachments) keep working on
+ * list entries. Server values win when a key is present.
+ */
+function normalizeListTask(
+  task: Omit<Task, "description" | "comments" | "attachments"> &
+    Partial<Task>,
+): Task {
+  return {
+    description: "",
+    comments: [],
+    attachments: [],
+    ...task,
+  };
+}
+
 export const useTasksStore = defineStore("tasks", {
   state: () => ({
     tasks: [] as Task[],
@@ -65,7 +91,7 @@ export const useTasksStore = defineStore("tasks", {
       projectId?: string,
       opts?: { doneSince?: string; projectIds?: string[] },
     ) {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { fields: TASK_LIST_FIELDS };
       if (projectId) {
         params.projectId = projectId;
       }
@@ -76,7 +102,7 @@ export const useTasksStore = defineStore("tasks", {
         params.doneSince = opts.doneSince;
       }
       const res = await api.get("/tasks", { params });
-      this.tasks = res.data;
+      this.tasks = res.data.map(normalizeListTask);
     },
 
     async fetchNextView() {
@@ -120,7 +146,7 @@ export const useTasksStore = defineStore("tasks", {
       projectIds?: string[];
       q?: string;
     }) {
-      const query: Record<string, string> = {};
+      const query: Record<string, string> = { fields: TASK_LIST_FIELDS };
       if (params?.projectId) {
         query.projectId = params.projectId;
       }
@@ -131,7 +157,7 @@ export const useTasksStore = defineStore("tasks", {
         query.q = params.q;
       }
       const res = await api.get("/tasks", { params: query });
-      return res.data;
+      return res.data.map(normalizeListTask);
     },
 
     async fetchById(id: string) {

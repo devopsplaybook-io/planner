@@ -149,6 +149,77 @@ describe("buildListTasksQuery projectIds (subtree)", () => {
   });
 });
 
+describe("buildListTasksQuery assigneeUserId", () => {
+  it("should add no clause when assigneeUserId is absent", () => {
+    const { sql, params } = buildListTasksQuery(
+      { assigneeUserId: undefined },
+      "sqlite",
+    );
+    expect(sql).toBe("SELECT * FROM tasks ORDER BY dateCreated DESC");
+    expect(params).toEqual([]);
+  });
+
+  it("should filter by assignee through an EXISTS subquery (sqlite)", () => {
+    const { sql, params } = buildListTasksQuery(
+      { assigneeUserId: "user-1" },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.taskId = tasks.id AND ta.userId = ?) ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["user-1"]);
+  });
+
+  it("should quote identifiers for postgres in the EXISTS subquery", () => {
+    const { sql, params } = buildListTasksQuery(
+      { assigneeUserId: "user-1" },
+      "postgres",
+    );
+    expect(sql).toBe(
+      'SELECT * FROM tasks WHERE EXISTS (SELECT 1 FROM "task_assignees" ta WHERE ta."taskId" = tasks."id" AND ta."userId" = ?) ORDER BY "dateCreated" DESC',
+    );
+    expect(params).toEqual(["user-1"]);
+  });
+
+  it("should add no status condition so Done tasks are matched too", () => {
+    const { sql } = buildListTasksQuery(
+      { assigneeUserId: "user-1" },
+      "sqlite",
+    );
+    expect(sql).not.toContain("status");
+  });
+
+  it("should combine assigneeUserId with projectIds, q and visibility in order", () => {
+    const { sql, params } = buildListTasksQuery(
+      {
+        assigneeUserId: "user-1",
+        projectIds: ["proj-1"],
+        q: "report",
+        doneSince: "2026-08-14T00:00:00.000Z",
+        visibleTo: { userId: "user-1" },
+      },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE projectId IN (?) AND (status != ? OR dateUpdated >= ?) " +
+        "AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\') " +
+        "AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.taskId = tasks.id AND ta.userId = ?) " +
+        "AND (projectId IN (SELECT id FROM projects WHERE visibility = 'public') " +
+        "OR projectId IN (SELECT projectId FROM project_users WHERE userId = ?)) " +
+        "ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual([
+      "proj-1",
+      "Done",
+      "2026-08-14T00:00:00.000Z",
+      "%report%",
+      "%report%",
+      "user-1",
+      "user-1",
+    ]);
+  });
+});
+
 describe("buildListTasksQuery search (q)", () => {
   it("should match title or description case-insensitively (sqlite)", () => {
     const { sql, params } = buildListTasksQuery({ q: "report" }, "sqlite");

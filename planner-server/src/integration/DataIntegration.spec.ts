@@ -379,6 +379,171 @@ describe("batched child loading (integration)", () => {
   });
 });
 
+describe("tasks list fields projection (integration)", () => {
+  beforeAll(async () => {
+    await fs.remove(dir);
+    await fs.ensureDir(dir);
+    const config = new Config();
+    config.DATA_DIR = dir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+
+    await insertUser("u-fields-1");
+    await insertProject("p-fields");
+    await insertTask("t-fields-1", "p-fields");
+    await insertTask("t-fields-2", "p-fields", "Done");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_comments (id, taskId, userId, text, dateCreated) VALUES (?,?,?,?,?)",
+      ["c-fields-1", "t-fields-1", "u-fields-1", "hello", now],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+      ["l-fields-1", "t-fields-1", "bug"],
+    );
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(dir);
+  });
+
+  it("should skip child queries for collections excluded by fields", async () => {
+    DbUtilsQueryCountReset();
+    const fields = new Set([
+      "id",
+      "title",
+      "status",
+      "checklist",
+      "assignees",
+      "labels",
+    ]);
+    const tasks = await TasksDataList({ projectId: "p-fields" }, fields);
+    // 1 main query + assignees + labels; comments and attachments skipped
+    expect(DbUtilsQueryCountGet()).toBe(3);
+    expect(tasks).toHaveLength(2);
+    for (const task of tasks) {
+      expect(task.comments).toEqual([]);
+      expect(task.attachments).toEqual([]);
+    }
+  });
+
+  it("should run only the main query when no child collection is requested", async () => {
+    DbUtilsQueryCountReset();
+    const fields = new Set(["id", "title"]);
+    const tasks = await TasksDataList({ projectId: "p-fields" }, fields);
+    expect(DbUtilsQueryCountGet()).toBe(1);
+    expect(tasks).toHaveLength(2);
+    const task = tasks.find((t) => t.id === "t-fields-1");
+    expect(task?.toTransportJson(fields)).toEqual({
+      id: "t-fields-1",
+      title: "task-t-fields-1",
+    });
+  });
+
+  it("should hydrate the requested collections and omit the unrequested keys", async () => {
+    const fields = new Set(["id", "title", "comments", "assignees", "labels"]);
+    const tasks = await TasksDataList({ projectId: "p-fields" }, fields);
+    const task = tasks.find((t) => t.id === "t-fields-1");
+    const json = task?.toTransportJson(fields) as Record<string, unknown>;
+    expect(Object.keys(json).sort()).toEqual([
+      "assignees",
+      "comments",
+      "id",
+      "labels",
+      "title",
+    ]);
+    expect(task?.comments[0]).toMatchObject({
+      id: "c-fields-1",
+      userId: "u-fields-1",
+      text: "hello",
+    });
+    expect(task?.assignees).toEqual([]);
+    expect(task?.labels).toEqual(["bug"]);
+  });
+
+  it("should render requested-but-empty collections as empty arrays", async () => {
+    const fields = new Set([
+      "id",
+      "description",
+      "comments",
+      "labels",
+      "attachments",
+    ]);
+    const tasks = await TasksDataList({ projectId: "p-fields" }, fields);
+    const task = tasks.find((t) => t.id === "t-fields-2");
+    expect(task?.toTransportJson(fields)).toEqual({
+      id: "t-fields-2",
+      description: "",
+      comments: [],
+      labels: [],
+      attachments: [],
+    });
+  });
+});
+
+describe("tasks list assigneeUserId filter (integration)", () => {
+  beforeAll(async () => {
+    await fs.remove(dir);
+    await fs.ensureDir(dir);
+    const config = new Config();
+    config.DATA_DIR = dir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+
+    await insertUser("u-assignee-1");
+    await insertUser("u-assignee-2");
+    await insertProject("p-assignee");
+    // t-1: only u-1, To Do; t-2: u-1 + u-2, Done (filter must match all statuses)
+    await insertTask("t-assignee-1", "p-assignee");
+    await insertTask("t-assignee-2", "p-assignee", "Done");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_assignees (taskId, userId) VALUES (?,?)",
+      ["t-assignee-1", "u-assignee-1"],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_assignees (taskId, userId) VALUES (?,?)",
+      ["t-assignee-2", "u-assignee-1"],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_assignees (taskId, userId) VALUES (?,?)",
+      ["t-assignee-2", "u-assignee-2"],
+    );
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(dir);
+  });
+
+  it("should return only the given user's tasks, in all statuses", async () => {
+    const tasks = await TasksDataList({
+      projectId: "p-assignee",
+      assigneeUserId: "u-assignee-2",
+    });
+    expect(tasks.map((t) => t.id)).toEqual(["t-assignee-2"]);
+    expect(tasks[0].status).toBe("Done");
+  });
+
+  it("should match every task of the user when they are the only assignee", async () => {
+    const tasks = await TasksDataList({
+      projectIds: ["p-assignee"],
+      assigneeUserId: "u-assignee-1",
+    });
+    expect(tasks.map((t) => t.id).sort()).toEqual([
+      "t-assignee-1",
+      "t-assignee-2",
+    ]);
+  });
+
+  it("should compose assigneeUserId with the q filter", async () => {
+    const tasks = await TasksDataList({
+      assigneeUserId: "u-assignee-2",
+      q: "task-t-assignee-1",
+    });
+    expect(tasks).toEqual([]);
+  });
+});
+
 describe("dashboard recently-done window (integration)", () => {
   beforeAll(async () => {
     await fs.remove(dir);

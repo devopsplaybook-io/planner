@@ -26,6 +26,28 @@ export interface TaskAssignee {
   userName?: string;
 }
 
+/**
+ * Top-level keys of the task transport shape, in response order. Used by
+ * the list endpoint's sparse fieldsets: a "fields" query param names a
+ * subset of these and unrequested keys are omitted from the response.
+ */
+export const TASK_TRANSPORT_FIELDS = [
+  "id",
+  "projectId",
+  "title",
+  "description",
+  "status",
+  "priority",
+  "dueDate",
+  "checklist",
+  "assignees",
+  "comments",
+  "attachments",
+  "labels",
+  "dateCreated",
+  "dateUpdated",
+] as const;
+
 export class Task {
   public static fromJson(json: Record<string, unknown>): Task {
     if (!json) {
@@ -116,8 +138,13 @@ export class Task {
     };
   }
 
-  public toTransportJson(): Record<string, unknown> {
-    return {
+  /**
+   * Without fields (or with every field requested) the full transport
+   * shape is emitted; otherwise only the requested keys are emitted and
+   * unrequested keys are omitted entirely (never sent as empty values).
+   */
+  public toTransportJson(fields?: ReadonlySet<string>): Record<string, unknown> {
+    const json: Record<string, unknown> = {
       id: this.id,
       projectId: this.projectId,
       title: this.title,
@@ -133,5 +160,15 @@ export class Task {
       dateCreated: this.dateCreated,
       dateUpdated: this.dateUpdated,
     };
+    if (!fields || fields.size >= TASK_TRANSPORT_FIELDS.length) {
+      return json;
+    }
+    const filtered: Record<string, unknown> = {};
+    for (const field of TASK_TRANSPORT_FIELDS) {
+      if (fields.has(field)) {
+        filtered[field] = json[field];
+      }
+    }
+    return filtered;
   }
 }

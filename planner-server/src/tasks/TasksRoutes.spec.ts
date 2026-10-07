@@ -2,7 +2,9 @@ import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
 import { Readable } from "stream";
 import {
+  parseAssigneeUserId,
   parseDoneSince,
+  parseFields,
   parseLimit,
   parseOffset,
   parseProjectIds,
@@ -141,6 +143,59 @@ describe("parseProjectIds", () => {
   });
 });
 
+describe("parseFields", () => {
+  it("should return undefined for absent, null, empty or whitespace-only values", () => {
+    expect(parseFields(undefined)).toBeUndefined();
+    expect(parseFields(null)).toBeUndefined();
+    expect(parseFields("")).toBeUndefined();
+    expect(parseFields("   ")).toBeUndefined();
+  });
+
+  it("should return undefined for the wildcard value", () => {
+    expect(parseFields("*")).toBeUndefined();
+    expect(parseFields(" * ")).toBeUndefined();
+  });
+
+  it("should ignore a non-string value", () => {
+    expect(parseFields(42)).toBeUndefined();
+  });
+
+  it("should split on commas, trim and de-duplicate known field names", () => {
+    expect(parseFields(" id , title ,id ")).toEqual(
+      new Set(["id", "title"]),
+    );
+  });
+
+  it("should silently ignore unknown field names", () => {
+    expect(parseFields("id,bogus,title")).toEqual(
+      new Set(["id", "title"]),
+    );
+  });
+
+  it("should return undefined when no requested name is known", () => {
+    expect(parseFields("bogus,other")).toBeUndefined();
+    expect(parseFields(" , ")).toBeUndefined();
+  });
+});
+
+describe("parseAssigneeUserId", () => {
+  it("should return undefined for absent, null, empty or whitespace-only values", () => {
+    expect(parseAssigneeUserId(undefined)).toBeUndefined();
+    expect(parseAssigneeUserId(null)).toBeUndefined();
+    expect(parseAssigneeUserId("")).toBeUndefined();
+    expect(parseAssigneeUserId("   ")).toBeUndefined();
+  });
+
+  it("should return the trimmed user id", () => {
+    expect(parseAssigneeUserId("user-1")).toBe("user-1");
+    expect(parseAssigneeUserId(" user-1 ")).toBe("user-1");
+  });
+
+  it("should ignore a non-string value", () => {
+    expect(parseAssigneeUserId(42)).toBeUndefined();
+  });
+});
+
 describe("parseLimit", () => {
   it("should default when absent or empty", () => {
     expect(parseLimit(undefined)).toBe(TASKS_DEFAULT_LIMIT);
@@ -267,29 +322,37 @@ describe("TasksRoutes project visibility", () => {
   it("should scope the list to visible projects for non-admins", async () => {
     const res = await app.inject({ method: "GET", url: "/" });
     expect(res.statusCode).toBe(200);
-    expect(TasksDataList).toHaveBeenCalledWith({
-      projectId: undefined,
-      projectIds: undefined,
-      doneSince: undefined,
-      q: undefined,
-      limit: TASKS_DEFAULT_LIMIT,
-      offset: 0,
-      visibleTo: { userId: "user-1" },
-    });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      {
+        projectId: undefined,
+        projectIds: undefined,
+        doneSince: undefined,
+        q: undefined,
+        assigneeUserId: undefined,
+        limit: TASKS_DEFAULT_LIMIT,
+        offset: 0,
+        visibleTo: { userId: "user-1" },
+      },
+      undefined,
+    );
   });
 
   it("should not scope the list for admins", async () => {
     (AuthGetUserSession as jest.Mock).mockResolvedValue(adminSession);
     await app.inject({ method: "GET", url: "/" });
-    expect(TasksDataList).toHaveBeenCalledWith({
-      projectId: undefined,
-      projectIds: undefined,
-      doneSince: undefined,
-      q: undefined,
-      limit: TASKS_DEFAULT_LIMIT,
-      offset: 0,
-      visibleTo: undefined,
-    });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      {
+        projectId: undefined,
+        projectIds: undefined,
+        doneSince: undefined,
+        q: undefined,
+        assigneeUserId: undefined,
+        limit: TASKS_DEFAULT_LIMIT,
+        offset: 0,
+        visibleTo: undefined,
+      },
+      undefined,
+    );
   });
 
   it("should reject the list for unauthenticated requests with 401", async () => {
@@ -303,28 +366,36 @@ describe("TasksRoutes project visibility", () => {
 
   it("should forward a search term to the data layer", async () => {
     await app.inject({ method: "GET", url: "/?q=report" });
-    expect(TasksDataList).toHaveBeenCalledWith({
-      projectId: undefined,
-      projectIds: undefined,
-      doneSince: undefined,
-      q: "report",
-      limit: TASKS_DEFAULT_LIMIT,
-      offset: 0,
-      visibleTo: { userId: "user-1" },
-    });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      {
+        projectId: undefined,
+        projectIds: undefined,
+        doneSince: undefined,
+        q: "report",
+        assigneeUserId: undefined,
+        limit: TASKS_DEFAULT_LIMIT,
+        offset: 0,
+        visibleTo: { userId: "user-1" },
+      },
+      undefined,
+    );
   });
 
   it("should ignore a whitespace-only search term", async () => {
     await app.inject({ method: "GET", url: "/?q=%20%20" });
-    expect(TasksDataList).toHaveBeenCalledWith({
-      projectId: undefined,
-      projectIds: undefined,
-      doneSince: undefined,
-      q: undefined,
-      limit: TASKS_DEFAULT_LIMIT,
-      offset: 0,
-      visibleTo: { userId: "user-1" },
-    });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      {
+        projectId: undefined,
+        projectIds: undefined,
+        doneSince: undefined,
+        q: undefined,
+        assigneeUserId: undefined,
+        limit: TASKS_DEFAULT_LIMIT,
+        offset: 0,
+        visibleTo: { userId: "user-1" },
+      },
+      undefined,
+    );
   });
 
   it("should forward the projectIds subtree filter to the data layer", async () => {
@@ -332,21 +403,26 @@ describe("TasksRoutes project visibility", () => {
       method: "GET",
       url: "/?projectIds=proj-1,proj-2",
     });
-    expect(TasksDataList).toHaveBeenCalledWith({
-      projectId: undefined,
-      projectIds: ["proj-1", "proj-2"],
-      doneSince: undefined,
-      q: undefined,
-      limit: TASKS_DEFAULT_LIMIT,
-      offset: 0,
-      visibleTo: { userId: "user-1" },
-    });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      {
+        projectId: undefined,
+        projectIds: ["proj-1", "proj-2"],
+        doneSince: undefined,
+        q: undefined,
+        assigneeUserId: undefined,
+        limit: TASKS_DEFAULT_LIMIT,
+        offset: 0,
+        visibleTo: { userId: "user-1" },
+      },
+      undefined,
+    );
   });
 
   it("should not set projectIds when the param is absent", async () => {
     await app.inject({ method: "GET", url: "/" });
     expect(TasksDataList).toHaveBeenCalledWith(
       expect.objectContaining({ projectIds: undefined }),
+      undefined,
     );
   });
 
@@ -354,6 +430,7 @@ describe("TasksRoutes project visibility", () => {
     await app.inject({ method: "GET", url: "/?limit=5&offset=10" });
     expect(TasksDataList).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 5, offset: 10 }),
+      undefined,
     );
   });
 
@@ -375,7 +452,57 @@ describe("TasksRoutes project visibility", () => {
     await app.inject({ method: "GET", url: "/?doneSince=2026-08-14" });
     expect(TasksDataList).toHaveBeenCalledWith(
       expect.objectContaining({ doneSince: "2026-08-14T00:00:00.000Z" }),
+      undefined,
     );
+  });
+
+  it("should forward the assigneeUserId filter to the data layer", async () => {
+    await app.inject({ method: "GET", url: "/?assigneeUserId=user-2" });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      expect.objectContaining({ assigneeUserId: "user-2" }),
+      undefined,
+    );
+  });
+
+  it("should return only the requested fields when fields is sent", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataList as jest.Mock).mockResolvedValue([task]);
+    const res = await app.inject({
+      method: "GET",
+      url: `/?fields=id,title&projectId=${publicProject.id}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(TasksDataList).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: publicProject.id }),
+      new Set(["id", "title"]),
+    );
+    expect(res.json()).toEqual([{ id: task.id, title: task.title }]);
+  });
+
+  it("should keep the full shape when fields is a wildcard, unknown-only or absent", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataList as jest.Mock).mockResolvedValue([task]);
+    for (const url of ["/", "/?fields=*", "/?fields=bogus"]) {
+      const res = await app.inject({ method: "GET", url });
+      expect(res.statusCode).toBe(200);
+      expect(TasksDataList).toHaveBeenLastCalledWith(
+        expect.anything(),
+        undefined,
+      );
+      expect(res.json()[0]).toEqual(task.toTransportJson());
+    }
+  });
+
+  it("should keep the by-id endpoint on the full shape regardless of fields", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "GET",
+      url: `/${task.id}?fields=id,title`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(task.toTransportJson());
   });
 
   // ==================== GET BY ID ====================
