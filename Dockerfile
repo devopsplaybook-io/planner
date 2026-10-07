@@ -30,8 +30,9 @@ RUN cd planner-web && \
 # RUN
 FROM node:26-alpine
 
-# ffmpeg decodes the dictation uploads to 16 kHz WAV for whisper-cli
-RUN apk add --no-cache gzip ffmpeg
+# ffmpeg decodes the dictation uploads to 16 kHz WAV for whisper-cli;
+# zip/unzip cover archive maintenance on the /data volume (gunzip comes with gzip)
+RUN apk add --no-cache gzip ffmpeg zip unzip
 
 COPY --from=builder /opt/src/planner-server/node_modules /opt/app/planner/node_modules
 COPY --from=builder /opt/src/planner-server/dist /opt/app/planner/dist
