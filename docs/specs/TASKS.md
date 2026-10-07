@@ -58,4 +58,14 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 - [x] A task the user cannot see answers 404 on the task API, like a missing task.
 - [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-04_
+## Task List API
+
+[x] `GET /api/tasks` lists tasks newest first, with all of the task's data (the by-id endpoint `GET /api/tasks/:id` always returns the full shape). Optional query parameters, all composable:
+- `projectId` — restrict to one project; `projectIds` — comma-separated subtree restriction.
+- `q` — case-insensitive substring matched against title and description.
+- `doneSince` — ISO 8601 timestamp; keeps non-Done tasks and Done tasks updated since the cutoff.
+- `assigneeUserId` — only tasks assigned to this user, in all statuses.
+- `limit` / `offset` — pagination (default limit 1000).
+- [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees) are not queried server-side.
+
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-07_

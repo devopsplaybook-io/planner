@@ -26,6 +26,8 @@ export interface TaskListFilters {
   doneSince?: string;
   /** Case-insensitive substring matched against title and description. */
   q?: string;
+  /** Matches tasks assigned to this user, in all statuses (EXISTS). */
+  assigneeUserId?: string;
   /** When set, restricts results to projects visible to this user (non-admin viewers). */
   visibleTo?: { userId: string };
   /** Maximum number of rows returned (pagination). */
@@ -75,6 +77,12 @@ export function buildListTasksQuery(
     );
     params.push(pattern, pattern);
   }
+  if (filters.assigneeUserId) {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM ${quote("task_assignees")} ta WHERE ta.${quote("taskId")} = tasks.${quote("id")} AND ta.${quote("userId")} = ?)`,
+    );
+    params.push(filters.assigneeUserId);
+  }
   if (filters.visibleTo) {
     const visibility = visibleProjectsCondition(filters.visibleTo.userId, dbType);
     conditions.push(visibility.sql);
@@ -99,10 +107,11 @@ export function buildListTasksQuery(
 
 export async function TasksDataList(
   filters: TaskListFilters = {},
+  fields?: ReadonlySet<string>,
 ): Promise<Task[]> {
   const { sql, params } = buildListTasksQuery(filters);
   const rows = await DbUtilsQuerySQL(sql, params);
-  return enrichTasks(rows);
+  return enrichTasks(rows, fields);
 }
 
 export async function TasksDataAdd(task: Task): Promise<void> {
@@ -344,10 +353,13 @@ export function buildInPlaceholders(count: number): string {
 /**
  * Hydrates a list of task rows with their children in a bounded number of
  * queries (one per child type, batched with IN (...)) instead of four
- * queries per task.
+ * queries per task. When a field set is given, the child queries for
+ * unrequested collections (comments, attachments, labels, assignees) are
+ * skipped entirely — the caller only transports requested fields.
  */
 async function enrichTasks(
   rows: Record<string, unknown>[],
+  fields?: ReadonlySet<string>,
 ): Promise<Task[]> {
   const tasks = rows.map((row) => {
     const task = Task.fromJson(row);
@@ -371,34 +383,42 @@ async function enrichTasks(
 
   const [assigneeRows, commentRows, attachmentRows, labelRows] =
     await Promise.all([
-      DbUtilsQuerySQL(
-        SQL_QUERIES.GET_ASSIGNEES_BY_TASK_IDS[dbType].replace(
-          ":ids",
-          placeholders,
-        ),
-        ids,
-      ),
-      DbUtilsQuerySQL(
-        SQL_QUERIES.GET_COMMENTS_BY_TASK_IDS[dbType].replace(
-          ":ids",
-          placeholders,
-        ),
-        ids,
-      ),
-      DbUtilsQuerySQL(
-        SQL_QUERIES.GET_ATTACHMENTS_BY_TASK_IDS[dbType].replace(
-          ":ids",
-          placeholders,
-        ),
-        ids,
-      ),
-      DbUtilsQuerySQL(
-        SQL_QUERIES.GET_LABELS_BY_TASK_IDS[dbType].replace(
-          ":ids",
-          placeholders,
-        ),
-        ids,
-      ),
+      !fields || fields.has("assignees")
+        ? DbUtilsQuerySQL(
+            SQL_QUERIES.GET_ASSIGNEES_BY_TASK_IDS[dbType].replace(
+              ":ids",
+              placeholders,
+            ),
+            ids,
+          )
+        : Promise.resolve([]),
+      !fields || fields.has("comments")
+        ? DbUtilsQuerySQL(
+            SQL_QUERIES.GET_COMMENTS_BY_TASK_IDS[dbType].replace(
+              ":ids",
+              placeholders,
+            ),
+            ids,
+          )
+        : Promise.resolve([]),
+      !fields || fields.has("attachments")
+        ? DbUtilsQuerySQL(
+            SQL_QUERIES.GET_ATTACHMENTS_BY_TASK_IDS[dbType].replace(
+              ":ids",
+              placeholders,
+            ),
+            ids,
+          )
+        : Promise.resolve([]),
+      !fields || fields.has("labels")
+        ? DbUtilsQuerySQL(
+            SQL_QUERIES.GET_LABELS_BY_TASK_IDS[dbType].replace(
+              ":ids",
+              placeholders,
+            ),
+            ids,
+          )
+        : Promise.resolve([]),
     ]);
 
   for (const row of assigneeRows) {

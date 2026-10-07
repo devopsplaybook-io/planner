@@ -1,6 +1,6 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { v4 as uuidv4 } from "uuid";
-import { Task } from "../model/Task";
+import { Task, TASK_TRANSPORT_FIELDS } from "../model/Task";
 import { Project } from "../model/Project";
 import { UserSession } from "../model/UserSession";
 import {
@@ -164,6 +164,38 @@ export function parseProjectIds(value: unknown): string[] | undefined {
 }
 
 /**
+ * Validates the optional comma-separated fields query param (sparse
+ * fieldsets). Returns undefined (full shape) when absent/empty, "*",
+ * non-string, or when no known field name remains — unknown names are
+ * ignored silently. Pure so it can be unit-tested without the route layer.
+ */
+export function parseFields(value: unknown): Set<string> | undefined {
+  if (typeof value !== "string" || value.trim() === "" || value.trim() === "*") {
+    return undefined;
+  }
+  const requested = new Set<string>();
+  for (const part of value.split(",")) {
+    const field = part.trim();
+    if ((TASK_TRANSPORT_FIELDS as readonly string[]).includes(field)) {
+      requested.add(field);
+    }
+  }
+  return requested.size > 0 ? requested : undefined;
+}
+
+/**
+ * Validates the optional assigneeUserId query param. Returns undefined
+ * when absent/empty and the trimmed id otherwise. Pure so it can be
+ * unit-tested without the route layer.
+ */
+export function parseAssigneeUserId(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim() === "") {
+    return undefined;
+  }
+  return value.trim();
+}
+
+/**
  * Resolves the effective status for a task in a project: the requested
  * status when the project uses it, otherwise the project's first status —
  * used when no status is given (creation default) or when a moved task's
@@ -222,6 +254,8 @@ export class TasksRoutes {
         projectIds?: string;
         doneSince?: string;
         q?: string;
+        fields?: string;
+        assigneeUserId?: string;
         limit?: string;
         offset?: string;
       };
@@ -245,14 +279,20 @@ export class TasksRoutes {
         projectIds: parseProjectIds(req.query.projectIds),
         doneSince,
         q: req.query.q?.trim() || undefined,
+        assigneeUserId: parseAssigneeUserId(req.query.assigneeUserId),
         limit,
         offset,
       };
       if (userSession.role !== "admin") {
         filters.visibleTo = { userId: userSession.userId };
       }
-      const tasks = await TasksDataList(filters);
-      return res.status(200).send(tasks.map((t) => t.toTransportJson()));
+      // Sparse fieldsets: the parsed set both trims the transport JSON and
+      // skips the enrichment child queries for unrequested collections.
+      const fields = parseFields(req.query.fields);
+      const tasks = await TasksDataList(filters, fields);
+      return res
+        .status(200)
+        .send(tasks.map((t) => t.toTransportJson(fields)));
     });
 
     // ==================== ACTIVITY (Update Feed) ====================
