@@ -14,6 +14,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On mobile, the menu auto-collapses to save screen space
 - [x] The menu provides access to: Tasks, Notes, Calendar, Kanban, Update Feed, and Settings (projects are managed by admins in the Settings admin tabs, see [ADMIN.md](ADMIN.md))
 - [x] A global dictation button opens the shared dictation dialog when the dictation feature is enabled (see [DICTATION.md](DICTATION.md))
+- [x] The Settings entry in the menu uses a gear icon, consistent with the other navigation icons
 - [x] Offline support (PWA configured with service worker, cache strategies)
 
 ### Settings tabs
@@ -22,6 +23,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] Non-admin users only ever see the Profile tab (never the admin tabs); the server-side admin authorization on the admin APIs is unchanged
 - [x] The selected tab is reflected in the URL (`?tab=`) and restored on refresh and browser navigation; a deep link to an unknown or unauthorized tab (e.g. a non-admin opening `/settings?tab=users`) falls back to the Profile tab
 - [x] The former standalone `/admin` page redirects to `/settings` preserving the query parameters, so existing bookmarks and PWA-cached deep links keep working
+- [x] All settings tabs share a single full-width page layout: the header, tab bar and content are aligned identically for every tab (the legacy centered profile-only layout was removed)
 
 ### Project Selection
 
@@ -59,4 +61,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-06_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-10_

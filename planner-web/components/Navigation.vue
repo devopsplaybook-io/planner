@@ -63,7 +63,7 @@
         <NuxtLink
           to="/settings"
           :class="activeRoute == '/settings' ? 'active' : 'inactive'"
-          ><i class="bi bi-three-dots"></i>
+          ><i class="bi bi-gear"></i>
           <span class="nav-label">Settings</span></NuxtLink
         >
       </li>

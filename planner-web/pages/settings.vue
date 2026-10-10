@@ -1,12 +1,12 @@
 <template>
-  <div class="settings" :class="{ wide: activeTab !== 'profile' }">
+  <div class="settings">
     <h1><i class="bi bi-gear" /> Settings</h1>
 
-    <div class="admin-tabs" role="tablist">
+    <div class="settings-tabs" role="tablist">
       <button
         v-for="tab in tabs"
         :key="tab.id"
-        class="admin-tab"
+        class="settings-tab"
         :class="{ active: activeTab === tab.id }"
         role="tab"
         :aria-selected="activeTab === tab.id"
@@ -323,17 +323,6 @@ function formatDate(dateStr) {
 </script>
 
 <style scoped>
-.settings {
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-/* Admin tab content (Users, Projects, Statuses) needs the full page width,
-   like the former standalone /admin page */
-.settings.wide {
-  max-width: none;
-}
-
 .settings h1 {
   font-size: var(--text-xl);
   margin-bottom: var(--space-lg);
@@ -342,14 +331,14 @@ function formatDate(dateStr) {
   gap: var(--space-xs);
 }
 
-.admin-tabs {
+.settings-tabs {
   display: flex;
   gap: var(--space-2xs);
   border-bottom: 1px solid var(--color-border);
   margin-bottom: var(--space-lg);
 }
 
-.admin-tab {
+.settings-tab {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -360,11 +349,11 @@ function formatDate(dateStr) {
   margin-bottom: -1px;
 }
 
-.admin-tab:hover {
+.settings-tab:hover {
   color: var(--color-primary);
 }
 
-.admin-tab.active {
+.settings-tab.active {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
 }
