@@ -211,6 +211,110 @@
           </div>
         </section>
 
+        <!-- Dependencies: hidden entirely when the server omits the key
+             (older server without dependency support) -->
+        <details
+          v-if="hasDependencies"
+          class="compact-section"
+          :open="isSectionOpen('dependencies', hasDependencyEntries)"
+          @toggle="onSectionToggle('dependencies', $event, hasDependencyEntries)"
+        >
+          <summary>
+            Dependencies
+            <span v-if="hasDependencyEntries" class="count-badge">
+              {{ dependencyList.length }}
+            </span>
+          </summary>
+          <div
+            v-if="editing || hasDependencyEntries"
+            class="dependencies"
+          >
+            <template v-if="editing">
+              <div
+                v-for="dep in dependencyDraft"
+                :key="dep.taskId"
+                class="dependency-item"
+              >
+                <span
+                  class="status-dot"
+                  :style="{ backgroundColor: dependencyStatusColor(dep) }"
+                  :title="dep.status"
+                />
+                <span class="dependency-title">
+                  {{ dep.title || dep.taskId }}
+                </span>
+                <button
+                  class="checklist-item-delete"
+                  :aria-label="`Remove dependency: ${dep.title || dep.taskId}`"
+                  @click="removeDependency(dep.taskId)"
+                >
+                  <i class="bi bi-x" />
+                </button>
+              </div>
+              <div class="dependency-picker">
+                <input
+                  v-model="dependencySearch"
+                  type="text"
+                  placeholder="Search tasks to add as a dependency..."
+                  @input="onDependencySearch"
+                />
+                <div
+                  v-if="dependencyResults.length"
+                  class="dependency-results"
+                >
+                  <button
+                    v-for="result in dependencyResults"
+                    :key="result.id"
+                    type="button"
+                    class="dependency-result"
+                    @click="addDependency(result)"
+                  >
+                    <span
+                      class="status-dot"
+                      :style="{
+                        backgroundColor: statusesStore.colorFor(result.status),
+                      }"
+                      :title="result.status"
+                    />
+                    <span class="dependency-result-title">
+                      {{ result.title }}
+                    </span>
+                    <small class="text-muted">{{ result.status }}</small>
+                  </button>
+                </div>
+                <p
+                  v-else-if="
+                    dependencySearch.trim() && !searchingDependencies
+                  "
+                  class="text-muted"
+                >
+                  No matching tasks
+                </p>
+              </div>
+            </template>
+            <template v-else>
+              <div
+                v-for="dep in task.dependencies"
+                :key="dep.taskId"
+                class="dependency-item"
+              >
+                <span
+                  class="status-dot"
+                  :style="{ backgroundColor: dependencyStatusColor(dep) }"
+                  :title="dep.status"
+                />
+                <span class="dependency-title">
+                  {{ dep.title || dep.taskId }}
+                </span>
+                <small class="text-muted">{{ dep.status }}</small>
+              </div>
+            </template>
+          </div>
+          <p v-else class="text-muted dependencies-empty">
+            No dependencies
+          </p>
+        </details>
+
         <!-- Checklist -->
         <details
           class="compact-section"
@@ -704,6 +808,79 @@ let highlightTimer = null;
 const hasChecklist = computed(() => !!task.value?.checklist?.length);
 const hasAttachments = computed(() => !!task.value?.attachments?.length);
 const hasComments = computed(() => !!task.value?.comments?.length);
+
+// Dependencies: the section only renders when the server sends the key, so
+// an older server (no dependency support) hides the editor entirely
+const hasDependencies = computed(() =>
+  Array.isArray(task.value?.dependencies),
+);
+const dependencyList = computed(() => task.value?.dependencies || []);
+const hasDependencyEntries = computed(() => dependencyList.value.length > 0);
+// Edit-mode draft of the dependency list (reference + current title/status
+// snapshot for a stable display while editing)
+const dependencyDraft = ref([]);
+const dependencySearch = ref("");
+const dependencyResults = ref([]);
+const searchingDependencies = ref(false);
+let dependencySearchTimer = null;
+
+function dependencyStatusColor(dep) {
+  return statusesStore.colorFor(dep.status);
+}
+
+function startDependencyDraft() {
+  dependencyDraft.value = (task.value?.dependencies || []).map((d) => ({
+    ...d,
+  }));
+  dependencySearch.value = "";
+  dependencyResults.value = [];
+}
+
+function removeDependency(taskId) {
+  dependencyDraft.value = dependencyDraft.value.filter(
+    (d) => d.taskId !== taskId,
+  );
+}
+
+function addDependency(result) {
+  if (dependencyDraft.value.some((d) => d.taskId === result.id)) return;
+  dependencyDraft.value = [
+    ...dependencyDraft.value,
+    { taskId: result.id, title: result.title, status: result.status },
+  ];
+  dependencySearch.value = "";
+  dependencyResults.value = [];
+}
+
+// Typeahead over the tasks visible to the user (all projects), excluding the
+// task itself and the dependencies already picked
+async function searchDependencyCandidates() {
+  const term = dependencySearch.value.trim();
+  if (!term || !task.value) {
+    dependencyResults.value = [];
+    return;
+  }
+  searchingDependencies.value = true;
+  try {
+    const results = await tasksStore.searchTasks({ q: term });
+    const exclude = new Set([
+      task.value.id,
+      ...dependencyDraft.value.map((d) => d.taskId),
+    ]);
+    dependencyResults.value = results
+      .filter((t) => !exclude.has(t.id))
+      .slice(0, 8);
+  } catch {
+    dependencyResults.value = [];
+  } finally {
+    searchingDependencies.value = false;
+  }
+}
+
+function onDependencySearch() {
+  if (dependencySearchTimer) clearTimeout(dependencySearchTimer);
+  dependencySearchTimer = setTimeout(searchDependencyCandidates, 250);
+}
 const checklistDoneCount = computed(() =>
   (task.value?.checklist || []).filter((i) => i.done).length,
 );
@@ -1003,6 +1180,7 @@ onBeforeUnmount(() => {
   stopTaskPolling();
   commentResizeObserver.disconnect();
   if (highlightTimer) clearTimeout(highlightTimer);
+  if (dependencySearchTimer) clearTimeout(dependencySearchTimer);
   for (const url of Object.values(attachmentUrls.value)) {
     URL.revokeObjectURL(url);
   }
@@ -1038,6 +1216,7 @@ function startEdit() {
     assignees: (task.value.assignees || []).map((a) => a.userId),
     projectId: task.value.projectId,
   };
+  startDependencyDraft();
   editing.value = true;
   // Fetch users for the assignee picker
   fetchUsers();
@@ -1081,6 +1260,17 @@ async function saveEdit() {
     for (const userId of newAssignees) {
       if (!currentAssignees.includes(userId)) {
         await tasksStore.addAssignee(props.taskId, userId);
+      }
+    }
+    // Replace the dependencies when the draft diverges (order matters)
+    if (hasDependencies.value) {
+      const currentIds = dependencyList.value.map((d) => d.taskId);
+      const newIds = dependencyDraft.value.map((d) => d.taskId);
+      if (
+        newIds.length !== currentIds.length ||
+        newIds.some((id, index) => id !== currentIds[index])
+      ) {
+        await tasksStore.setDependencies(props.taskId, newIds);
       }
     }
     // Refresh the task to get updated assignee names
@@ -1624,6 +1814,72 @@ section h4 {
   align-items: center;
 }
 
+/* Dependencies: one row per dependency, then the typeahead picker in edit
+   mode. Grid rows keep long titles from pushing the remove button out. */
+.dependencies {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2xs);
+  margin-bottom: var(--space-sm);
+}
+
+.dependencies-empty {
+  margin: 0 0 var(--space-sm);
+}
+
+.dependency-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: var(--space-2xs) var(--space-xs);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.dependency-title {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.dependency-picker {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2xs);
+  padding-bottom: var(--space-sm);
+}
+
+.dependency-results {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2xs);
+}
+
+.dependency-result {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-2xs);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2xs) var(--space-xs);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.dependency-result:hover {
+  border-color: var(--color-primary);
+}
+
+.dependency-result-title {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
 /* The comment form stacks: composer (tabs + textarea) with the action row
    below it, GitHub-style */
 .add-comment {
@@ -1928,7 +2184,8 @@ section h4 {
 
 .compact-section .checklist,
 .compact-section .attachments,
-.compact-section .comments {
+.compact-section .comments,
+.compact-section .dependencies {
   padding-top: var(--space-xs);
 }
 

@@ -11,6 +11,7 @@ import {
   resolveTaskStatus,
   TASKS_DEFAULT_LIMIT,
   TasksRoutes,
+  validateDependencies,
 } from "./TasksRoutes";
 import {
   TasksDataAdd,
@@ -26,6 +27,8 @@ import {
   getTaskAttachment,
   removeAssignee,
   replaceLabels,
+  replaceDependencies,
+  TasksDataTouch,
 } from "./TasksData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { UsersDataGet } from "../users/UsersData";
@@ -51,6 +54,7 @@ jest.mock("./TasksData", () => ({
   getComment: jest.fn(),
   updateComment: jest.fn(),
   replaceLabels: jest.fn(),
+  replaceDependencies: jest.fn(),
   addTaskAttachment: jest.fn(),
   deleteTaskAttachment: jest.fn(),
   getTaskAttachment: jest.fn(),
@@ -263,6 +267,103 @@ describe("resolveTaskStatus", () => {
     const project = projectWithStatuses([]);
     expect(resolveTaskStatus(project, "Done")).toBe("Done");
     expect(resolveTaskStatus(project)).toBe("To Do");
+  });
+});
+
+describe("validateDependencies", () => {
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const publicProject = new Project();
+  publicProject.name = "P";
+  publicProject.visibility = "public";
+
+  function makeTask(id: string): Task {
+    const task = new Task();
+    task.id = id;
+    task.projectId = publicProject.id;
+    task.title = "Task";
+    return task;
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+  });
+
+  it("should reject a payload that is not an array of strings", async () => {
+    const task = makeTask("task-1");
+    (TasksDataGet as jest.Mock).mockResolvedValue(null);
+    for (const dependencies of [undefined, null, "task-2", 42, [1, 2], [{}]]) {
+      const validation = await validateDependencies(
+        task,
+        dependencies,
+        userSession,
+      );
+      expect(validation.errorStatus).toBe(400);
+      expect(validation.errorMessage).toContain("dependencies");
+    }
+  });
+
+  it("should reject a self-reference", async () => {
+    const task = makeTask("task-1");
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const validation = await validateDependencies(
+      task,
+      ["task-1"],
+      userSession,
+    );
+    expect(validation.errorStatus).toBe(400);
+    expect(validation.errorMessage).toContain("itself");
+  });
+
+  it("should resolve the ids of a valid creation payload", async () => {
+    (TasksDataGet as jest.Mock).mockResolvedValue(makeTask("task-2"));
+    const validation = await validateDependencies(
+      null,
+      ["task-2"],
+      userSession,
+    );
+    expect(validation.ids).toEqual(["task-2"]);
+  });
+
+  it("should answer 404 for a missing or invisible dependency", async () => {
+    const task = makeTask("task-1");
+    (TasksDataGet as jest.Mock).mockResolvedValue(null);
+    const validation = await validateDependencies(
+      task,
+      ["missing-task"],
+      userSession,
+    );
+    expect(validation.errorStatus).toBe(404);
+    expect(validation.errorMessage).toBe("Task Not Found");
+  });
+
+  it("should trim ids, drop empty and duplicate entries", async () => {
+    const task = makeTask("task-1");
+    (TasksDataGet as jest.Mock).mockResolvedValue(makeTask("task-2"));
+    const validation = await validateDependencies(
+      task,
+      [" task-2 ", "", "task-2", "task-2"],
+      userSession,
+    );
+    expect(validation.ids).toEqual(["task-2"]);
+    expect(TasksDataGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("should keep the given order after deduplication", async () => {
+    const task = makeTask("task-1");
+    (TasksDataGet as jest.Mock).mockResolvedValue(makeTask("task-9"));
+    const validation = await validateDependencies(
+      task,
+      ["task-3", "task-2", "task-3"],
+      userSession,
+    );
+    expect(validation.ids).toEqual(["task-3", "task-2"]);
   });
 });
 
@@ -965,6 +1066,164 @@ describe("TasksRoutes project visibility", () => {
     expect(replaceLabels).not.toHaveBeenCalled();
   });
 
+  // ==================== DEPENDENCIES ====================
+  it("should create a task with dependencies", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(makeTask(publicProject));
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "Blocked task",
+        dependencies: ["task-dep-1", "task-dep-1", " task-dep-2 "],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TasksDataAdd).toHaveBeenCalledTimes(1);
+    const created = (TasksDataAdd as jest.Mock).mock.calls[0][0] as Task;
+    expect(created.dependencies).toEqual([
+      { taskId: "task-dep-1" },
+      { taskId: "task-dep-2" },
+    ]);
+  });
+
+  it("should answer 404 when a created task references an invisible dependency", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "Blocked task",
+        dependencies: ["missing-task"],
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should replace the dependencies atomically with a single call", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/dependencies`,
+      payload: { dependencies: ["task-dep-1", "task-dep-2"] },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(replaceDependencies).toHaveBeenCalledTimes(1);
+    expect(replaceDependencies).toHaveBeenCalledWith(task.id, [
+      "task-dep-1",
+      "task-dep-2",
+    ]);
+    expect(TasksDataTouch).toHaveBeenCalledWith(task.id);
+  });
+
+  it("should accept an empty dependencies array as clearing all dependencies", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/dependencies`,
+      payload: { dependencies: [] },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(replaceDependencies).toHaveBeenCalledWith(task.id, []);
+  });
+
+  it("should answer 400 when dependencies is not an array of task ids", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    for (const dependencies of [null, "task-2", [1, 2], [{}]]) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/${task.id}/dependencies`,
+        payload: { dependencies },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain("dependencies");
+    }
+    expect(replaceDependencies).not.toHaveBeenCalled();
+  });
+
+  it("should answer 400 when a task is made to depend on itself", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/dependencies`,
+      payload: { dependencies: [task.id] },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("itself");
+    expect(replaceDependencies).not.toHaveBeenCalled();
+  });
+
+  it("should answer 404 when a dependency task is not visible to the user", async () => {
+    const task = makeTask(publicProject);
+    const hiddenDependency = makeTask(hiddenProject);
+    (TasksDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === task.id ? task : hiddenDependency,
+    );
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (projectId) =>
+      projectId === hiddenProject.id ? hiddenProject : publicProject,
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/dependencies`,
+      payload: { dependencies: [hiddenDependency.id] },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(replaceDependencies).not.toHaveBeenCalled();
+  });
+
+  it("should reject dependency changes on a task the user cannot see", async () => {
+    const task = makeTask(hiddenProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(hiddenProject);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/dependencies`,
+      payload: { dependencies: ["task-dep-1"] },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(replaceDependencies).not.toHaveBeenCalled();
+  });
+
+  it("should reject updating the dependencies of a task in an archived project", async () => {
+    const task = makeTask(publicProject);
+    const archivedProject = makeProject("public", []);
+    archivedProject.archived = true;
+    task.projectId = archivedProject.id;
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(archivedProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/dependencies`,
+      payload: { dependencies: ["task-dep-1"] },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Project is archived");
+    expect(replaceDependencies).not.toHaveBeenCalled();
+  });
+
   // ==================== ATTACHMENTS ====================
   it("should answer 401 for attachment downloads without a session", async () => {
     (AuthGetUserSession as jest.Mock).mockResolvedValue({
@@ -1081,6 +1340,9 @@ describe("TasksRoutes project visibility", () => {
     task.status = "Done";
     task.labels = ["bug"];
     task.assignees = [{ userId: "user-2" }];
+    task.dependencies = [
+      { taskId: "task-dep-1", title: "Dependency", status: "Done" },
+    ];
     task.checklist = [{ text: "step", done: true }];
     task.comments = [
       {
@@ -1106,6 +1368,7 @@ describe("TasksRoutes project visibility", () => {
     expect(clone.dueDate).toBe("2026-10-01");
     expect(clone.labels).toEqual(["bug"]);
     expect(clone.assignees).toEqual([{ userId: "user-2" }]);
+    expect(clone.dependencies).toEqual([{ taskId: "task-dep-1" }]);
     expect(clone.checklist).toEqual([{ text: "step", done: true }]);
     expect(clone.comments).toEqual([]);
   });
@@ -1678,5 +1941,22 @@ describe("TasksRoutes update feed (activity)", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(TasksDataUpdate).toHaveBeenCalledWith(task);
+  });
+
+  it("should record an activity entry when dependencies are updated", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/dependencies`,
+      payload: { dependencies: ["task-dep-1"] },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "Dependencies updated",
+    );
   });
 });
