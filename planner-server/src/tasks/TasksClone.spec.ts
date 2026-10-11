@@ -15,6 +15,10 @@ describe("cloneTaskFrom", () => {
       { userId: "user-1" },
       { userId: "user-2", userName: "Two" },
     ];
+    source.dependencies = [
+      { taskId: "task-dep-1", title: "Dependency One", status: "Done" },
+      { taskId: "task-dep-2" },
+    ];
     source.checklist = [{ text: "step", done: true }];
     return source;
   }
@@ -32,6 +36,10 @@ describe("cloneTaskFrom", () => {
     expect(clone.dueDate).toBe("2026-10-01");
     expect(clone.labels).toEqual(["bug", "urgent"]);
     expect(clone.assignees).toEqual([{ userId: "user-1" }, { userId: "user-2" }]);
+    expect(clone.dependencies).toEqual([
+      { taskId: "task-dep-1" },
+      { taskId: "task-dep-2" },
+    ]);
     expect(clone.checklist).toEqual([{ text: "step", done: true }]);
   });
 
@@ -86,6 +94,7 @@ describe("cloneTaskFrom", () => {
     const clone = cloneTaskFrom(source);
     expect(clone.labels).toEqual([]);
     expect(clone.assignees).toEqual([]);
+    expect(clone.dependencies).toEqual([]);
     expect(clone.checklist).toEqual([]);
   });
 });

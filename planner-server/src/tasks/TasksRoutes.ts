@@ -30,6 +30,7 @@ import {
   getComment,
   updateComment,
   replaceLabels,
+  replaceDependencies,
   addTaskAttachment,
   deleteTaskAttachment,
   getTaskAttachment,
@@ -230,6 +231,55 @@ async function getVisibleTask(
   return task;
 }
 
+export interface DependenciesValidation {
+  /** The de-duplicated dependency task ids, when the payload is valid. */
+  ids?: string[];
+  errorStatus?: number;
+  errorMessage?: string;
+}
+
+/**
+ * Validates a dependencies payload (an array of task ids): the shape must be
+ * an array of strings, every id must reference a task visible to the user
+ * (404, like a missing task), a self-reference is rejected (400) and
+ * duplicates are dropped. Dependencies may cross projects and target tasks
+ * in any status, including Done or archived projects.
+ */
+export async function validateDependencies(
+  task: Task | null,
+  dependencies: unknown,
+  userSession: UserSession,
+): Promise<DependenciesValidation> {
+  if (
+    !Array.isArray(dependencies) ||
+    dependencies.some((id) => typeof id !== "string")
+  ) {
+    return {
+      errorStatus: 400,
+      errorMessage: "Invalid: dependencies (must be an array of task ids)",
+    };
+  }
+  const ids: string[] = [];
+  for (const rawId of dependencies as string[]) {
+    const id = rawId.trim();
+    if (!id || ids.includes(id)) {
+      continue;
+    }
+    if (task && id === task.id) {
+      return {
+        errorStatus: 400,
+        errorMessage: "Invalid: dependencies (a task cannot depend on itself)",
+      };
+    }
+    const dependency = await getVisibleTask(id, userSession);
+    if (!dependency) {
+      return { errorStatus: 404, errorMessage: "Task Not Found" };
+    }
+    ids.push(id);
+  }
+  return { ids };
+}
+
 /**
  * Error message when the project is archived, null when it is active (or
  * missing — callers answer 404 for missing projects themselves). Archived
@@ -349,6 +399,7 @@ export class TasksRoutes {
         dueDate?: string;
         assignees?: string[];
         labels?: string[];
+        dependencies?: string[];
         checklist?: { text: string; done: boolean }[];
       };
     }
@@ -375,6 +426,20 @@ export class TasksRoutes {
           error: "Invalid: status (must be one of the project's statuses)",
         });
       }
+      let dependencyIds: string[] = [];
+      if (req.body.dependencies !== undefined) {
+        const validation = await validateDependencies(
+          null,
+          req.body.dependencies,
+          userSession,
+        );
+        if (validation.errorStatus) {
+          return res
+            .status(validation.errorStatus)
+            .send({ error: validation.errorMessage });
+        }
+        dependencyIds = validation.ids;
+      }
 
       const task = new Task();
       task.projectId = req.body.projectId;
@@ -389,6 +454,7 @@ export class TasksRoutes {
         task.assignees = [{ userId: userSession.userId }];
       if (req.body.labels) task.labels = req.body.labels;
       if (req.body.checklist) task.checklist = req.body.checklist;
+      task.dependencies = dependencyIds.map((id) => ({ taskId: id }));
       await TasksDataAdd(task);
       return res.status(201).send(task.toTransportJson());
     });
@@ -786,6 +852,44 @@ export class TasksRoutes {
         req.params.id,
         userSession.userId,
         "Labels updated",
+      );
+      return res.status(201).send({});
+    });
+
+    // ==================== DEPENDENCIES ====================
+    interface PostDependencies extends RequestGenericInterface {
+      Params: { id: string };
+      Body: { dependencies: string[] };
+    }
+    fastify.post<PostDependencies>("/:id/dependencies", async (req, res) => {
+      try {
+        await AuthMustBeAuthenticated(req, res);
+      } catch {
+        return;
+      }
+      const userSession = await AuthGetUserSession(req);
+      const task = await getVisibleTask(req.params.id, userSession);
+      if (!task) return res.status(404).send({ error: "Task Not Found" });
+      const archivedError = await archivedProjectError(task.projectId);
+      if (archivedError) {
+        return res.status(400).send({ error: archivedError });
+      }
+      const validation = await validateDependencies(
+        task,
+        req.body?.dependencies,
+        userSession,
+      );
+      if (validation.errorStatus) {
+        return res
+          .status(validation.errorStatus)
+          .send({ error: validation.errorMessage });
+      }
+      await replaceDependencies(req.params.id, validation.ids);
+      await TasksDataTouch(req.params.id);
+      await recordTaskUpdate(
+        req.params.id,
+        userSession.userId,
+        "Dependencies updated",
       );
       return res.status(201).send({});
     });

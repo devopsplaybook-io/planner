@@ -13,7 +13,12 @@ import { RunMigrations } from "../DbMigrations";
 import { Config } from "../Config";
 import { NotesDataDelete, NotesDataList } from "../notes/NotesData";
 import { ProjectsDataDelete } from "../projects/ProjectsData";
-import { TasksDataDelete, TasksDataList } from "../tasks/TasksData";
+import {
+  TasksDataDelete,
+  TasksDataGet,
+  TasksDataList,
+  replaceDependencies,
+} from "../tasks/TasksData";
 import {
   TaskActivityDataAdd,
   TaskActivityDataList,
@@ -348,14 +353,15 @@ describe("batched child loading (integration)", () => {
   it("should list tasks with a constant number of queries regardless of count", async () => {
     DbUtilsQueryCountReset();
     const tasks = await TasksDataList({ projectId: "p-batch" });
-    // 1 main query + 4 batched child queries
-    expect(DbUtilsQueryCountGet()).toBe(5);
+    // 1 main query + 5 batched child queries
+    expect(DbUtilsQueryCountGet()).toBe(6);
     expect(tasks).toHaveLength(5);
     for (const task of tasks) {
       expect(task.labels).toEqual(["bug"]);
       expect(task.assignees.map((a) => a.userId)).toEqual(["u-batch"]);
       expect(task.comments).toHaveLength(1);
       expect(task.attachments).toHaveLength(1);
+      expect(task.dependencies).toEqual([]);
     }
   });
 
@@ -767,5 +773,70 @@ describe("task activity feed (integration)", () => {
     expect(feed).toHaveLength(1);
     // The deleted actor's name falls back to null instead of erasing history
     expect(feed[0].actorName).toBeNull();
+  });
+});
+
+describe("task dependencies (integration)", () => {
+  beforeAll(async () => {
+    await fs.remove(dir);
+    await fs.ensureDir(dir);
+    const config = new Config();
+    config.DATA_DIR = dir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+
+    await insertProject("p-deps");
+    await insertTask("t-deps-1", "p-deps");
+    await insertTask("t-deps-2", "p-deps");
+    await insertTask("t-deps-3", "p-deps", "Done");
+    await replaceDependencies("t-deps-1", ["t-deps-2", "t-deps-3"]);
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(dir);
+  });
+
+  it("should hydrate the dependencies with the target title and status", async () => {
+    const task = await TasksDataGet("t-deps-1");
+    expect(task?.dependencies).toEqual([
+      { taskId: "t-deps-2", title: "task-t-deps-2", status: "To Do" },
+      { taskId: "t-deps-3", title: "task-t-deps-3", status: "Done" },
+    ]);
+    // The reverse direction is not a dependency of the target
+    const target = await TasksDataGet("t-deps-2");
+    expect(target?.dependencies).toEqual([]);
+  });
+
+  it("should hydrate dependencies through the list endpoint too", async () => {
+    const tasks = await TasksDataList({ projectId: "p-deps" });
+    const task = tasks.find((t) => t.id === "t-deps-1");
+    expect(task?.dependencies).toHaveLength(2);
+  });
+
+  it("should replace the dependencies with a single call", async () => {
+    await replaceDependencies("t-deps-1", ["t-deps-3"]);
+    const task = await TasksDataGet("t-deps-1");
+    expect(task?.dependencies.map((d) => d.taskId)).toEqual(["t-deps-3"]);
+    // Clearing keeps the task with an empty list
+    await replaceDependencies("t-deps-1", []);
+    expect((await TasksDataGet("t-deps-1"))?.dependencies).toEqual([]);
+    await replaceDependencies("t-deps-1", ["t-deps-2", "t-deps-3"]);
+  });
+
+  it("should cascade a delete on both sides of a dependency link", async () => {
+    await replaceDependencies("t-deps-1", ["t-deps-2", "t-deps-3"]);
+    // Deleting the dependency target removes the link
+    await TasksDataDelete("t-deps-2");
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_dependencies WHERE taskId = ?", [
+        "t-deps-1",
+      ]),
+    ).toBe(1);
+    // Deleting the depending task removes its remaining rows
+    await TasksDataDelete("t-deps-1");
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_dependencies"),
+    ).toBe(0);
   });
 });

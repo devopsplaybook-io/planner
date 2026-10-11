@@ -3,10 +3,10 @@ import { Task } from "../model/Task";
 
 /**
  * Builds a copy of the source task: a new id, the same fields (project,
- * title, description, priority, due date, labels, assignees, checklist)
- * and no comments or attachments. Comments never carry over; attachments
- * are copied file-by-file by the caller. The clone lands in the first
- * status of the project (resolved by the caller; without it the source
+ * title, description, priority, due date, labels, assignees, dependencies,
+ * checklist) and no comments or attachments. Comments never carry over;
+ * attachments are copied file-by-file by the caller. The clone lands in the
+ * first status of the project (resolved by the caller; without it the source
  * status is kept).
  */
 export function cloneTaskFrom(source: Task, firstStatus?: string): Task {
@@ -19,6 +19,9 @@ export function cloneTaskFrom(source: Task, firstStatus?: string): Task {
   clone.dueDate = source.dueDate;
   clone.labels = [...(source.labels || [])];
   clone.assignees = (source.assignees || []).map((a) => ({ userId: a.userId }));
+  clone.dependencies = (source.dependencies || []).map((d) => ({
+    taskId: d.taskId,
+  }));
   clone.checklist = (source.checklist || []).map((item) => ({ ...item }));
   return clone;
 }
