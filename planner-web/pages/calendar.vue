@@ -233,6 +233,9 @@ function onFilterChange(projectId) {
 // Refresh the calendar when the task dialog closes: tasks may have moved
 // between days
 useDialogCloseRefresh("taskId", () => fetchTasks({ silent: true }));
+// Regular in-place refresh: tasks may have been updated elsewhere; the silent
+// refresh keeps the scroll position and re-reads the current filter
+useRegularRefresh(() => fetchTasks({ silent: true }));
 
 onMounted(async () => {
   try {

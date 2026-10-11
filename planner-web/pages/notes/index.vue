@@ -132,6 +132,9 @@ onMounted(async () => {
 
 // Refresh list when note dialog closes
 useDialogCloseRefresh("noteId", () => notesStore.fetchAll());
+// Regular in-place refresh: notes may have been updated elsewhere; the silent
+// refresh keeps the scroll position and re-reads the current filter
+useRegularRefresh(() => notesStore.fetchAll());
 
 async function createNote() {
   creating.value = true;
