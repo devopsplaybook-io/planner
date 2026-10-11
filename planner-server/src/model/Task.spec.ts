@@ -1,4 +1,4 @@
-import { Task, TaskComment } from "../model/Task";
+import { Task, TaskComment, TaskDependency } from "../model/Task";
 
 describe("Task model", () => {
   describe("constructor", () => {
@@ -13,6 +13,7 @@ describe("Task model", () => {
       expect(task.comments).toEqual([]);
       expect(task.attachments).toEqual([]);
       expect(task.labels).toEqual([]);
+      expect(task.dependencies).toEqual([]);
       expect(task.dateCreated).toBeDefined();
       expect(task.dateUpdated).toBeDefined();
     });
@@ -119,6 +120,23 @@ describe("Task model", () => {
       expect(task.attachments[0].fileName).toBe("f.txt");
       expect(task.labels).toEqual(["bug", "urgent"]);
     });
+
+    it("should parse dependencies as an array and default to an empty list", () => {
+      const dependency: TaskDependency = {
+        taskId: "task-dep-1",
+        title: "First dependency",
+        status: "Done",
+      };
+      const task = Task.fromJson({
+        projectId: "p1",
+        title: "With dependencies",
+        dependencies: [dependency],
+      });
+      expect(task.dependencies).toEqual([dependency]);
+
+      const minimal = Task.fromJson({ projectId: "p1", title: "Minimal" });
+      expect(minimal.dependencies).toEqual([]);
+    });
   });
 
   describe("toJson", () => {
@@ -169,6 +187,7 @@ describe("Task model", () => {
       task.comments = [];
       task.attachments = [];
       task.labels = ["urgent"];
+      task.dependencies = [{ taskId: "task-dep-1", status: "To Do" }];
       task.dueDate = "2026-07-01";
 
       const json = task.toTransportJson();
@@ -177,7 +196,20 @@ describe("Task model", () => {
       expect(json.comments).toEqual(task.comments);
       expect(json.attachments).toEqual(task.attachments);
       expect(json.labels).toEqual(task.labels);
+      expect(json.dependencies).toEqual(task.dependencies);
       expect(json.dueDate).toBe("2026-07-01");
+    });
+
+    it("should include dependencies in the sparse fieldsets allowlist", () => {
+      const task = new Task();
+      task.projectId = "p1";
+      task.title = "Fieldsets";
+      task.dependencies = [{ taskId: "task-dep-1", status: "Done" }];
+
+      const fields = new Set(["dependencies"]);
+      const json = task.toTransportJson(fields);
+      expect(Object.keys(json)).toEqual(["dependencies"]);
+      expect(json.dependencies).toEqual(task.dependencies);
     });
 
     it("should round-trip stored timestamps through fromJson", () => {

@@ -20,6 +20,12 @@ export interface TaskAssignee {
   userName?: string;
 }
 
+export interface TaskDependency {
+  taskId: string;
+  title?: string;
+  status?: string;
+}
+
 export interface Task {
   id: string;
   projectId: string;
@@ -38,6 +44,7 @@ export interface Task {
     dateCreated: string;
   }[];
   labels: string[];
+  dependencies?: TaskDependency[];
   dateCreated: string;
   dateUpdated: string;
 }
@@ -261,6 +268,10 @@ export const useTasksStore = defineStore("tasks", {
 
     async setLabels(taskId: string, labels: string[]) {
       await api.post(`/tasks/${taskId}/labels`, { labels });
+    },
+
+    async setDependencies(taskId: string, dependencies: string[]) {
+      await api.post(`/tasks/${taskId}/dependencies`, { dependencies });
     },
 
     async uploadAttachment(taskId: string, file: File) {

@@ -14,6 +14,7 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 | [x] Due date    | The date by which the task should be completed                                                                              |
 | [x] Priority    | Importance level of the task                                                                                                |
 | [x] Labels      | Zero, one, or multiple labels for categorization                                                                            |
+| [x] Dependencies| Zero, one, or multiple other tasks this task depends on                                                                     |
 | [x] Project     | The project the task belongs to (exactly one)                                                                               |
 
 ## Management of Tasks
@@ -33,6 +34,8 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 [x] Archived projects (see [PROJECTS.md](PROJECTS.md)) are read-only: tasks in them cannot be created, cloned or updated (including comments, assignees, labels, attachments) and tasks cannot be moved into them; deleting a task is still allowed.
 
 [x] Cancel: the task dialog advanced menu offers Cancel; cancelling moves the task to Done and appends " [cancelled]" to its title; the action is confirmed before applying; it is not offered for Done tasks or tasks in archived projects.
+
+[x] Dependencies: a task can declare zero or multiple dependencies on other tasks (references, not copies); the list is set at creation with task ids and fully replaceable afterwards; each entry exposes the dependency's current title and status alongside its id; dependencies may cross projects (any task visible to the user, in any status including Done); a task cannot depend on itself; deleting either task removes the link; Planner itself does not enforce any flow from dependencies (informational only — consumers like the LLM agent decide what "all dependencies Done" means).
 
 ## Task Dialog UX
 
@@ -66,6 +69,6 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 - `doneSince` — ISO 8601 timestamp; keeps non-Done tasks and Done tasks updated since the cutoff.
 - `assigneeUserId` — only tasks assigned to this user, in all statuses.
 - `limit` / `offset` — pagination (default limit 1000).
-- [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees) are not queried server-side.
+- [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dependencies`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees, dependencies) are not queried server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-07_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-10_

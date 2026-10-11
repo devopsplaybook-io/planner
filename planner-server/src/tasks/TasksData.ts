@@ -1,4 +1,9 @@
-import { Task, TaskComment, ChecklistItem } from "../model/Task";
+import {
+  Task,
+  TaskComment,
+  ChecklistItem,
+  TaskDependency,
+} from "../model/Task";
 import {
   DbUtilsExecSQL,
   DbUtilsQuerySQL,
@@ -133,6 +138,9 @@ export async function TasksDataAdd(task: Task): Promise<void> {
   for (const label of task.labels) {
     await addLabel(task.id, label);
   }
+  for (const dependency of task.dependencies) {
+    await addDependency(task.id, dependency.taskId);
+  }
 }
 
 export async function TasksDataUpdate(task: Task): Promise<void> {
@@ -180,6 +188,17 @@ export async function TasksDataDelete(id: string): Promise<void> {
     ]);
     await DbUtilsExecSQL(
       SQL_QUERIES.DELETE_TASK_ATTACHMENTS[DbUtilsGetType()],
+      [id],
+    );
+    // Dependencies are removed from both sides: the rows the task declares
+    // and the rows declaring the task (the foreign keys also cascade, but
+    // the explicit deletes keep the behavior identical on every dialect).
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TASK_DEPENDENCIES[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TASK_DEPENDENCIES_REVERSE[DbUtilsGetType()],
       [id],
     );
     await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK[DbUtilsGetType()], [id]);
@@ -297,6 +316,40 @@ export async function replaceLabels(
   });
 }
 
+// ==================== DEPENDENCIES ====================
+
+export async function addDependency(
+  taskId: string,
+  dependsOnTaskId: string,
+): Promise<void> {
+  await DbUtilsExecSQL(SQL_QUERIES.INSERT_DEPENDENCY[DbUtilsGetType()], [
+    taskId,
+    dependsOnTaskId,
+  ]);
+}
+
+/**
+ * Replaces the task dependencies atomically: the clear and the inserts run
+ * in one transaction, so a failure cannot leave the task half-linked.
+ */
+export async function replaceDependencies(
+  taskId: string,
+  dependsOnTaskIds: string[],
+): Promise<void> {
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TASK_DEPENDENCIES[DbUtilsGetType()],
+      [taskId],
+    );
+    for (const dependsOnTaskId of dependsOnTaskIds) {
+      await DbUtilsExecSQL(SQL_QUERIES.INSERT_DEPENDENCY[DbUtilsGetType()], [
+        taskId,
+        dependsOnTaskId,
+      ]);
+    }
+  });
+}
+
 // ==================== ATTACHMENTS ====================
 
 export async function addTaskAttachment(
@@ -371,6 +424,7 @@ async function enrichTasks(
     task.comments = [];
     task.attachments = [];
     task.labels = [];
+    task.dependencies = [];
     return task;
   });
   if (tasks.length === 0) {
@@ -381,7 +435,7 @@ async function enrichTasks(
   const ids = tasks.map((t) => t.id);
   const byId = new Map(tasks.map((t) => [t.id, t]));
 
-  const [assigneeRows, commentRows, attachmentRows, labelRows] =
+  const [assigneeRows, commentRows, attachmentRows, labelRows, dependencyRows] =
     await Promise.all([
       !fields || fields.has("assignees")
         ? DbUtilsQuerySQL(
@@ -419,6 +473,15 @@ async function enrichTasks(
             ids,
           )
         : Promise.resolve([]),
+      !fields || fields.has("dependencies")
+        ? DbUtilsQuerySQL(
+            SQL_QUERIES.GET_DEPENDENCIES_BY_TASK_IDS[dbType].replace(
+              ":ids",
+              placeholders,
+            ),
+            ids,
+          )
+        : Promise.resolve([]),
     ]);
 
   for (const row of assigneeRows) {
@@ -447,6 +510,16 @@ async function enrichTasks(
   }
   for (const row of labelRows) {
     byId.get(row.taskId)?.labels.push(row.name as string);
+  }
+  for (const row of dependencyRows) {
+    const dependency: TaskDependency = { taskId: row.dependsOnTaskId };
+    if (row.title !== undefined && row.title !== null) {
+      dependency.title = row.title as string;
+    }
+    if (row.status !== undefined && row.status !== null) {
+      dependency.status = row.status as string;
+    }
+    byId.get(row.taskId)?.dependencies.push(dependency);
   }
   return tasks;
 }
@@ -579,5 +652,24 @@ const SQL_QUERIES = {
   GET_LABELS_BY_TASK_IDS: {
     postgres: 'SELECT * FROM task_labels WHERE "taskId" IN (:ids)',
     sqlite: "SELECT * FROM task_labels WHERE taskId IN (:ids)",
+  },
+  INSERT_DEPENDENCY: {
+    postgres:
+      'INSERT INTO task_dependencies ("taskId", "dependsOnTaskId") VALUES ($1, $2)',
+    sqlite: "INSERT INTO task_dependencies (taskId, dependsOnTaskId) VALUES (?, ?)",
+  },
+  DELETE_TASK_DEPENDENCIES: {
+    postgres: 'DELETE FROM task_dependencies WHERE "taskId" = $1',
+    sqlite: "DELETE FROM task_dependencies WHERE taskId = ?",
+  },
+  DELETE_TASK_DEPENDENCIES_REVERSE: {
+    postgres: 'DELETE FROM task_dependencies WHERE "dependsOnTaskId" = $1',
+    sqlite: "DELETE FROM task_dependencies WHERE dependsOnTaskId = ?",
+  },
+  GET_DEPENDENCIES_BY_TASK_IDS: {
+    postgres:
+      'SELECT td."taskId", td."dependsOnTaskId", t."title", t."status" FROM task_dependencies td LEFT JOIN tasks t ON td."dependsOnTaskId" = t."id" WHERE td."taskId" IN (:ids) ORDER BY t."dateCreated"',
+    sqlite:
+      "SELECT td.taskId, td.dependsOnTaskId, t.title, t.status FROM task_dependencies td LEFT JOIN tasks t ON td.dependsOnTaskId = t.id WHERE td.taskId IN (:ids) ORDER BY t.dateCreated",
   },
 };

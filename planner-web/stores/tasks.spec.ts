@@ -102,3 +102,21 @@ describe("tasks store list reads", () => {
     expect(first.attachments).toEqual([{ id: "a-1" }]);
   });
 });
+
+describe("tasks store dependency updates", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+  });
+
+  it("should post the dependency task ids to the replace endpoint", async () => {
+    mockApiPost.mockResolvedValue({ data: {} });
+    const store = useTasksStore();
+
+    await store.setDependencies("task-1", ["task-2", "task-3"]);
+
+    expect(mockApiPost).toHaveBeenCalledWith("/tasks/task-1/dependencies", {
+      dependencies: ["task-2", "task-3"],
+    });
+  });
+});

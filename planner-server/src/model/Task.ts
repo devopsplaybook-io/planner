@@ -27,6 +27,17 @@ export interface TaskAssignee {
 }
 
 /**
+ * One entry of a task's dependencies: a reference to another task, hydrated
+ * with the dependency's current title and status so consumers can evaluate
+ * "all dependencies Done" from a single response.
+ */
+export interface TaskDependency {
+  taskId: string;
+  title?: string;
+  status?: string;
+}
+
+/**
  * Top-level keys of the task transport shape, in response order. Used by
  * the list endpoint's sparse fieldsets: a "fields" query param names a
  * subset of these and unrequested keys are omitted from the response.
@@ -44,6 +55,7 @@ export const TASK_TRANSPORT_FIELDS = [
   "comments",
   "attachments",
   "labels",
+  "dependencies",
   "dateCreated",
   "dateUpdated",
 ] as const;
@@ -91,6 +103,9 @@ export class Task {
     if (json.labels) {
       task.labels = json.labels as string[];
     }
+    if (json.dependencies) {
+      task.dependencies = json.dependencies as TaskDependency[];
+    }
     return task;
   }
 
@@ -106,6 +121,7 @@ export class Task {
   public comments: TaskComment[];
   public attachments: TaskAttachment[];
   public labels: string[];
+  public dependencies: TaskDependency[];
   public dateCreated: string;
   public dateUpdated: string;
 
@@ -119,6 +135,7 @@ export class Task {
     this.comments = [];
     this.attachments = [];
     this.labels = [];
+    this.dependencies = [];
     this.dateCreated = new Date().toISOString();
     this.dateUpdated = new Date().toISOString();
   }
@@ -157,6 +174,7 @@ export class Task {
       comments: this.comments,
       attachments: this.attachments,
       labels: this.labels,
+      dependencies: this.dependencies,
       dateCreated: this.dateCreated,
       dateUpdated: this.dateUpdated,
     };
