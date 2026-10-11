@@ -1856,6 +1856,8 @@ section h4 {
   gap: var(--space-2xs);
 }
 
+/* Result rows are <button>s: the global button style would otherwise paint
+   their text with --color-on-primary (invisible on the surface background). */
 .dependency-result {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -1865,6 +1867,7 @@ section h4 {
   text-align: left;
   padding: var(--space-2xs) var(--space-xs);
   background: var(--color-surface);
+  color: var(--color-text);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   cursor: pointer;
