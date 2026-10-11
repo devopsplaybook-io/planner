@@ -51,6 +51,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] Task dialog flows use the custom confirmation dialogs and an inline dismissible error banner instead of browser `alert()`/`confirm()`
 - [x] A shared multi-user selection component (auto-complete box with removable chips) is used for task assignees and project user access, replacing per-user checkbox lists
 - [x] When a Task, Note or Project detail dialog is closed, the view behind it refreshes its data in place: the list is not unmounted and the user's scroll position is preserved (the full loading indicator is only shown on initial load)
+- [x] Each main list page (Dashboard, Tasks board, Calendar, History, Update Feed and Notes) regularly refreshes the list it displays, once a minute and again when the tab becomes visible again after being hidden for at least that interval: the refresh is silent (no loading indicator, the list is not unmounted, the scroll position is preserved), always applies the current filters (the project filter is re-read at refresh time), skips ticks while the tab is hidden and while a refresh is still in flight, and never loses data on a failed refresh
 - [x] Long markdown descriptions in the Task, Note and Project detail dialogs collapse to a capped height with a fade at the cut and a "Show more/less" disclosure exposing `aria-expanded`: the full text is shown when expanded, the disclosure only appears when the content actually overflows the cap (a short description is never faded or truncated), and Edit mode always shows the complete description; the disclosure keeps its quiet text-button appearance on hover and focus (no filled background)
 
 ### Tasks
@@ -61,4 +62,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-10_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-11_

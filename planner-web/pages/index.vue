@@ -357,6 +357,9 @@ async function onTaskCreated(taskId) {
 // Dashboard data is a local snapshot (not a store computed), so refresh it
 // when the task dialog closes: the dialog may have changed the task
 useDialogCloseRefresh("taskId", () => fetchDashboard({ silent: true }));
+// Regular in-place refresh: tasks may have been updated elsewhere; the silent
+// refresh keeps the scroll position and re-reads the current filter
+useRegularRefresh(() => fetchDashboard({ silent: true }));
 
 onMounted(async () => {
   await Promise.all([

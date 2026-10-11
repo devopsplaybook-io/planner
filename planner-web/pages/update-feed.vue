@@ -224,6 +224,9 @@ onMounted(async () => {
 
 // Refresh when the task dialog closes: the dialog may have changed the task
 useDialogCloseRefresh("taskId", () => fetchFeed({ silent: true }));
+// Regular in-place refresh: tasks may have been updated elsewhere; the silent
+// refresh keeps the scroll position and re-reads the current filter
+useRegularRefresh(() => fetchFeed({ silent: true }));
 </script>
 
 <style scoped>
