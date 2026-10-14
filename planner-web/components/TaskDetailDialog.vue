@@ -1838,6 +1838,14 @@ section h4 {
   min-width: 0;
 }
 
+/* Reveal the dependency remove button on hover/keyboard focus, mirroring the
+   checklist delete affordance (touch devices are covered by the hover: none
+   media query) */
+.dependency-item:hover .checklist-item-delete,
+.dependency-item:focus-within .checklist-item-delete {
+  opacity: 1;
+}
+
 .dependency-title {
   min-width: 0;
   overflow-wrap: break-word;
