@@ -7,7 +7,7 @@ RUN apk add --no-cache bash git python3 perl alpine-sdk cmake
 
 # Embedded speech-to-text engine (whisper.cpp): compiled once at image build
 # time, spawned per transcription by planner-server at runtime
-ARG WHISPER_CPP_VERSION=v1.9.4
+ARG WHISPER_CPP_VERSION=v1.9.5
 RUN git clone --depth 1 --branch ${WHISPER_CPP_VERSION} \
       https://github.com/ggml-org/whisper.cpp /opt/src/whisper.cpp \
  && cmake -S /opt/src/whisper.cpp -B /opt/src/whisper.cpp/build -DCMAKE_BUILD_TYPE=Release \
