@@ -28,6 +28,7 @@ import {
   removeAssignee,
   replaceLabels,
   replaceDependencies,
+  addDependency,
   TasksDataTouch,
 } from "./TasksData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
@@ -55,6 +56,7 @@ jest.mock("./TasksData", () => ({
   updateComment: jest.fn(),
   replaceLabels: jest.fn(),
   replaceDependencies: jest.fn(),
+  addDependency: jest.fn(),
   addTaskAttachment: jest.fn(),
   deleteTaskAttachment: jest.fn(),
   getTaskAttachment: jest.fn(),
@@ -1958,5 +1960,255 @@ describe("TasksRoutes update feed (activity)", () => {
       "user-1",
       "Dependencies updated",
     );
+  });
+});
+
+describe("TasksRoutes recurrence", () => {
+  let app: FastifyInstance;
+
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const publicProject = new Project();
+  publicProject.name = "P";
+  publicProject.visibility = "public";
+  publicProject.userAccess = [];
+  publicProject.statuses = ["To Do", "In Progress", "Done"];
+
+  function makeTask(fields: Partial<Task> = {}): Task {
+    const task = new Task();
+    task.projectId = publicProject.id;
+    task.title = "Task";
+    Object.assign(task, fields);
+    return task;
+  }
+
+  beforeAll(async () => {
+    app = Fastify();
+    await new TasksRoutes().getRoutes(app);
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (AuthMustBeAuthenticated as jest.Mock).mockResolvedValue(undefined);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  // ==================== CREATE ====================
+  it("should store a recurrence rule on creation", async () => {
+    const recurrence = { frequency: "weekly", interval: 1, weekdays: [1] };
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "Weekly chore",
+        dueDate: "2026-10-19",
+        recurrence,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().recurrence).toEqual(recurrence);
+    expect(TasksDataAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ recurrence, dueDate: "2026-10-19" }),
+    );
+  });
+
+  it("should answer 400 when a recurrence rule is set without a due date on creation", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "Weekly chore",
+        recurrence: { frequency: "daily", interval: 1 },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should answer 400 for a malformed recurrence rule on creation", async () => {
+    for (const recurrence of [
+      { frequency: "yearly", interval: 1 },
+      { frequency: "daily", interval: 0 },
+      "daily",
+    ]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: {
+          projectId: publicProject.id,
+          title: "Weekly chore",
+          dueDate: "2026-10-19",
+          recurrence,
+        },
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  // ==================== UPDATE ====================
+  it("should apply a recurrence rule on update", async () => {
+    const task = makeTask({ dueDate: "2026-10-19" });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const recurrence = { frequency: "monthly", interval: 2 };
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { recurrence },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().recurrence).toEqual(recurrence);
+    expect(TasksDataUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ recurrence }),
+    );
+  });
+
+  it("should clear the recurrence rule with a null value", async () => {
+    const task = makeTask({
+      dueDate: "2026-10-19",
+      recurrence: { frequency: "daily", interval: 1 },
+    });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { recurrence: null },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().recurrence).toBeUndefined();
+    expect(TasksDataUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ recurrence: undefined }),
+    );
+  });
+
+  it("should answer 400 when a recurrence rule is set without an effective due date", async () => {
+    const task = makeTask();
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { recurrence: { frequency: "daily", interval: 1 } },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(TasksDataUpdate).not.toHaveBeenCalled();
+  });
+
+  // ==================== SPAWN ON COMPLETION ====================
+  it("should spawn the next occurrence when a recurring task moves to Done", async () => {
+    const task = makeTask({
+      status: "To Do",
+      dueDate: "2026-10-14",
+      recurrence: { frequency: "weekly", interval: 1, weekdays: [1] },
+      checklist: [{ text: "step", done: true }],
+    });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TasksDataAdd).toHaveBeenCalledTimes(1);
+    const next = (TasksDataAdd as jest.Mock).mock.calls[0][0] as Task;
+    expect(next.title).toBe("Task");
+    expect(next.dueDate).toBe("2026-10-19");
+    expect(next.status).toBe("To Do");
+    expect(next.checklist).toEqual([{ text: "step", done: false }]);
+    expect(next.recurrence).toEqual({
+      frequency: "weekly",
+      interval: 1,
+      weekdays: [1],
+    });
+    expect(addDependency).toHaveBeenCalledWith(next.id, task.id);
+  });
+
+  it("should strip the cancelled suffix from the spawned title", async () => {
+    const task = makeTask({
+      status: "To Do",
+      title: "Water the plants [cancelled]",
+      dueDate: "2026-10-14",
+      recurrence: { frequency: "weekly", interval: 1 },
+    });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TasksDataAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Water the plants" }),
+    );
+  });
+
+  it("should not spawn for a task without a recurrence rule", async () => {
+    const task = makeTask({ status: "To Do", dueDate: "2026-10-14" });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done" },
+    });
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+    expect(addDependency).not.toHaveBeenCalled();
+  });
+
+  it("should not spawn when a recurring task has no due date", async () => {
+    const task = makeTask({
+      status: "To Do",
+      recurrence: { frequency: "daily", interval: 1 },
+    });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done" },
+    });
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should not spawn when the task is already Done", async () => {
+    const task = makeTask({
+      status: "Done",
+      dueDate: "2026-10-14",
+      recurrence: { frequency: "daily", interval: 1 },
+    });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done" },
+    });
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should not fail the completion response when the spawn throws", async () => {
+    const task = makeTask({
+      status: "To Do",
+      dueDate: "2026-10-14",
+      recurrence: { frequency: "daily", interval: 1 },
+    });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (TasksDataAdd as jest.Mock).mockRejectedValueOnce(new Error("db down"));
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(addDependency).not.toHaveBeenCalled();
   });
 });
