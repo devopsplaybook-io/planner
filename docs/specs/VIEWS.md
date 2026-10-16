@@ -13,12 +13,12 @@ Each view provides a different perspective on the same task data.
   - [x] The upcoming tasks (due in the next 1 month)
   - [x] Tasks without dates, ordered by priority
   - [x] The tasks marked as Done within the past 30 days (same window as the Kanban board)
-- [x] The dashboard can be filtered by project or labels. By default all projects are displayed
+- [x] The dashboard can be filtered by project or labels. By default all projects are displayed; the label filter selects one or more existing labels (autocomplete from the project's labels) and only tasks carrying every selected label are shown — the filter applies to every section, including Recently Done
 - [x] Selecting a project in the dashboard filter includes the project's whole subtree (see [PROJECTS.md](PROJECTS.md)); the search applies the same subtree filter
 - [x] The task cards and the task detail dialog show the project's full path (e.g. Home / Parents) instead of the bare name; long paths keep the existing ellipsis truncation with the full text on hover
 - [x] The dashboard has a search input that filters tasks dynamically while typing (debounced); the focus highlight applies to the surrounding search box, not to the inner input
 - [x] The search covers all tasks, including tasks marked as done
-- [x] Search results respect the current project filter and are shown while the search term is active
+- [x] Search results respect the current project and label filters and are shown while the search term is active
 - [x] Task status labels on the dashboard use the color configured for the status in the admin Statuses tab
 - [x] Each task card shows the project name next to the status badge on a single line; when both are too long to fit together they are truncated with an ellipsis (full text on hover)
 - [x] The dashboard only includes tasks from projects visible to the current user (see [PROJECTS.md](PROJECTS.md)); admins see all tasks
@@ -72,4 +72,4 @@ Each view provides a different perspective on the same task data.
 - [x] Each kanban column has a max-height of 90% of the board height; the task list inside the column scrolls with an internal vertical scrollbar while the column header stays visible; on mobile (viewport ≤ 767px) the column minimum height is increased to 300px
 - [x] Tasks in each column are ordered by last update date, newest first (the most recently updated task appears at the top of its column).
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-05_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-16_

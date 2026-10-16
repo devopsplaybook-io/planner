@@ -18,7 +18,11 @@ exactly one project and has the following attributes:
 
 [x] Update: when a note is clicked, the note is displayed and the user can edit the note.
 
+[x] Labels: labels are free-form strings set at creation and in the note dialog edit mode via the chip editor with autocomplete from existing labels; they are saved through the labels replace API (`POST /api/notes/:id/labels`).
+
 [x] Notes list: notes are displayed as cards showing the title, creation date, a description preview of up to 5 lines, labels and the comment count; cards have a minimum height so notes without a description remain readable and clickable.
+
+[x] Notes page search and label filter: the page header offers a client-side search (case-insensitive substring on title and description, debounced) and a label filter selecting one or more existing labels (autocomplete from the labels in use); only notes carrying every selected label are shown; both compose with the project subtree filter.
 
 [x] Advanced menu: the note dialog offers an advanced menu with Delete; delete is no longer a standalone button.
 
@@ -32,4 +36,4 @@ exactly one project and has the following attributes:
 - [x] A note the user cannot see answers 404 on the note API, like a missing note.
 - [x] Creating a note requires the target project to be visible to the user; updating, deleting and interacting with a note (comments, labels, attachments) requires the note to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-18_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-16_

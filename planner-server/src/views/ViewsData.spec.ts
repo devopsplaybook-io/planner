@@ -98,6 +98,49 @@ describe("ViewsDataGetDashboard projectIds (subtree)", () => {
   });
 });
 
+describe("ViewsDataGetDashboard labels filter", () => {
+  beforeEach(() => {
+    mockQuery.mockReset();
+    mockQuery.mockResolvedValue([]);
+  });
+
+  it("should add the labels clause to every section query with params in order", async () => {
+    await ViewsDataGetDashboard({ labels: ["urgent", "ui"] });
+    const calls = mockQuery.mock.calls;
+    expect(calls.length).toBe(4);
+    for (const [sql, params] of calls) {
+      expect(sql).toContain(
+        "id IN (SELECT taskId FROM task_labels WHERE name IN (?, ?))",
+      );
+      expect(params).toContain("urgent");
+      expect(params).toContain("ui");
+    }
+    // The section params (dates, status) come before the filter params
+    const overdueParams = mockQuery.mock.calls[0][1] as unknown[];
+    expect(overdueParams.indexOf("urgent")).toBeGreaterThan(
+      overdueParams.indexOf("Done"),
+    );
+  });
+
+  it("should combine the labels clause with the visibility clause", async () => {
+    await ViewsDataGetDashboard({
+      labels: ["urgent"],
+      visibleTo: { userId: "user-1" },
+    });
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("task_labels");
+    expect(sql).toContain("project_users");
+    expect(params.indexOf("urgent")).toBeLessThan(params.indexOf("user-1"));
+  });
+
+  it("should ignore an empty labels array", async () => {
+    await ViewsDataGetDashboard({ labels: [] });
+    for (const [sql] of mockQuery.mock.calls) {
+      expect(sql).not.toContain("task_labels");
+    }
+  });
+});
+
 describe("ViewsDataGetDashboard sections", () => {
   beforeEach(() => {
     mockQuery.mockReset();

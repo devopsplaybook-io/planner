@@ -33,6 +33,8 @@ export interface TaskListFilters {
   q?: string;
   /** Matches tasks assigned to this user, in all statuses (EXISTS). */
   assigneeUserId?: string;
+  /** Matches tasks carrying every listed label (one EXISTS per label). */
+  labels?: string[];
   /** When set, restricts results to projects visible to this user (non-admin viewers). */
   visibleTo?: { userId: string };
   /** Maximum number of rows returned (pagination). */
@@ -87,6 +89,16 @@ export function buildListTasksQuery(
       `EXISTS (SELECT 1 FROM ${quote("task_assignees")} ta WHERE ta.${quote("taskId")} = tasks.${quote("id")} AND ta.${quote("userId")} = ?)`,
     );
     params.push(filters.assigneeUserId);
+  }
+  if (filters.labels && filters.labels.length > 0) {
+    // One EXISTS per label so only tasks carrying every listed label match
+    // (AND semantics), regardless of duplicate rows in task_labels
+    for (const label of filters.labels) {
+      conditions.push(
+        `EXISTS (SELECT 1 FROM ${quote("task_labels")} tl WHERE tl.${quote("taskId")} = tasks.${quote("id")} AND tl.${quote("name")} = ?)`,
+      );
+      params.push(label);
+    }
   }
   if (filters.visibleTo) {
     const visibility = visibleProjectsCondition(filters.visibleTo.userId, dbType);

@@ -18,6 +18,7 @@ import { TasksRoutes } from "./tasks/TasksRoutes";
 import { NotesRoutes } from "./notes/NotesRoutes";
 import { ViewsRoutes } from "./views/ViewsRoutes";
 import { StatusesRoutes } from "./statuses/StatusesRoutes";
+import { LabelsRoutes } from "./labels/LabelsRoutes";
 import { StatusesCatalogSeedIfEmpty } from "./statuses/StatusesData";
 import { RecommendationInit } from "./recommendation/Recommendation";
 import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
@@ -203,6 +204,13 @@ Promise.resolve()
         await new StatusesRoutes().getRoutes(instance);
       },
       { prefix: "/api/statuses" },
+    );
+
+    await fastify.register(
+      async (instance) => {
+        await new LabelsRoutes().getRoutes(instance);
+      },
+      { prefix: "/api/labels" },
     );
 
     await fastify.register(

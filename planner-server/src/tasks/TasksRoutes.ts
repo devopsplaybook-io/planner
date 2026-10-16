@@ -197,6 +197,26 @@ export function parseAssigneeUserId(value: unknown): string | undefined {
 }
 
 /**
+ * Validates the optional comma-separated labels query param. Returns
+ * undefined when absent/empty and otherwise the trimmed, non-empty,
+ * de-duplicated label names. Pure so it can be unit-tested without the
+ * route layer.
+ */
+export function parseLabels(value: unknown): string[] | undefined {
+  if (typeof value !== "string" || value.trim() === "") {
+    return undefined;
+  }
+  const labels: string[] = [];
+  for (const part of value.split(",")) {
+    const label = part.trim();
+    if (label && !labels.includes(label)) {
+      labels.push(label);
+    }
+  }
+  return labels.length > 0 ? labels : undefined;
+}
+
+/**
  * Resolves the effective status for a task in a project: the requested
  * status when the project uses it, otherwise the project's first status —
  * used when no status is given (creation default) or when a moved task's
@@ -306,6 +326,7 @@ export class TasksRoutes {
         q?: string;
         fields?: string;
         assigneeUserId?: string;
+        labels?: string;
         limit?: string;
         offset?: string;
       };
@@ -330,6 +351,7 @@ export class TasksRoutes {
         doneSince,
         q: req.query.q?.trim() || undefined,
         assigneeUserId: parseAssigneeUserId(req.query.assigneeUserId),
+        labels: parseLabels(req.query.labels),
         limit,
         offset,
       };

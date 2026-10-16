@@ -203,9 +203,17 @@
             </div>
             <span v-else class="text-muted">Unassigned</span>
           </div>
-          <div v-if="task.labels && task.labels.length" class="meta-field">
+          <div
+            v-if="editing || (task.labels && task.labels.length)"
+            class="meta-field"
+          >
             <strong>Labels</strong>
-            <div class="tag-list">
+            <LabelMultiSelect
+              v-if="editing"
+              v-model="editForm.labels"
+              :suggestions="labelsStore.labels"
+            />
+            <div v-else class="tag-list">
               <span v-for="l in task.labels" :key="l" class="tag">{{ l }}</span>
             </div>
           </div>
@@ -698,6 +706,7 @@ const dialogEl = useModalDialog(() => !!props.taskId);
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const statusesStore = useStatusesStore();
+const labelsStore = useLabelsStore();
 const authStore = useAuthStore();
 const recommendationStore = useRecommendationStore();
 
@@ -730,6 +739,7 @@ const editForm = ref({
   priority: "",
   dueDate: "",
   assignees: [],
+  labels: [],
   projectId: "",
 });
 const fullscreenImage = ref(null);
@@ -1214,12 +1224,15 @@ function startEdit() {
     priority: task.value.priority,
     dueDate: task.value.dueDate || "",
     assignees: (task.value.assignees || []).map((a) => a.userId),
+    labels: [...(task.value.labels || [])],
     projectId: task.value.projectId,
   };
   startDependencyDraft();
   editing.value = true;
   // Fetch users for the assignee picker
   fetchUsers();
+  // Existing labels feed the autocomplete suggestions
+  labelsStore.fetchAll().catch(() => {});
 }
 
 async function fetchUsers() {
@@ -1272,6 +1285,15 @@ async function saveEdit() {
       ) {
         await tasksStore.setDependencies(props.taskId, newIds);
       }
+    }
+    // Replace the labels when the draft diverges
+    const currentLabels = task.value.labels || [];
+    const newLabels = editForm.value.labels;
+    if (
+      newLabels.length !== currentLabels.length ||
+      newLabels.some((label, index) => label !== currentLabels[index])
+    ) {
+      await tasksStore.setLabels(props.taskId, newLabels);
     }
     // Refresh the task to get updated assignee names
     await tasksStore.fetchById(props.taskId);

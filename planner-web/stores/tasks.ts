@@ -96,7 +96,11 @@ export const useTasksStore = defineStore("tasks", {
   actions: {
     async fetchAll(
       projectId?: string,
-      opts?: { doneSince?: string; projectIds?: string[] },
+      opts?: {
+        doneSince?: string;
+        projectIds?: string[];
+        labels?: string[];
+      },
     ) {
       const params: Record<string, string> = { fields: TASK_LIST_FIELDS };
       if (projectId) {
@@ -107,6 +111,9 @@ export const useTasksStore = defineStore("tasks", {
       }
       if (opts?.doneSince) {
         params.doneSince = opts.doneSince;
+      }
+      if (opts?.labels && opts.labels.length > 0) {
+        params.labels = opts.labels.join(",");
       }
       const res = await api.get("/tasks", { params });
       this.tasks = res.data.map(normalizeListTask);
@@ -152,6 +159,7 @@ export const useTasksStore = defineStore("tasks", {
       projectId?: string;
       projectIds?: string[];
       q?: string;
+      labels?: string[];
     }) {
       const query: Record<string, string> = { fields: TASK_LIST_FIELDS };
       if (params?.projectId) {
@@ -162,6 +170,9 @@ export const useTasksStore = defineStore("tasks", {
       }
       if (params?.q) {
         query.q = params.q;
+      }
+      if (params?.labels && params.labels.length > 0) {
+        query.labels = params.labels.join(",");
       }
       const res = await api.get("/tasks", { params: query });
       return res.data.map(normalizeListTask);
