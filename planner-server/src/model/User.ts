@@ -15,6 +15,7 @@ export class User {
     user.passwordEncrypted = json.passwordEncrypted as string;
     user.role = (json.role as UserRole) || "user";
     user.tokenVersion = Number(json.tokenVersion || 0);
+    user.notificationDigest = !!json.notificationDigest;
     return user;
   }
 
@@ -24,6 +25,8 @@ export class User {
   public role: UserRole = "user";
   /** Bumped to revoke all outstanding sessions of the user. */
   public tokenVersion = 0;
+  /** Opts the user into one consolidated daily reminders push instead of one per task. */
+  public notificationDigest = false;
   public dateCreated: string;
 
   constructor() {

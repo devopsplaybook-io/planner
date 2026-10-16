@@ -5,17 +5,20 @@ import webpush from "web-push";
 import { Config } from "../Config";
 import { Task } from "../model/Task";
 import { DbUtilsGetType, DbUtilsQuerySQL } from "../utils/DbUtils";
+import { UsersDataList, UsersDataListNotificationDigestOptIn } from "../users/UsersData";
 import {
   NotificationsDataDeleteSubscriptionByEndpoint,
+  NotificationsDataListAssigneesByTaskIds,
   NotificationsDataListSubscriptions,
   NotificationsDataListSubscriptionsByUser,
+  NotificationsDataListVisibleProjectIds,
   NotificationsDataLogSent,
   type PushSubscriptionRecord,
 } from "./NotificationsData";
 
 const logger = console;
 
-export type NotificationKind = "day-before" | "day-of";
+export type NotificationKind = "day-before" | "day-of" | "overdue";
 
 let config: Config;
 let vapidPublicKey = "";
@@ -74,8 +77,8 @@ export async function NotificationsCheckAndSend(
 
   const sql =
     DbUtilsGetType() === "postgres"
-      ? 'SELECT id, title, status, "dueDate" FROM tasks WHERE "dueDate" IS NOT NULL'
-      : "SELECT id, title, status, dueDate FROM tasks WHERE dueDate IS NOT NULL";
+      ? 'SELECT id, title, status, "dueDate", "projectId" FROM tasks WHERE "dueDate" IS NOT NULL'
+      : "SELECT id, title, status, dueDate, projectId FROM tasks WHERE dueDate IS NOT NULL";
   const rows = await DbUtilsQuerySQL(sql);
 
   const subscriptions = await NotificationsDataListSubscriptions();
@@ -83,6 +86,27 @@ export async function NotificationsCheckAndSend(
     // Nothing to claim either: reminders stay available until someone subscribes
     return;
   }
+
+  const digestOptedIn = new Set(await UsersDataListNotificationDigestOptIn());
+  const assigneesByTask = await NotificationsDataListAssigneesByTaskIds(
+    rows.map((row) => row.id as string),
+  );
+  const adminIds = await getAdminIds();
+  const visibleProjectsByUser = new Map<string, Set<string>>();
+  for (const userId of new Set([...assigneesByTask.values()].flat())) {
+    if (!adminIds.has(userId)) {
+      visibleProjectsByUser.set(
+        userId,
+        new Set(await NotificationsDataListVisibleProjectIds(userId)),
+      );
+    }
+  }
+  const canSeeProject = createProjectVisibilityChecker(
+    adminIds,
+    visibleProjectsByUser,
+  );
+
+  const digestEntries = new Map<string, ReminderEntry[]>();
 
   for (const row of rows) {
     const kind = getTaskNotificationKind(
@@ -95,21 +119,57 @@ export async function NotificationsCheckAndSend(
     if (!kind) {
       continue;
     }
+    // Personal reminders: only the assignees who can see the task's project
+    const recipients = getRecipientsForTask(
+      assigneesByTask.get(row.id as string) ?? [],
+      (userId) => canSeeProject(userId, row.projectId as string),
+    );
+    if (recipients.length === 0) {
+      continue;
+    }
     // First sender to log the entry wins; skips duplicates on later runs
     const claimed = await NotificationsDataLogSent(
       row.id as string,
       (row.dueDate as string).substring(0, 10),
-      kind,
+      getClaimKind(kind, now),
     );
     if (!claimed) {
       continue;
     }
-    await sendToSubscriptions(
-      subscriptions,
-      row.id as string,
-      row.title as string,
-      kind,
+    for (const userId of recipients) {
+      if (digestOptedIn.has(userId)) {
+        const entries = digestEntries.get(userId) ?? [];
+        entries.push({ title: row.title as string, kind });
+        digestEntries.set(userId, entries);
+      } else {
+        const userSubscriptions =
+          await NotificationsDataListSubscriptionsByUser(userId);
+        await sendToSubscriptions(
+          userSubscriptions,
+          row.id as string,
+          row.title as string,
+          kind,
+        );
+      }
+    }
+  }
+
+  // One consolidated push per digest user for this run
+  for (const [userId, entries] of digestEntries) {
+    const userSubscriptions =
+      await NotificationsDataListSubscriptionsByUser(userId);
+    if (userSubscriptions.length === 0) {
+      continue;
+    }
+    const payload = JSON.stringify(
+      buildDigestPayload(
+        entries,
+        getZonedDateKey(now, config.WEB_PUSH_TIMEZONE, 0),
+      ),
     );
+    for (const subscription of userSubscriptions) {
+      await sendPushToSubscription(subscription, payload);
+    }
   }
 }
 
@@ -177,6 +237,7 @@ export function getZonedDateKey(
  * Decides which reminder (if any) should be sent for a task:
  * - "day-of" when the task is due today
  * - "day-before" when the task is due tomorrow
+ * - "overdue" when the task is past its due date
  * Notifications are only sent from WEB_PUSH_NOTIFY_HOUR onwards
  * and completed ("Done") tasks never trigger reminders.
  * "Today" and the hour are evaluated in WEB_PUSH_TIMEZONE (server timezone
@@ -196,11 +257,16 @@ export function getTaskNotificationKind(
     return null;
   }
   const due = dueDate.substring(0, 10);
-  if (due === getZonedDateKey(now, timezone, 0)) {
+  const today = getZonedDateKey(now, timezone, 0);
+  if (due === today) {
     return "day-of";
   }
   if (due === getZonedDateKey(now, timezone, 1)) {
     return "day-before";
+  }
+  // YYYY-MM-DD strings compare chronologically
+  if (due < today) {
+    return "overdue";
   }
   return null;
 }
@@ -219,6 +285,54 @@ function validateTimezone(timezone: string): void {
     );
     config.WEB_PUSH_TIMEZONE = "";
   }
+}
+
+/** One reminder of a digest push. */
+export interface ReminderEntry {
+  title: string;
+  kind: NotificationKind;
+}
+
+/** Reminder of a task goes to its assignees only; unassigned tasks remind nobody. */
+export function getRecipientsForTask(
+  assigneeIds: string[],
+  canSeeProject: (userId: string) => boolean,
+): string[] {
+  return [...new Set(assigneeIds)].filter(canSeeProject);
+}
+
+const DIGEST_KIND_ORDER: NotificationKind[] = [
+  "overdue",
+  "day-of",
+  "day-before",
+];
+
+const DIGEST_KIND_LABELS: Record<NotificationKind, string> = {
+  overdue: "Overdue",
+  "day-of": "Due today",
+  "day-before": "Due tomorrow",
+};
+
+/** One consolidated push listing the run's reminders, grouped by kind. */
+export function buildDigestPayload(
+  entries: ReminderEntry[],
+  dayKey: string,
+): { title: string; body: string; url: string; tag: string } {
+  const sections: string[] = [];
+  for (const kind of DIGEST_KIND_ORDER) {
+    const titles = entries
+      .filter((entry) => entry.kind === kind)
+      .map((entry) => entry.title);
+    if (titles.length > 0) {
+      sections.push(`${DIGEST_KIND_LABELS[kind]}: ${titles.join(", ")}`);
+    }
+  }
+  return {
+    title: "Your task reminders",
+    body: sections.join(" — "),
+    url: "/",
+    tag: `task-digest-${dayKey}`,
+  };
 }
 
 // ── Task update notifications ─────────────────────────────────────────────
@@ -270,6 +384,32 @@ export async function NotificationsTaskUpdated(
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Per-run project visibility, mirroring ProjectVisibility.isProjectVisible:
+ * admins see every project, other users only the projects they can see
+ * (resolved once per user by the caller and passed in here).
+ */
+function createProjectVisibilityChecker(
+  adminIds: Set<string>,
+  visibleProjectsByUser: Map<string, Set<string>>,
+): (userId: string, projectId: string) => boolean {
+  return (userId, projectId) => {
+    if (adminIds.has(userId)) {
+      return true;
+    }
+    return visibleProjectsByUser.get(userId)?.has(projectId) ?? false;
+  };
+}
+
+/** Ids of the admin users, for the visibility checker. */
+function getAdminIds(): Promise<Set<string>> {
+  return UsersDataList().then((users) => {
+    return new Set(
+      users.filter((user) => user.role === "admin").map((user) => user.id),
+    );
+  });
+}
 
 /**
  * VAPID keys are read from the configuration when provided, then from a
@@ -326,6 +466,23 @@ async function sendPushToSubscription(
   }
 }
 
+const KIND_TITLES: Record<NotificationKind, string> = {
+  "day-of": "Task due today",
+  "day-before": "Task due tomorrow",
+  overdue: "Task overdue",
+};
+
+/**
+ * Dedup key inside push_notifications_log. "overdue" repeats every day for
+ * the same due date, so it is claimed per send day ("overdue-YYYY-MM-DD",
+ * 18 chars) instead of once ever.
+ */
+function getClaimKind(kind: NotificationKind, now: Date): string {
+  return kind === "overdue"
+    ? `overdue-${getZonedDateKey(now, config.WEB_PUSH_TIMEZONE, 0)}`
+    : kind;
+}
+
 async function sendToSubscriptions(
   subscriptions: PushSubscriptionRecord[],
   taskId: string,
@@ -333,7 +490,7 @@ async function sendToSubscriptions(
   kind: NotificationKind,
 ): Promise<void> {
   const payload = JSON.stringify({
-    title: kind === "day-of" ? "Task due today" : "Task due tomorrow",
+    title: KIND_TITLES[kind],
     body: taskTitle,
     url: `/?taskId=${taskId}`,
     // Same tag replaces the previous reminder instead of stacking

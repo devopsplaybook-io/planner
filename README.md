@@ -125,7 +125,7 @@ With `STT_MODE=embedded`, Planner embeds its own speech-to-text engine ([whisper
 
 ## Web Push Notifications
 
-Planner sends browser push notifications for tasks due today or tomorrow, and to task assignees when their task is updated by another user (status change, comment, assignee, label or attachment change). Notifications are enabled when `WEB_PUSH_ENABLED` is set to `true`. Users opt in from the Settings page.
+Planner sends personal browser push notifications for task due dates: the assignees of a task are reminded the day before, on the day, and daily while it is overdue (at most once per day per task). Reminders are filtered by project visibility, so restricted-project tasks never reach non-members, and tasks without assignees do not trigger reminders. Task assignees are also notified when their task is updated by another user (status change, comment, assignee, label or attachment change). Users can opt in to a daily digest (Settings → Notifications) that consolidates the day's due and overdue reminders into a single notification. Notifications are enabled when `WEB_PUSH_ENABLED` is set to `true`. Users opt in from the Settings page.
 
 VAPID keys are read from the environment when both `WEB_PUSH_VAPID_PUBLIC_KEY` and `WEB_PUSH_VAPID_PRIVATE_KEY` are set, otherwise they are loaded from `DATA_DIR/vapid-keys.json` and generated on first start. Providing them explicitly keeps the identity of the server across a lost volume and allows several replicas.
 
