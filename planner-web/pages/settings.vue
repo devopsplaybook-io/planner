@@ -80,6 +80,31 @@
             {{ notificationsStore.active ? "Disable" : "Enable" }}
           </button>
         </div>
+        <div class="setting-row">
+          <span class="setting-label"
+            ><i class="bi bi-calendar2-week" /> Daily digest</span
+          >
+          <button
+            class="btn-theme"
+            :disabled="!notificationsStore.serverEnabled"
+            @click="toggleDigest"
+          >
+            <i
+              :class="
+                notificationsStore.digest
+                  ? 'bi bi-toggle-on'
+                  : 'bi bi-toggle-off'
+              "
+            />
+            {{ notificationsStore.digest ? "On" : "Off" }}
+          </button>
+        </div>
+        <p class="setting-hint">
+          <i class="bi bi-info-circle" />
+          Group the day's task reminders into a single daily notification
+          instead of one notification per task. Applies to every signed-in
+          device.
+        </p>
         <p
           class="notification-status"
           :class="{ 'notification-status--error': notificationsStore.lastError }"
@@ -213,9 +238,9 @@ const notificationStatus = computed(() => {
     return `Notifications could not be enabled: ${notificationsStore.lastError}`;
   }
   if (notificationsStore.active) {
-    return "You will be notified the day before and on the day a task is due.";
+    return "You will be notified the day before, on the day, and daily while a task is overdue.";
   }
-  return "Get notified the day before and on the day a task is due.";
+  return "Get notified the day before, on the day, and daily while a task is overdue.";
 });
 
 // API Key management
@@ -226,6 +251,10 @@ async function toggleNotifications() {
   } else {
     await notificationsStore.enable();
   }
+}
+
+async function toggleDigest() {
+  await notificationsStore.setDigest(!notificationsStore.digest);
 }
 
 const themeLabel = computed(() => {

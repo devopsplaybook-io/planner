@@ -44,6 +44,8 @@ export const useNotificationsStore = defineStore("notifications", {
     serverPublicKey: "",
     permission: "default" as NotificationPermission,
     loading: false,
+    // Daily digest preference, persisted server-side (applies to every device)
+    digest: false,
     // Message of the last failed enable/disable attempt, shown to the user
     lastError: "",
   }),
@@ -67,6 +69,14 @@ export const useNotificationsStore = defineStore("notifications", {
         "serviceWorker" in navigator &&
         "PushManager" in window &&
         "Notification" in window;
+      // The digest preference lives server-side: load it on every device,
+      // whether or not this browser supports push
+      try {
+        const res = await api.get("/notifications/preferences");
+        this.digest = !!res.data.digest;
+      } catch {
+        this.digest = false;
+      }
       if (!this.supported) {
         return;
       }
@@ -134,6 +144,20 @@ export const useNotificationsStore = defineStore("notifications", {
         this.enabled = false;
         localStorage.removeItem("notificationsEnabled");
         this.loading = false;
+      }
+    },
+
+    /**
+     * Updates the server-side daily digest preference. Optimistic: the
+     * toggle snaps back to its previous value when the save fails.
+     */
+    async setDigest(value: boolean) {
+      const previous = this.digest;
+      this.digest = value;
+      try {
+        await api.put("/notifications/preferences", { digest: value });
+      } catch {
+        this.digest = previous;
       }
     },
 

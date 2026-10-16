@@ -8,12 +8,14 @@ The application sends Web Push notifications (PWA) to remind users about upcomin
 | [x] Feedback          | A failed subscription attempt is reported on the Settings page instead of failing silently                                               |
 | [x] Day before        | A "Task due tomorrow" notification is sent the day before a task's due date                                                              |
 | [x] Day of            | A "Task due today" notification is sent on the day of a task's due date                                                                  |
+| [x] Overdue           | A "Task overdue" notification is sent while a task is past its due date, at most once per day per task                                   |
 | [x] Notification time | Reminders are sent from a configured hour of the day onwards (default 9:00)                                                              |
 | [x] Timezone          | "Today", "tomorrow" and the notification hour are evaluated in a configurable timezone (server timezone when none is set)                |
 | [x] No duplicates     | Each reminder is sent at most once per task, due date, and reminder kind; nothing is consumed while no device is subscribed              |
 | [x] Completed tasks   | Tasks with the final status ("Done") do not trigger notifications                                                                        |
-| [x] Audience          | Notifications are broadcast to all subscribed browsers/devices (tasks are shared across users)                                           |
+| [x] Audience          | Reminders go only to the assignees of the task, filtered by project visibility: admins see every project, public projects reach every authenticated user, restricted projects only their members; tasks without assignees remind nobody |
+| [x] Daily digest      | Optional per-user preference: one consolidated notification listing the day's due and overdue tasks instead of one notification per task (Settings → Notifications; applies to every device of the user) |
 | [x] Open task         | Clicking a notification opens (or focuses) the application on the related task                                                           |
 | [x] Cleanup           | Expired push subscriptions are automatically removed when delivery fails                                                                 |
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-08-27_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-16_

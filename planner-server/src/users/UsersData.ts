@@ -61,6 +61,36 @@ export async function UsersDataUpdateUser(user: User): Promise<void> {
 }
 
 /**
+ * Updates the daily notification digest preference of a user. Unlike role and
+ * password updates this does not bump tokenVersion: a settings toggle must
+ * not log the user out.
+ */
+export async function UsersDataSetNotificationDigest(
+  id: string,
+  digest: boolean,
+): Promise<void> {
+  if (DbUtilsGetType() === "postgres") {
+    await DbUtilsExecSQL(SQL_QUERIES.SET_NOTIFICATION_DIGEST.postgres, [
+      digest,
+      id,
+    ]);
+  } else {
+    await DbUtilsExecSQL(SQL_QUERIES.SET_NOTIFICATION_DIGEST.sqlite, [
+      digest ? 1 : 0,
+      id,
+    ]);
+  }
+}
+
+/** Ids of the users who opted in to the daily notification digest. */
+export async function UsersDataListNotificationDigestOptIn(): Promise<string[]> {
+  const rows = await DbUtilsQuerySQL(
+    SQL_QUERIES.LIST_DIGEST_OPT_IN[DbUtilsGetType()],
+  );
+  return rows.map((row) => row.id as string);
+}
+
+/**
  * Deletes the user and every row referencing it that would otherwise be
  * orphaned (task assignments, project access, API key, push subscriptions).
  * Comments are kept (their author is resolved through a join).
@@ -115,6 +145,14 @@ const SQL_QUERIES = {
       'UPDATE users SET "passwordEncrypted" = $1, "tokenVersion" = "tokenVersion" + 1 WHERE "id" = $2',
     sqlite:
       "UPDATE users SET passwordEncrypted = ?, tokenVersion = tokenVersion + 1 WHERE id = ?",
+  },
+  SET_NOTIFICATION_DIGEST: {
+    postgres: 'UPDATE users SET "notificationDigest" = $1 WHERE "id" = $2',
+    sqlite: "UPDATE users SET notificationDigest = ? WHERE id = ?",
+  },
+  LIST_DIGEST_OPT_IN: {
+    postgres: 'SELECT "id" FROM users WHERE "notificationDigest" = TRUE',
+    sqlite: "SELECT id FROM users WHERE notificationDigest = 1",
   },
   DELETE_USER: {
     postgres: 'DELETE FROM users WHERE "id" = $1',

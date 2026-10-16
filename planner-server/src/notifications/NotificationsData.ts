@@ -127,3 +127,38 @@ export async function NotificationsDataLogSent(
   }
   return changes > 0;
 }
+
+/** Assignee user ids per task id, for the given candidate tasks. */
+export async function NotificationsDataListAssigneesByTaskIds(
+  taskIds: string[],
+): Promise<Map<string, string[]>> {
+  const assigneesByTask = new Map<string, string[]>();
+  if (taskIds.length === 0) {
+    return assigneesByTask;
+  }
+  const placeholders = taskIds.map(() => "?").join(", ");
+  const rows = await DbUtilsQuerySQL(
+    `SELECT ${col("taskId")} AS "taskId", ${col("userId")} AS "userId" FROM task_assignees WHERE ${col("taskId")} IN (${placeholders})`,
+    taskIds,
+  );
+  for (const row of rows) {
+    const userIds = assigneesByTask.get(row.taskId as string) ?? [];
+    userIds.push(row.userId as string);
+    assigneesByTask.set(row.taskId as string, userIds);
+  }
+  return assigneesByTask;
+}
+
+/**
+ * Ids of the projects a user can see: public projects and projects the user
+ * is a member of (mirrors LIST_VISIBLE_PROJECTS in ProjectsData).
+ */
+export async function NotificationsDataListVisibleProjectIds(
+  userId: string,
+): Promise<string[]> {
+  const rows = await DbUtilsQuerySQL(
+    `SELECT ${col("id")} AS "id" FROM projects WHERE ${col("visibility")} = 'public' OR ${col("id")} IN (SELECT ${col("projectId")} FROM project_users WHERE ${col("userId")} = ?)`,
+    [userId],
+  );
+  return rows.map((row) => row.id as string);
+}

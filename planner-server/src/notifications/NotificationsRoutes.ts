@@ -1,5 +1,6 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { AuthGetUserSession } from "../users/Auth";
+import { UsersDataGet, UsersDataSetNotificationDigest } from "../users/UsersData";
 import {
   NotificationsGetPublicKey,
   NotificationsIsEnabled,
@@ -77,6 +78,33 @@ export class NotificationsRoutes {
         req.body.endpoint,
       );
       return res.status(201).send({});
+    });
+
+    // ==================== PREFERENCES ====================
+    fastify.get("/preferences", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(401).send({ error: "Access Denied" });
+      }
+      const user = await UsersDataGet(userSession.userId);
+      return res.status(200).send({ digest: !!user?.notificationDigest });
+    });
+
+    interface PutPreferences extends RequestGenericInterface {
+      Body: {
+        digest: boolean;
+      };
+    }
+    fastify.put<PutPreferences>("/preferences", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(401).send({ error: "Access Denied" });
+      }
+      if (typeof req.body?.digest !== "boolean") {
+        return res.status(400).send({ error: "Missing: digest (boolean)" });
+      }
+      await UsersDataSetNotificationDigest(userSession.userId, req.body.digest);
+      return res.status(200).send({ digest: req.body.digest });
     });
   }
 }
