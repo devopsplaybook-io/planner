@@ -43,6 +43,13 @@
           <UserMultiSelect v-model="form.assignees" :users="users" />
         </fieldset>
         <fieldset>
+          <legend>Labels</legend>
+          <LabelMultiSelect
+            v-model="form.labels"
+            :suggestions="labelsStore.labels"
+          />
+        </fieldset>
+        <fieldset>
           <legend>Checklist</legend>
           <div
             v-for="(item, idx) in form.checklist"
@@ -95,6 +102,7 @@ const dialogEl = useModalDialog(() => props.open);
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const authStore = useAuthStore();
+const labelsStore = useLabelsStore();
 
 const users = ref([]);
 const creating = ref(false);
@@ -121,6 +129,7 @@ const form = ref({
   priority: "medium",
   dueDate: "",
   assignees: [],
+  labels: [],
   checklist: [],
 });
 
@@ -135,6 +144,7 @@ watch(
         priority: "medium",
         dueDate: "",
         assignees: authStore.currentUser?.id ? [authStore.currentUser.id] : [],
+        labels: [],
         checklist: [],
       };
       // Fetch users for the assignee picker
@@ -144,6 +154,8 @@ watch(
       } catch {
         users.value = [];
       }
+      // Existing labels feed the autocomplete suggestions
+      labelsStore.fetchAll().catch(() => {});
     }
   },
 );
@@ -158,6 +170,7 @@ async function createTask() {
       priority: form.value.priority,
       dueDate: form.value.dueDate || undefined,
       assignees: form.value.assignees,
+      labels: form.value.labels,
       checklist: form.value.checklist.filter((c) => c.text.trim()),
     };
     const created = await tasksStore.create(data);

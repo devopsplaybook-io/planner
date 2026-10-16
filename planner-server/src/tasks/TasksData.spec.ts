@@ -220,6 +220,84 @@ describe("buildListTasksQuery assigneeUserId", () => {
   });
 });
 
+describe("buildListTasksQuery labels", () => {
+  it("should add no clause when labels is absent", () => {
+    const { sql, params } = buildListTasksQuery({ labels: undefined }, "sqlite");
+    expect(sql).toBe("SELECT * FROM tasks ORDER BY dateCreated DESC");
+    expect(params).toEqual([]);
+  });
+
+  it("should add no clause for an empty labels array", () => {
+    const { sql, params } = buildListTasksQuery({ labels: [] }, "sqlite");
+    expect(sql).toBe("SELECT * FROM tasks ORDER BY dateCreated DESC");
+    expect(params).toEqual([]);
+  });
+
+  it("should filter by one label through an EXISTS subquery (sqlite)", () => {
+    const { sql, params } = buildListTasksQuery({ labels: ["urgent"] }, "sqlite");
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE EXISTS (SELECT 1 FROM task_labels tl WHERE tl.taskId = tasks.id AND tl.name = ?) ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["urgent"]);
+  });
+
+  it("should AND every listed label with one EXISTS and placeholder per label", () => {
+    const { sql, params } = buildListTasksQuery(
+      { labels: ["urgent", "ui"] },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE EXISTS (SELECT 1 FROM task_labels tl WHERE tl.taskId = tasks.id AND tl.name = ?) " +
+        "AND EXISTS (SELECT 1 FROM task_labels tl WHERE tl.taskId = tasks.id AND tl.name = ?) " +
+        "ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["urgent", "ui"]);
+  });
+
+  it("should quote identifiers for postgres in the EXISTS subqueries", () => {
+    const { sql, params } = buildListTasksQuery(
+      { labels: ["urgent", "ui"] },
+      "postgres",
+    );
+    expect(sql).toBe(
+      'SELECT * FROM tasks WHERE EXISTS (SELECT 1 FROM "task_labels" tl WHERE tl."taskId" = tasks."id" AND tl."name" = ?) ' +
+        'AND EXISTS (SELECT 1 FROM "task_labels" tl WHERE tl."taskId" = tasks."id" AND tl."name" = ?) ' +
+        'ORDER BY "dateCreated" DESC',
+    );
+    expect(params).toEqual(["urgent", "ui"]);
+  });
+
+  it("should combine labels with projectIds, q, doneSince and visibility in order", () => {
+    const { sql, params } = buildListTasksQuery(
+      {
+        labels: ["urgent"],
+        projectIds: ["proj-1"],
+        q: "report",
+        doneSince: "2026-08-14T00:00:00.000Z",
+        visibleTo: { userId: "user-1" },
+      },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE projectId IN (?) AND (status != ? OR dateUpdated >= ?) " +
+        "AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\') " +
+        "AND EXISTS (SELECT 1 FROM task_labels tl WHERE tl.taskId = tasks.id AND tl.name = ?) " +
+        "AND (projectId IN (SELECT id FROM projects WHERE visibility = 'public') " +
+        "OR projectId IN (SELECT projectId FROM project_users WHERE userId = ?)) " +
+        "ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual([
+      "proj-1",
+      "Done",
+      "2026-08-14T00:00:00.000Z",
+      "%report%",
+      "%report%",
+      "urgent",
+      "user-1",
+    ]);
+  });
+});
+
 describe("buildListTasksQuery search (q)", () => {
   it("should match title or description case-insensitively (sqlite)", () => {
     const { sql, params } = buildListTasksQuery({ q: "report" }, "sqlite");

@@ -30,6 +30,7 @@ describe("tasks store list reads", () => {
     await store.fetchAll("proj-1", {
       projectIds: ["proj-1", "proj-2"],
       doneSince: "2026-10-01T00:00:00.000Z",
+      labels: ["urgent", "ui"],
     });
 
     expect(mockApiGet).toHaveBeenCalledWith("/tasks", {
@@ -39,6 +40,21 @@ describe("tasks store list reads", () => {
         projectId: "proj-1",
         projectIds: "proj-1,proj-2",
         doneSince: "2026-10-01T00:00:00.000Z",
+        labels: "urgent,ui",
+      },
+    });
+  });
+
+  it("should omit the labels param when the selection is empty", async () => {
+    mockApiGet.mockResolvedValue({ data: [] });
+    const store = useTasksStore();
+
+    await store.fetchAll(undefined, { labels: [] });
+
+    expect(mockApiGet).toHaveBeenCalledWith("/tasks", {
+      params: {
+        fields:
+          "id,projectId,title,status,priority,dueDate,checklist,assignees,labels,dateCreated,dateUpdated",
       },
     });
   });
@@ -88,12 +104,12 @@ describe("tasks store list reads", () => {
       ],
     });
     const store = useTasksStore();
-    const results = await store.searchTasks({ q: "kept" });
+    const results = await store.searchTasks({ q: "kept", labels: ["urgent"] });
 
     expect(mockApiGet).toHaveBeenCalledWith(
       "/tasks",
       expect.objectContaining({
-        params: expect.objectContaining({ q: "kept" }),
+        params: expect.objectContaining({ q: "kept", labels: "urgent" }),
       }),
     );
     const first = results[0]!;

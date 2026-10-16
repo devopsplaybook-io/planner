@@ -430,6 +430,7 @@ describe("TasksRoutes project visibility", () => {
         doneSince: undefined,
         q: undefined,
         assigneeUserId: undefined,
+        labels: undefined,
         limit: TASKS_DEFAULT_LIMIT,
         offset: 0,
         visibleTo: { userId: "user-1" },
@@ -448,6 +449,7 @@ describe("TasksRoutes project visibility", () => {
         doneSince: undefined,
         q: undefined,
         assigneeUserId: undefined,
+        labels: undefined,
         limit: TASKS_DEFAULT_LIMIT,
         offset: 0,
         visibleTo: undefined,
@@ -474,6 +476,7 @@ describe("TasksRoutes project visibility", () => {
         doneSince: undefined,
         q: "report",
         assigneeUserId: undefined,
+        labels: undefined,
         limit: TASKS_DEFAULT_LIMIT,
         offset: 0,
         visibleTo: { userId: "user-1" },
@@ -491,6 +494,7 @@ describe("TasksRoutes project visibility", () => {
         doneSince: undefined,
         q: undefined,
         assigneeUserId: undefined,
+        labels: undefined,
         limit: TASKS_DEFAULT_LIMIT,
         offset: 0,
         visibleTo: { userId: "user-1" },
@@ -511,6 +515,7 @@ describe("TasksRoutes project visibility", () => {
         doneSince: undefined,
         q: undefined,
         assigneeUserId: undefined,
+        labels: undefined,
         limit: TASKS_DEFAULT_LIMIT,
         offset: 0,
         visibleTo: { userId: "user-1" },
@@ -561,6 +566,39 @@ describe("TasksRoutes project visibility", () => {
     await app.inject({ method: "GET", url: "/?assigneeUserId=user-2" });
     expect(TasksDataList).toHaveBeenCalledWith(
       expect.objectContaining({ assigneeUserId: "user-2" }),
+      undefined,
+    );
+  });
+
+  it("should forward the parsed labels filter to the data layer", async () => {
+    await app.inject({ method: "GET", url: "/?labels=urgent,ui" });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      expect.objectContaining({ labels: ["urgent", "ui"] }),
+      undefined,
+    );
+  });
+
+  it("should ignore an empty or whitespace-only labels param", async () => {
+    for (const url of ["/?labels=", "/?labels=%20,%20", "/?labels=,"]) {
+      await app.inject({ method: "GET", url });
+      expect(TasksDataList).toHaveBeenLastCalledWith(
+        expect.objectContaining({ labels: undefined }),
+        undefined,
+      );
+    }
+  });
+
+  it("should compose the labels filter with q and doneSince", async () => {
+    await app.inject({
+      method: "GET",
+      url: "/?labels=urgent&q=report&doneSince=2026-08-14",
+    });
+    expect(TasksDataList).toHaveBeenCalledWith(
+      expect.objectContaining({
+        labels: ["urgent"],
+        q: "report",
+        doneSince: "2026-08-14T00:00:00.000Z",
+      }),
       undefined,
     );
   });

@@ -6,11 +6,29 @@
         <p>Free-form notes</p>
       </hgroup>
       <div class="header-controls">
+        <div class="search-box">
+          <i class="bi bi-search" />
+          <input
+            v-model="searchQuery"
+            type="search"
+            class="search-input"
+            placeholder="Search notes…"
+            aria-label="Search notes"
+          />
+        </div>
         <ProjectSelect
           :model-value="projectsStore.selectedProjectFilter"
           all-label="All projects"
           @update:model-value="onFilterChange"
         />
+        <div class="label-filter">
+          <LabelMultiSelect
+            v-model="selectedLabels"
+            :suggestions="noteLabelSuggestions"
+            placeholder="Filter by label…"
+            aria-label="Filter by labels"
+          />
+        </div>
         <button class="fab-button" @click="showCreateDialog = true">
           <i class="bi bi-plus-lg" />
         </button>
@@ -81,6 +99,8 @@
 </template>
 
 <script setup>
+import { watchDebounced } from "@vueuse/core";
+
 const notesStore = useNotesStore();
 const projectsStore = useProjectsStore();
 const router = useRouter();
@@ -93,12 +113,56 @@ const createDialogEl = useModalDialog(() => showCreateDialog.value);
 const creating = ref(false);
 const newNote = ref({ projectId: "", title: "", description: "" });
 
+// All client-side on the loaded notes: search (title + description), the
+// label filter (a note must carry every selected label) and the project
+// subtree filter AND-combine
+const searchQuery = ref("");
+const appliedSearch = ref("");
+const selectedLabels = ref([]);
+
+watchDebounced(
+  searchQuery,
+  () => {
+    appliedSearch.value = searchQuery.value;
+  },
+  { debounce: 300 },
+);
+
+// Suggestions come from the labels actually in use on the loaded notes
+const noteLabelSuggestions = computed(() => {
+  const counts = new Map();
+  for (const note of notesStore.notes) {
+    for (const label of note.labels || []) {
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+});
+
 const filteredNotes = computed(() => {
+  let notes = notesStore.notes;
   const filterId = projectsStore.selectedProjectFilter;
-  if (!filterId) return notesStore.notes;
-  // The filter spans the selected project's whole subtree
-  const ids = new Set(projectsStore.subtreeProjectIds(filterId));
-  return notesStore.notes.filter((n) => ids.has(n.projectId));
+  if (filterId) {
+    // The filter spans the selected project's whole subtree
+    const ids = new Set(projectsStore.subtreeProjectIds(filterId));
+    notes = notes.filter((n) => ids.has(n.projectId));
+  }
+  if (selectedLabels.value.length) {
+    notes = notes.filter((n) =>
+      selectedLabels.value.every((label) => (n.labels || []).includes(label)),
+    );
+  }
+  const term = appliedSearch.value.trim().toLowerCase();
+  if (term) {
+    notes = notes.filter(
+      (n) =>
+        n.title.toLowerCase().includes(term) ||
+        (n.description || "").toLowerCase().includes(term),
+    );
+  }
+  return notes;
 });
 
 function onFilterChange(projectId) {
@@ -160,5 +224,51 @@ async function createNote() {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: var(--space-md);
+}
+
+/* Search box: same markup and styles as the dashboard search */
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0 0.6em;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.search-box:focus-within {
+  border-color: var(--color-primary);
+}
+
+.search-box > i {
+  opacity: 0.55;
+}
+
+.search-input {
+  width: 13rem;
+  max-width: 40vw;
+  padding: 0.45em 0;
+  border: none;
+  background: transparent;
+  font-size: var(--text-md);
+  color: var(--color-text);
+}
+
+.search-input:focus {
+  outline: none;
+  /* Pico paints its focus ring with a box-shadow, which reads as a border
+     inset from the outer search box; keep the highlight on .search-box */
+  box-shadow: none;
+}
+
+/* Compact chip editor for the label filter */
+.label-filter {
+  width: 12rem;
+  max-width: 40vw;
+}
+
+.label-filter :deep(.lms-input) {
+  min-width: 6em;
 }
 </style>
