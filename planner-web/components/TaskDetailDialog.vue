@@ -306,10 +306,13 @@
               </div>
             </template>
             <template v-else>
-              <div
+              <button
                 v-for="dep in task.dependencies"
                 :key="dep.taskId"
-                class="dependency-item"
+                type="button"
+                class="dependency-item dependency-link"
+                :aria-label="`Open dependency: ${dep.title || dep.taskId}`"
+                @click="openDependency(dep)"
               >
                 <span
                   class="status-dot"
@@ -320,7 +323,7 @@
                   {{ dep.title || dep.taskId }}
                 </span>
                 <small class="text-muted">{{ dep.status }}</small>
-              </div>
+              </button>
             </template>
           </div>
           <p v-else class="text-muted dependencies-empty">
@@ -841,6 +844,14 @@ let dependencySearchTimer = null;
 
 function dependencyStatusColor(dep) {
   return statusesStore.colorFor(dep.status);
+}
+
+// Open a dependency task in the same URL-driven dialog; drop the comment
+// permalink so it does not leak onto the next task
+function openDependency(dep) {
+  const query = { ...route.query, taskId: dep.taskId };
+  delete query.commentId;
+  router.replace({ path: route.path, query });
 }
 
 function startDependencyDraft() {
@@ -1853,6 +1864,22 @@ section h4 {
   background: var(--color-surface);
   border-radius: var(--radius-sm);
   min-width: 0;
+}
+
+/* Display-mode dependency rows are <button>s opening the dependency task: the
+   global button style would otherwise paint their text with
+   --color-on-primary (invisible on the surface background). */
+.dependency-link {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid transparent;
+}
+
+.dependency-link:hover {
+  border-color: var(--color-primary);
 }
 
 /* Reveal the dependency remove button on hover/keyboard focus, mirroring the

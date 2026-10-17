@@ -64,6 +64,8 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Dependency removal: in edit mode each dependency row offers a remove button consistent with the checklist delete affordance (revealed on hover and keyboard focus on desktop, always visible on touch, no confirmation); removal applies on save through the same dependency-list replace call.
 
+[x] Dependency links: in display mode each dependency row is a clickable control that opens the dependency task in the same dialog (URL ?taskId= switch, comment permalink param dropped); edit-mode rows stay non-clickable so the unsaved edit form is never discarded; a dependency the user cannot see shows the existing not-available state.
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.
@@ -80,4 +82,4 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 - `limit` / `offset` — pagination (default limit 1000).
 - [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `recurrence`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dependencies`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees, dependencies) are not queried server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-16_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_
