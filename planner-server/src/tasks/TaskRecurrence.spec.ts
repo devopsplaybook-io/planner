@@ -27,6 +27,43 @@ describe("parseRecurrence", () => {
     });
   });
 
+  it("should accept a monthly rule with a monthDay and omit an absent one", () => {
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: 15 }),
+    ).toEqual({
+      recurrence: { frequency: "monthly", interval: 1, monthDay: 15 },
+    });
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 2, monthDay: null }),
+    ).toEqual({
+      recurrence: { frequency: "monthly", interval: 2 },
+    });
+    expect(
+      parseRecurrence({ frequency: "weekly", interval: 1, monthDay: 15 }),
+    ).toEqual({
+      recurrence: { frequency: "weekly", interval: 1, monthDay: 15 },
+    });
+  });
+
+  it("should reject out-of-range or non-integer monthDay values", () => {
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: 0 })
+        .error,
+    ).toBeTruthy();
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: 32 })
+        .error,
+    ).toBeTruthy();
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: 1.5 })
+        .error,
+    ).toBeTruthy();
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: "5" })
+        .error,
+    ).toBeTruthy();
+  });
+
   it("should de-duplicate weekdays", () => {
     expect(
       parseRecurrence({ frequency: "weekly", interval: 1, weekdays: [1, 1, 3] }),
@@ -135,6 +172,35 @@ describe("computeNextDueDate", () => {
     expect(
       computeNextDueDate({ frequency: "monthly", interval: 1 }, "2026-03-31"),
     ).toBe("2026-04-30");
+  });
+
+  it("should honor monthDay for monthly rules, clamped to the target month", () => {
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 1, monthDay: 15 },
+        "2026-10-02",
+      ),
+    ).toBe("2026-11-15");
+    // day 31 clamped in short months
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 1, monthDay: 31 },
+        "2026-01-05",
+      ),
+    ).toBe("2026-02-28");
+    // interval > 1 keeps the month step
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 2, monthDay: 15 },
+        "2026-10-02",
+      ),
+    ).toBe("2026-12-15");
+  });
+
+  it("should fall back to the due date's day when a monthly rule has no monthDay", () => {
+    expect(
+      computeNextDueDate({ frequency: "monthly", interval: 1 }, "2026-10-16"),
+    ).toBe("2026-11-16");
   });
 
   it("should return null for a missing or malformed due date", () => {

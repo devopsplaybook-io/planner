@@ -42,7 +42,10 @@
              forwards clicks on them to the Repeats select. -->
         <div class="recurrence-field">
           <strong>Repeats</strong>
-          <TaskRecurrenceSelect v-model="form.recurrence" />
+          <TaskRecurrenceSelect
+            v-model="form.recurrence"
+            :default-month-day="createMonthDay"
+          />
         </div>
         <fieldset>
           <legend>Assignees</legend>
@@ -129,6 +132,14 @@ const form = ref({
   recurrence: null,
   assignees: [],
   checklist: [],
+});
+
+// Day of month seeded into the recurrence selector's "On day" input for
+// monthly rules without an explicit monthDay: the due date's day (the
+// server's fallback) or today's day while no due date is filled in.
+const createMonthDay = computed(() => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(form.value.dueDate || "");
+  return match ? Number(match[3]) : new Date().getDate();
 });
 
 watch(

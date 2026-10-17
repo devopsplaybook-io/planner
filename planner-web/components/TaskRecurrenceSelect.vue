@@ -27,6 +27,18 @@
         <option value="monthly">months</option>
       </select>
     </div>
+    <div v-if="isMonthly" class="recurrence-monthday">
+      <span class="recurrence-monthday-label">On day</span>
+      <input
+        v-model.number="monthDayInput"
+        type="number"
+        min="1"
+        max="31"
+        step="1"
+        aria-label="Day of month"
+        @change="onMonthDayChange"
+      >
+    </div>
     <div v-if="isWeekly" class="recurrence-weekdays" role="group" aria-label="Repeat on">
       <button
         v-for="day in weekdays"
@@ -48,6 +60,7 @@ import { ref, computed, watch } from "vue";
 
 const props = defineProps({
   modelValue: { type: Object, default: null },
+  defaultMonthDay: { type: Number, default: null },
 });
 const emit = defineEmits(["update:modelValue"]);
 
@@ -57,6 +70,7 @@ const emit = defineEmits(["update:modelValue"]);
 const mode = ref("none");
 const customInterval = ref(1);
 const customUnit = ref("daily");
+const monthDayInput = ref(1);
 
 const weekdays = [
   { value: 1, label: "Mon" },
@@ -69,9 +83,23 @@ const weekdays = [
 ];
 
 const isWeekly = computed(() => props.modelValue?.frequency === "weekly");
+const isMonthly = computed(() => props.modelValue?.frequency === "monthly");
 
 function clampInterval(value) {
   return Math.min(999, Math.max(1, Math.round(Number(value) || 1)));
+}
+
+function clampMonthDay(value) {
+  return Math.min(31, Math.max(1, Math.round(Number(value) || 1)));
+}
+
+// Day shown when a monthly rule carries no explicit monthDay: the prop
+// seed (the due date's day) or today's day of month as a last fallback.
+function monthDaySeed() {
+  if (props.defaultMonthDay >= 1 && props.defaultMonthDay <= 31) {
+    return Math.round(props.defaultMonthDay);
+  }
+  return new Date().getDate();
 }
 
 function modeForRule(rule) {
@@ -87,12 +115,29 @@ watch(
     if (rule && rule.frequency) {
       customInterval.value = rule.interval;
       customUnit.value = rule.frequency;
+      if (rule.frequency === "monthly") {
+        monthDayInput.value = rule.monthDay ?? monthDaySeed();
+      }
     }
     if (rule !== lastEmitted.value) {
       mode.value = modeForRule(rule);
     }
   },
   { immediate: true },
+);
+
+// Keep the displayed day in sync with the seed (the due date's day) for
+// monthly rules without an explicit monthDay, e.g. when the user picks
+// monthly first and fills the due date afterwards. An explicit monthDay
+// is never overridden.
+watch(
+  () => props.defaultMonthDay,
+  () => {
+    const rule = props.modelValue;
+    if (rule && rule.frequency === "monthly" && !rule.monthDay) {
+      monthDayInput.value = monthDaySeed();
+    }
+  },
 );
 
 function emitCustomRule(frequency, interval, source) {
@@ -103,6 +148,9 @@ function emitCustomRule(frequency, interval, source) {
     source.weekdays.length > 0
   ) {
     rule.weekdays = [...source.weekdays];
+  }
+  if (frequency === "monthly" && source?.monthDay) {
+    rule.monthDay = source.monthDay;
   }
   lastEmitted.value = rule;
   emit("update:modelValue", rule);
@@ -130,6 +178,9 @@ function onModeChange() {
   ) {
     rule.weekdays = [...props.modelValue.weekdays];
   }
+  if (mode.value === "monthly" && props.modelValue?.monthDay) {
+    rule.monthDay = props.modelValue.monthDay;
+  }
   lastEmitted.value = rule;
   emit("update:modelValue", rule);
 }
@@ -140,6 +191,16 @@ function onCustomChange() {
     clampInterval(customInterval.value),
     props.modelValue,
   );
+}
+
+function onMonthDayChange() {
+  const source = props.modelValue;
+  if (!source || source.frequency !== "monthly") return;
+  const day = clampMonthDay(monthDayInput.value);
+  monthDayInput.value = day;
+  const rule = { ...source, monthDay: day };
+  lastEmitted.value = rule;
+  emit("update:modelValue", rule);
 }
 
 function isWeekdayOn(day) {
@@ -191,6 +252,17 @@ function toggleWeekday(day) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2xs);
+}
+
+.recurrence-monthday {
+  display: grid;
+  grid-template-columns: auto 6rem;
+  gap: var(--space-2xs);
+  align-items: center;
+}
+
+.recurrence-monthday-label {
+  font-size: var(--text-md);
 }
 
 .recurrence-weekdays {

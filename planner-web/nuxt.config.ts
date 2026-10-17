@@ -1,6 +1,26 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The running build is always verifiable in the UI (Navigation), and PWA
+// clients can tell which bundle they are on. The version lives in the root
+// package.json; the Dockerfile copies it next to planner-web for the image
+// build.
+const appVersion = JSON.parse(
+  readFileSync(
+    resolve(fileURLToPath(new URL(".", import.meta.url)), "../package.json"),
+    "utf-8",
+  ),
+).version;
+
 export default defineNuxtConfig({
   ssr: false,
+  runtimeConfig: {
+    public: {
+      appVersion,
+    },
+  },
   experimental: {
     viteEnvironmentApi: true,
   },
@@ -29,6 +49,12 @@ export default defineNuxtConfig({
   },
   pwa: {
     registerType: "autoUpdate",
+    // The module's client plugin (useRegisterSW) hard-reloads the page on
+    // every update takeover with no guards; useAppUpdate owns the whole
+    // update flow instead, including the service worker registration
+    client: {
+      registerPlugin: false,
+    },
     workbox: {
       // Precache the built app shell (HTML/JS/CSS) so the SPA loads offline,
       // plus the app icons so notification icon/badge resolve offline too

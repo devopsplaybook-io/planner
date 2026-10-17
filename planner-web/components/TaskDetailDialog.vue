@@ -194,6 +194,7 @@
             <TaskRecurrenceSelect
               v-if="editing"
               v-model="editForm.recurrence"
+              :default-month-day="editMonthDay"
             />
             <span
               v-else
@@ -749,6 +750,13 @@ const editForm = ref({
   recurrence: null,
   assignees: [],
   projectId: "",
+});
+// Day of month seeded into the recurrence selector's "On day" input for
+// monthly rules without an explicit monthDay: the edit form's due date's
+// day (the server's fallback), so the input follows due-date edits.
+const editMonthDay = computed(() => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(editForm.value.dueDate || "");
+  return match ? Number(match[3]) : null;
 });
 const fullscreenImage = ref(null);
 // att.id -> blob object URL for image previews. Attachments are fetched

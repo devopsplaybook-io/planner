@@ -40,12 +40,15 @@ export interface TaskDependency {
 /**
  * Recurrence rule of a recurring task. `weekdays` (0–6, 0 = Sunday) is only
  * meaningful for weekly rules; an empty or absent list means "every N weeks"
- * on the due date's own weekday. Stored as JSON in the `recurrence` column.
+ * on the due date's own weekday. `monthDay` (1–31) is only meaningful for
+ * monthly rules; when absent the due date's own day is used. Stored as JSON
+ * in the `recurrence` column.
  */
 export interface TaskRecurrence {
   frequency: "daily" | "weekly" | "monthly";
   interval: number;
   weekdays?: number[];
+  monthDay?: number;
 }
 
 /**

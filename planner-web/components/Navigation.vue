@@ -4,7 +4,8 @@
       <li>
         <NuxtLink to="/" class="brand-link"
           ><img src="/images/logo.svg" alt="Planner" class="nav-logo" />
-          <strong class="brand-name">Planner</strong></NuxtLink
+          <strong class="brand-name">Planner</strong>
+          <span class="nav-version">v{{ appVersion }}</span></NuxtLink
         >
       </li>
       <li v-if="authStore.isAuthenticated" class="palette-entry">
@@ -89,6 +90,8 @@ const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
 const commandPaletteStore = useCommandPaletteStore();
 const route = useRoute();
+
+const appVersion = useRuntimeConfig().public.appVersion;
 
 const paletteHint = computed(() => {
   const isApple = /Mac|iPhone|iPad/.test(
@@ -176,6 +179,14 @@ const dictationTooltip = computed(() => {
   margin-right: 0.5rem;
 }
 
+.nav-version {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+  color: var(--color-text-muted);
+  margin-left: var(--space-2xs);
+  white-space: nowrap;
+}
+
 .menu-links i {
   margin-right: var(--space-2xs);
   flex-shrink: 0;
@@ -226,7 +237,8 @@ const dictationTooltip = computed(() => {
 
 /* Hide brand name on mobile and intermediate screens */
 @media (max-width: 999px) {
-  .brand-name {
+  .brand-name,
+  .nav-version {
     display: none;
   }
 }

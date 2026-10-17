@@ -2024,6 +2024,53 @@ describe("TasksRoutes recurrence", () => {
     );
   });
 
+  it("should store a monthly monthDay on creation and round-trip it", async () => {
+    const recurrence = { frequency: "monthly", interval: 1, monthDay: 15 };
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "Monthly chore",
+        dueDate: "2026-10-02",
+        recurrence,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().recurrence).toEqual(recurrence);
+
+    const task = makeTask({ dueDate: "2026-10-02" });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const update = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { recurrence: { frequency: "monthly", interval: 2, monthDay: 31 } },
+    });
+    expect(update.statusCode).toBe(201);
+    expect(update.json().recurrence).toEqual({
+      frequency: "monthly",
+      interval: 2,
+      monthDay: 31,
+    });
+  });
+
+  it("should answer 400 for a malformed monthDay on creation", async () => {
+    for (const monthDay of [0, 32, 1.5, "15"]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: {
+          projectId: publicProject.id,
+          title: "Monthly chore",
+          dueDate: "2026-10-02",
+          recurrence: { frequency: "monthly", interval: 1, monthDay },
+        },
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
   it("should answer 400 when a recurrence rule is set without a due date on creation", async () => {
     const res = await app.inject({
       method: "POST",

@@ -41,6 +41,33 @@ describe("recurrenceLabel", () => {
     );
   });
 
+  it("labels monthly rules with a chosen day of month", () => {
+    expect(recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: 15 })).toBe(
+      "Every month on the 15th",
+    );
+    expect(recurrenceLabel({ frequency: "monthly", interval: 2, monthDay: 1 })).toBe(
+      "Every 2 months on the 1st",
+    );
+    expect(recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: 2 })).toBe(
+      "Every month on the 2nd",
+    );
+    expect(recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: 3 })).toBe(
+      "Every month on the 3rd",
+    );
+    expect(recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: 4 })).toBe(
+      "Every month on the 4th",
+    );
+    expect(recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: 11 })).toBe(
+      "Every month on the 11th",
+    );
+    expect(recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: 21 })).toBe(
+      "Every month on the 21st",
+    );
+    expect(recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: 31 })).toBe(
+      "Every month on the 31st",
+    );
+  });
+
   it("returns an empty string for a missing rule", () => {
     expect(recurrenceLabel(null)).toBe("");
     expect(recurrenceLabel(undefined)).toBe("");
