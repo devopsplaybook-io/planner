@@ -5,8 +5,8 @@
     aria-label="Command palette"
     @close="commandPaletteStore.closePalette()"
   >
-    <div class="palette">
-      <div class="palette-search">
+    <article class="palette">
+      <header class="palette-search">
         <i class="bi bi-search" aria-hidden="true" />
         <input
           ref="inputEl"
@@ -20,50 +20,59 @@
           aria-controls="palette-listbox"
           @keydown="onInputKeydown"
         />
-      </div>
-      <ul
-        id="palette-listbox"
-        class="palette-list"
-        role="listbox"
-        aria-label="Palette results"
-      >
-        <template v-for="(row, index) in rows" :key="row.key">
+        <button
+          class="close-btn"
+          aria-label="Close"
+          @click="commandPaletteStore.closePalette()"
+        >
+          ×
+        </button>
+      </header>
+      <section class="palette-results">
+        <ul
+          id="palette-listbox"
+          class="palette-list"
+          role="listbox"
+          aria-label="Palette results"
+        >
+          <template v-for="(row, index) in rows" :key="row.key">
+            <li
+              v-if="isGroupStart(row, index)"
+              class="palette-group"
+              role="presentation"
+            >
+              {{ row.group }}
+            </li>
+            <li
+              role="option"
+              :aria-selected="index === selectedIndex"
+              :class="{ selected: index === selectedIndex }"
+              @click="activate(row)"
+              @mousemove="selectedIndex = index"
+            >
+              <i class="bi" :class="row.icon" aria-hidden="true" />
+              <span class="palette-row-title">{{ row.title }}</span>
+              <span v-if="row.hint" class="palette-row-hint">{{
+                row.hint
+              }}</span>
+            </li>
+          </template>
           <li
-            v-if="isGroupStart(row, index)"
-            class="palette-group"
+            v-if="rows.length === 0"
+            class="palette-empty"
             role="presentation"
           >
-            {{ row.group }}
+            <i class="bi bi-search" aria-hidden="true" />
+            <p>{{ searching ? "Searching…" : "No matches" }}</p>
           </li>
-          <li
-            role="option"
-            :aria-selected="index === selectedIndex"
-            :class="{ selected: index === selectedIndex }"
-            @click="activate(row)"
-            @mousemove="selectedIndex = index"
-          >
-            <i class="bi" :class="row.icon" aria-hidden="true" />
-            <span class="palette-row-title">{{ row.title }}</span>
-            <span v-if="row.hint" class="palette-row-hint">{{
-              row.hint
-            }}</span>
-          </li>
-        </template>
-        <li
-          v-if="rows.length === 0"
-          class="palette-empty"
-          role="presentation"
-        >
-          <i class="bi bi-search" aria-hidden="true" />
-          <p>{{ searching ? "Searching…" : "No matches" }}</p>
-        </li>
-      </ul>
+        </ul>
+      </section>
       <footer class="palette-footer">
         <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
         <span><kbd>Enter</kbd> open</span>
         <span><kbd>Esc</kbd> close</span>
       </footer>
-    </div>
+    </article>
   </dialog>
 </template>
 
@@ -287,31 +296,15 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Palette panel: top-centered instead of the standard centered article */
-.palette-dialog {
-  place-items: start center;
-  padding-top: 8vh;
-}
-
-.palette {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
+/* Cap the width: the palette is narrower than the wide desktop article */
+.palette-dialog article {
   width: min(92%, 560px);
-  max-height: 70vh;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-md);
-  overflow: hidden;
-  animation: dialog-in var(--transition-fast);
 }
 
 .palette-search {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--color-border);
 }
 
 .palette-search > i {
@@ -323,6 +316,8 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   font-size: var(--text-lg);
+  /* The shared dialog header is bold; the search input stays regular */
+  font-weight: var(--weight-normal);
   color: var(--color-text);
 }
 
@@ -335,7 +330,6 @@ onUnmounted(() => {
   list-style: none;
   margin: 0;
   padding: var(--space-xs);
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -396,19 +390,11 @@ onUnmounted(() => {
 }
 
 .palette-footer {
-  display: flex;
-  gap: var(--space-md);
-  padding: var(--space-2xs) var(--space-md);
-  border-top: 1px solid var(--color-border);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
 @media (max-width: 576px) {
-  .palette {
-    width: 96%;
-  }
-
   .palette-footer {
     display: none;
   }

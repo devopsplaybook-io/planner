@@ -23,7 +23,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] Typing searches tasks and notes server-side (case-insensitive substring over title and description, visibility-safe); results are grouped into Tasks and Notes and ranked by fuzzy title match; selecting a result opens its detail dialog over the current page
 - [x] With an empty query the palette offers quick actions: new task, new note, and go to view (Dashboard, Tasks, Calendar, Notes, Update Feed, History, Settings)
 - [x] Keyboard-first interaction: arrow keys move the selection with wrapping, Enter activates the selection, Escape closes the palette; the palette lists the shortcuts in its footer
-- [x] The palette is responsive and renders as a full-width panel on mobile
+- [x] The palette reuses the standard application dialog layout (a centered modal dialog with the shared header/body/footer structure and a close button) and stays responsive on mobile; the dashboard search was removed in favour of the global palette
 
 ### Settings tabs
 
