@@ -125,7 +125,7 @@ describe("CommentComposer voice recording", () => {
 
     const emitted = wrapper.emitted("voice");
     expect(emitted).toHaveLength(1);
-    const result = emitted![0][0] as { blob: Blob; mimeType: string };
+    const result = emitted![0]![0] as { blob: Blob; mimeType: string };
     expect(result.blob).toBeInstanceOf(Blob);
     expect(result.mimeType).toBe("audio/webm;codecs=opus");
     // Recording state cleared after stop
@@ -170,7 +170,7 @@ describe("CommentComposer write/preview", () => {
     const wrapper = mountComposer();
     const textarea = wrapper.find("textarea");
     await textarea.setValue("hello");
-    expect(wrapper.emitted("update:modelValue")![0][0]).toBe("hello");
+    expect(wrapper.emitted("update:modelValue")![0]![0]).toBe("hello");
     await textarea.trigger("keydown", { key: "Enter", ctrlKey: true });
     expect(wrapper.emitted("submit")).toHaveLength(1);
   });
