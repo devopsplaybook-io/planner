@@ -48,21 +48,25 @@ describe("shouldAutoReload", () => {
 });
 
 describe("useAppUpdate", () => {
-  function stubServiceWorker(controller: unknown) {
+  function stubServiceWorker(controller: unknown, existing: boolean = true) {
     const update = vi.fn().mockResolvedValue(undefined);
+    const register = vi.fn().mockResolvedValue({ update });
     const listeners = new Map<string, () => void>();
     const sw = {
       controller,
       addEventListener: (type: string, cb: () => void) =>
         listeners.set(type, cb),
       removeEventListener: (type: string) => listeners.delete(type),
-      getRegistration: vi.fn().mockResolvedValue({ update }),
+      getRegistration: vi
+        .fn()
+        .mockResolvedValue(existing ? { update } : undefined),
+      register,
     };
     Object.defineProperty(navigator, "serviceWorker", {
       value: sw,
       configurable: true,
     });
-    return { update, listeners };
+    return { update, register, listeners };
   }
 
   function mountHost() {
@@ -88,6 +92,25 @@ describe("useAppUpdate", () => {
     vi.restoreAllMocks();
     // jsdom has no serviceWorker; drop the stub left by a test
     delete (navigator as { serviceWorker?: unknown }).serviceWorker;
+  });
+
+  it("registers the service worker when none exists yet", async () => {
+    const { register, update } = stubServiceWorker(null, false);
+    mountHost();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(register).toHaveBeenCalledWith("/sw.js", { scope: "/" });
+    // The hourly update check is scheduled against the new registration
+    await vi.advanceTimersByTimeAsync(UPDATE_CHECK_INTERVAL_MS);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-register when a registration already exists", async () => {
+    const { register } = stubServiceWorker({ scriptURL: "/sw.js" }, true);
+    mountHost();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(register).not.toHaveBeenCalled();
   });
 
   it("schedules periodic update checks via registration.update()", async () => {

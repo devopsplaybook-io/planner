@@ -49,6 +49,12 @@ export default defineNuxtConfig({
   },
   pwa: {
     registerType: "autoUpdate",
+    // The module's client plugin (useRegisterSW) hard-reloads the page on
+    // every update takeover with no guards; useAppUpdate owns the whole
+    // update flow instead, including the service worker registration
+    client: {
+      registerPlugin: false,
+    },
     workbox: {
       // Precache the built app shell (HTML/JS/CSS) so the SPA loads offline,
       // plus the app icons so notification icon/badge resolve offline too
