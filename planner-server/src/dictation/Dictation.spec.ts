@@ -13,8 +13,11 @@ import {
   DictationGetInFlightJobId,
   DictationGetJob,
   DictationInit,
+  DictationPolishTranscript,
   DictationStartJob,
   DictationSweepExpiredJobs,
+  DictationTranscribeAndPolish,
+  DictationTranscribeAudio,
 } from "./Dictation";
 import { SttWhisperCppTranscribe } from "./SttWhisperCpp";
 import { Config } from "../Config";
@@ -329,5 +332,108 @@ describe("Dictation pipeline", () => {
     jest.spyOn(Date, "now").mockReturnValue(Date.now() + 2 * 60 * 60 * 1000);
     expect(DictationSweepExpiredJobs()).toBeGreaterThanOrEqual(1);
     expect(DictationGetJob("user-9", jobId)).toBeNull();
+  });
+
+  // ==================== Shared STT / polish stages ====================
+  describe("shared STT and polish stages", () => {
+    it("should transcribe through the external endpoint without deleting the audio", async () => {
+      mockAxios.post.mockResolvedValueOnce(sttResponse("hello world") as never);
+
+      const transcript = await DictationTranscribeAudio(
+        "/tmp/dictation/x1.audio",
+        "audio/webm",
+        "en",
+      );
+
+      expect(transcript).toBe("hello world");
+      expect(mockAxios.post).toHaveBeenCalledTimes(1);
+      expect(mockAxios.post.mock.calls[0][0]).toBe(
+        "https://stt.test/v1/audio/transcriptions",
+      );
+      expect(mockRemove).not.toHaveBeenCalled();
+    });
+
+    it("should transcribe through the embedded engine without deleting the audio", async () => {
+      const embeddedConfig = new Config();
+      embeddedConfig.DICTATION_ENABLED = true;
+      embeddedConfig.STT_MODE = "embedded";
+      embeddedConfig.STT_EMBEDDED_MODEL = "ggml-base";
+      await DictationInit(embeddedConfig);
+      mockSttWhisperCpp.mockResolvedValueOnce("embedded transcript" as never);
+
+      const transcript = await DictationTranscribeAudio(
+        "/tmp/dictation/x2.audio",
+        "audio/webm",
+        null,
+      );
+
+      expect(transcript).toBe("embedded transcript");
+      expect(mockSttWhisperCpp).toHaveBeenCalledWith(
+        expect.objectContaining({ STT_MODE: "embedded" }),
+        "/tmp/dictation/x2.audio",
+        "audio/webm",
+        null,
+      );
+      expect(mockRemove).not.toHaveBeenCalled();
+    });
+
+    it("should polish a transcript and report it as polished", async () => {
+      mockAxios.post.mockResolvedValueOnce(llmResponse('{"text": "Hello!"}') as never);
+
+      const result = await DictationPolishTranscript("hello", null);
+
+      expect(result).toEqual({ polishedText: "Hello!", polished: true });
+    });
+
+    it("should fall back to the raw transcript when the polish call fails", async () => {
+      mockAxios.post.mockRejectedValueOnce(
+        Object.assign(new Error("bad request"), { response: { status: 400 } }) as never,
+      );
+
+      const result = await DictationPolishTranscript("hello", null);
+
+      expect(result).toEqual({ polishedText: "hello", polished: false });
+    });
+
+    it("should keep the raw transcript when the polish response is unparseable", async () => {
+      mockAxios.post.mockResolvedValueOnce(llmResponse("garbage") as never);
+
+      const result = await DictationPolishTranscript("hello", null);
+
+      expect(result).toEqual({ polishedText: "hello", polished: false });
+    });
+
+    it("should skip polishing when no LLM key is configured", async () => {
+      const noLlmConfig = new Config();
+      noLlmConfig.DICTATION_ENABLED = true;
+      noLlmConfig.STT_API_URL = "https://stt.test";
+      noLlmConfig.STT_API_KEY = "stt-key";
+      noLlmConfig.LLM_API_KEY = "";
+      await DictationInit(noLlmConfig);
+
+      const result = await DictationPolishTranscript("hello", null);
+
+      expect(result).toEqual({ polishedText: "hello", polished: false });
+      expect(mockAxios.post).not.toHaveBeenCalled();
+    });
+
+    it("should transcribe and polish without deleting the audio file", async () => {
+      mockAxios.post.mockResolvedValueOnce(sttResponse("hello world") as never);
+      mockAxios.post.mockResolvedValueOnce(
+        llmResponse('{"text": "Hello world!"}') as never,
+      );
+
+      const result = await DictationTranscribeAndPolish(
+        "/tmp/dictation/x3.audio",
+        "audio/webm",
+        "en",
+      );
+
+      expect(result).toEqual({
+        rawTranscript: "hello world",
+        polishedText: "Hello world!",
+      });
+      expect(mockRemove).not.toHaveBeenCalled();
+    });
   });
 });

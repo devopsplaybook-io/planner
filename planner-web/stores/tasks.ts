@@ -283,11 +283,20 @@ export const useTasksStore = defineStore("tasks", {
       await api.post(`/tasks/${taskId}/dependencies`, { dependencies });
     },
 
-    async uploadAttachment(taskId: string, file: File) {
+    async uploadAttachment(
+      taskId: string,
+      file: File,
+      options?: { language?: string },
+    ) {
       const formData = new FormData();
       formData.append("file", file);
       const res = await api.post(`/tasks/${taskId}/attachments`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        // Voice comments: the dictation language guides the background
+        // transcription; absent for regular uploads
+        params: options?.language
+          ? { language: options.language }
+          : undefined,
       });
       const task = this.tasks.find((t) => t.id === taskId);
       if (task) {

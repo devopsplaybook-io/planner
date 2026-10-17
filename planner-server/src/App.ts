@@ -24,6 +24,7 @@ import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
 import { TaskImproveInit } from "./tasks/TaskImprove";
 import { DictationInit } from "./dictation/Dictation";
 import { DictationRoutes } from "./dictation/DictationRoutes";
+import { TaskVoiceCommentsInit } from "./tasks/TaskVoiceComments";
 import { NotificationsInit } from "./notifications/Notifications";
 import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
 import { StandardLogger, StandardTracer } from "@devopsplaybook.io/otel-utils";
@@ -66,6 +67,7 @@ Promise.resolve()
     await RecommendationInit(config);
     await TaskImproveInit(config);
     await DictationInit(config);
+    await TaskVoiceCommentsInit(config);
     await NotificationsInit(config);
 
     // Ensure a default project exists
@@ -146,10 +148,7 @@ Promise.resolve()
           config.LLM_RECOMMENDATION_ENABLED && !!config.LLM_API_KEY,
         llmImproveEnabled: !!config.LLM_API_KEY,
         dictationEnabled: config.DICTATION_ENABLED,
-        dictationSttConfigured:
-          config.STT_MODE === "embedded"
-            ? !!config.STT_EMBEDDED_MODEL
-            : !!config.STT_API_URL && !!config.STT_API_KEY && !!config.STT_MODEL,
+        dictationSttConfigured: config.IsDictationSttConfigured(),
       });
     });
 

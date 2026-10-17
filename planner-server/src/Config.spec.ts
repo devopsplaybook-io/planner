@@ -204,4 +204,41 @@ describe("Config", () => {
       expect(config.JWT_KEY).toBe("env-secret");
     });
   });
+
+  describe("IsDictationSttConfigured", () => {
+    it("should require the url, key and model in external mode", () => {
+      const config = new Config();
+      config.STT_MODE = "external";
+      config.STT_API_URL = "";
+      config.STT_API_KEY = "";
+      config.STT_MODEL = "";
+
+      expect(config.IsDictationSttConfigured()).toBe(false);
+
+      config.STT_API_URL = "https://stt.test";
+      expect(config.IsDictationSttConfigured()).toBe(false);
+      config.STT_API_KEY = "stt-key";
+      expect(config.IsDictationSttConfigured()).toBe(false);
+      config.STT_MODEL = "whisper-test";
+      expect(config.IsDictationSttConfigured()).toBe(true);
+    });
+
+    it("should require the embedded model in embedded mode", () => {
+      const config = new Config();
+      config.STT_MODE = "embedded";
+      config.STT_EMBEDDED_MODEL = "";
+
+      expect(config.IsDictationSttConfigured()).toBe(false);
+
+      config.STT_EMBEDDED_MODEL = "ggml-base";
+      expect(config.IsDictationSttConfigured()).toBe(true);
+    });
+
+    it("should be configured in external mode once the url and key are set (default model)", () => {
+      const config = new Config();
+      config.STT_API_URL = "https://stt.test";
+      config.STT_API_KEY = "stt-key";
+      expect(config.IsDictationSttConfigured()).toBe(true);
+    });
+  });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import api from "./api";
-import { downloadAttachment, fetchAttachmentObjectUrl } from "./attachments";
+import { downloadAttachment, fetchAttachmentObjectUrl, isAudioFile } from "./attachments";
 
 vi.mock("./api", () => ({
   default: {
@@ -10,6 +10,28 @@ vi.mock("./api", () => ({
 }));
 
 const mockedGet = api.get as ReturnType<typeof vi.fn>;
+
+describe("isAudioFile", () => {
+  it("detects audio extensions case-insensitively", () => {
+    expect(isAudioFile("voice-message.webm")).toBe(true);
+    expect(isAudioFile("voice-message.m4a")).toBe(true);
+    expect(isAudioFile("song.MP3")).toBe(true);
+    expect(isAudioFile("tone.WAV")).toBe(true);
+    expect(isAudioFile("track.ogg")).toBe(true);
+    expect(isAudioFile("track.oga")).toBe(true);
+    expect(isAudioFile("clip.opus")).toBe(true);
+    expect(isAudioFile("album.flac")).toBe(true);
+    expect(isAudioFile("book.aac")).toBe(true);
+  });
+
+  it("rejects non-audio files", () => {
+    expect(isAudioFile("photo.png")).toBe(false);
+    expect(isAudioFile("spec.pdf")).toBe(false);
+    expect(isAudioFile("video.mp4")).toBe(false);
+    expect(isAudioFile("archive.zip")).toBe(false);
+    expect(isAudioFile("noextension")).toBe(false);
+  });
+});
 
 describe("fetchAttachmentObjectUrl", () => {
   beforeEach(() => {

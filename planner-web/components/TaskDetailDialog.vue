@@ -455,6 +455,13 @@
                     @click="fullscreenImage = attachmentUrls[att.id]"
                   />
                 </template>
+                <audio
+                  v-else-if="isAudioFile(att.fileName) && attachmentUrls[att.id]"
+                  controls
+                  preload="none"
+                  :src="attachmentUrls[att.id]"
+                  class="attachment-audio"
+                />
                 <a
                   href="#"
                   rel="noopener"
@@ -616,8 +623,10 @@
             <CommentComposer
               v-model="newComment"
               :draft-key="addCommentDraftKey"
-              :busy="submitting"
+              :busy="submitting || uploadingVoice"
+              :allow-voice="voiceCommentsAvailable"
               @submit="addComment"
+              @voice="onVoiceRecorded"
             />
             <div class="add-comment-actions">
               <button
@@ -731,7 +740,9 @@ import api from "../utils/api";
 import {
   downloadAttachment as downloadAttachmentFile,
   fetchAttachmentObjectUrl,
+  isAudioFile,
 } from "../utils/attachments";
+import { fileExtensionForMimeType } from "../utils/dictationMime";
 import { displayName } from "../utils/projectHierarchy";
 import {
   computeNextDueDate,
@@ -756,9 +767,15 @@ const projectsStore = useProjectsStore();
 const statusesStore = useStatusesStore();
 const authStore = useAuthStore();
 const recommendationStore = useRecommendationStore();
+const dictationStore = useDictationStore();
 
 const task = computed(() => tasksStore.currentTask);
 const isImproveEnabled = computed(() => recommendationStore.isImproveEnabled);
+// Voice comments: the add-comment composer offers a record button when the
+// server has dictation enabled with a configured STT engine
+const voiceCommentsAvailable = computed(
+  () => recommendationStore.isDictationEnabled && recommendationStore.isDictationSttConfigured,
+);
 const loading = ref(false);
 const notFound = ref(false);
 const newComment = ref("");
@@ -770,6 +787,7 @@ const showCancelConfirm = ref(false);
 const cancelDialogEl = useModalDialog(() => showCancelConfirm.value);
 const cancelling = ref(false);
 const uploading = ref(false);
+const uploadingVoice = ref(false);
 const deletingAttachmentId = ref("");
 const fileInput = ref(null);
 const newChecklistText = ref("");
@@ -1194,8 +1212,9 @@ watch(
   },
 );
 
-// Fetch image previews as blobs whenever the attachment list changes
-// (dialog open, upload, delete) and drop object URLs for gone attachments
+// Fetch image previews and audio players as blobs whenever the attachment
+// list changes (dialog open, upload, delete) and drop object URLs for gone
+// attachments
 watch(
   () => task.value?.attachments,
   async (attachments) => {
@@ -1210,7 +1229,9 @@ watch(
     }
     attachmentUrls.value = nextUrls;
     for (const att of attachments || []) {
-      if (!isImageFile(att.fileName) || attachmentUrls.value[att.id]) continue;
+      const needsUrl =
+        isImageFile(att.fileName) || isAudioFile(att.fileName);
+      if (!needsUrl || attachmentUrls.value[att.id]) continue;
       try {
         attachmentUrls.value[att.id] = await fetchAttachmentObjectUrl(
           `/tasks/${task.value.id}/attachments/${att.id}?inline=true`,
@@ -1627,6 +1648,34 @@ async function uploadAttachment() {
   } finally {
     uploading.value = false;
   }
+}
+
+// Voice comment recorded in the add-comment composer: upload it as a
+// regular audio attachment (the server transcribes it in the background
+// when STT is configured). A failed upload surfaces in the banner; the
+// background transcription itself is silent.
+async function onVoiceRecorded({ blob, mimeType }) {
+  if (!props.taskId) return;
+  dialogError.value = "";
+  uploadingVoice.value = true;
+  try {
+    const file = new File([blob], `${voiceMessageBaseName()}${fileExtensionForMimeType(mimeType)}`, {
+      type: mimeType,
+    });
+    await tasksStore.uploadAttachment(props.taskId, file, {
+      language: dictationStore.language,
+    });
+  } catch (e) {
+    setDialogError(e, "Failed to upload voice message");
+  } finally {
+    uploadingVoice.value = false;
+  }
+}
+
+function voiceMessageBaseName() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `voice-message-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
 function isImageFile(fileName) {
@@ -2248,6 +2297,12 @@ section h4 {
   object-fit: cover;
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
+
+/* Inline audio player for audio attachments (voice messages) */
+.attachment-audio {
+  height: 2rem;
+  max-width: min(100%, 280px);
 }
 
 .small-btn {

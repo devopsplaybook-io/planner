@@ -120,3 +120,43 @@ describe("tasks store dependency updates", () => {
     });
   });
 });
+
+describe("tasks store attachment upload", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+  });
+
+  it("should post the file as multipart and register the attachment", async () => {
+    mockApiPost.mockResolvedValue({
+      data: { id: "att-1", fileName: "voice-message.webm" },
+    });
+    const store = useTasksStore();
+    const file = new File(["audio-bytes"], "voice-message.webm", {
+      type: "audio/webm",
+    });
+
+    const attachment = await store.uploadAttachment("task-1", file);
+
+    expect(attachment).toEqual({ id: "att-1", fileName: "voice-message.webm" });
+    expect(mockApiPost).toHaveBeenCalledTimes(1);
+    const [url, formData, config] = mockApiPost.mock.calls[0]!;
+    expect(url).toBe("/tasks/task-1/attachments");
+    expect(formData).toBeInstanceOf(FormData);
+    expect(formData.get("file")).toBe(file);
+    expect(config.params).toBeUndefined();
+  });
+
+  it("should forward the language option as a query param (voice comments)", async () => {
+    mockApiPost.mockResolvedValue({ data: { id: "att-2" } });
+    const store = useTasksStore();
+    const file = new File(["audio-bytes"], "voice-message.webm", {
+      type: "audio/webm",
+    });
+
+    await store.uploadAttachment("task-1", file, { language: "fr" });
+
+    const [, , config] = mockApiPost.mock.calls[0]!;
+    expect(config.params).toEqual({ language: "fr" });
+  });
+});
