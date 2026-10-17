@@ -44,6 +44,8 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Spawn on completion: completing a recurring task (moving it to Done by any means, including the Cancel flow) automatically creates the next occurrence with the due date shifted by the rule (daily +N days; weekly +N weeks, or with a weekday set the next calendar day in the set after the due date; monthly the same day-of-month N months later, clamped to the target month's last day). The next occurrence carries over the title (a trailing " [cancelled]" suffix is stripped), description, checklist (every item reset to not done), priority, labels, assignees and the recurrence rule, but not comments, attachments or dependencies; it starts in the project's first status and depends on the completed task (traceability through the existing dependency mechanism). A series ends by removing the recurrence rule; a spawn failure never fails the completion.
 
+[x] Recurrence UX: the weekday toggle has visually distinct on/off states in both themes; when a recurrence rule is set, the create and detail dialogs label the due date as the current occurrence's ("Due date (this occurrence)"), explain that completing the task creates the next occurrence with the due date shifted, and preview the computed next occurrence date (client-side mirror of the server's shift).
+
 ## Task Dialog UX
 
 [x] Comment display: comment headers show relative timestamps with the full date as tooltip and an "(edited)" marker for edited comments; comment actions are visible on touch devices; the per-comment Show more/less disclosure exposes its state with `aria-expanded`; overflowing comments also get an icon-only expand/collapse toggle in the comment actions (chevron up/down, `aria-expanded`/`aria-controls`, kept in sync with the bottom disclosure, which stays); rendered markdown links open in a new tab with `rel="noopener noreferrer"`.
@@ -65,6 +67,8 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 [x] Dependency removal: in edit mode each dependency row offers a remove button consistent with the checklist delete affordance (revealed on hover and keyboard focus on desktop, always visible on touch, no confirmation); removal applies on save through the same dependency-list replace call.
 
 [x] Dependency links: in display mode each dependency row is a clickable control that opens the dependency task in the same dialog (URL ?taskId= switch, comment permalink param dropped); edit-mode rows stay non-clickable so the unsaved edit form is never discarded; a dependency the user cannot see shows the existing not-available state.
+
+[x] Recurring series context: a recurring task's dialog states that the task is part of a recurring series and that editing affects this occurrence only; when the dependency chain links to a previous occurrence (matching title, ignoring the " [cancelled]" suffix), a "Previous occurrence" link opens it in the same dialog.
 
 ## Visibility
 

@@ -11,6 +11,19 @@
           all-label="All projects"
           @update:model-value="onFilterChange"
         />
+        <div class="recurring-filter" role="group" aria-label="Recurring tasks filter">
+          <button
+            v-for="option in recurringFilterOptions"
+            :key="option.value"
+            type="button"
+            class="recurring-chip"
+            :class="{ 'is-active': recurringFilter === option.value }"
+            :aria-pressed="recurringFilter === option.value"
+            @click="setRecurringFilter(option.value)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
         <button class="fab-button" @click="showCreateDialog = true">
           <i class="bi bi-plus-lg" />
         </button>
@@ -74,6 +87,7 @@
 
 <script setup>
 import { readableTextColor } from "../../utils/statusColor";
+import { applyRecurringFilter } from "../../utils/recurrence";
 
 const DONE_WINDOW_DAYS = 30;
 
@@ -87,6 +101,35 @@ const loading = ref(true);
 const showCreateDialog = ref(false);
 const dragTask = ref(null);
 const dragOverStatus = ref(null);
+
+// Recurring-tasks filter, persisted in localStorage like the project filter
+const RECURRING_FILTER_KEY = "recurringFilter";
+const recurringFilterValues = ["all", "recurring", "non-recurring"];
+const recurringFilterOptions = [
+  { value: "all", label: "All" },
+  { value: "recurring", label: "Recurring only" },
+  { value: "non-recurring", label: "Hide recurring" },
+];
+
+function readStoredRecurringFilter() {
+  try {
+    const stored = localStorage.getItem(RECURRING_FILTER_KEY);
+    return recurringFilterValues.includes(stored) ? stored : "all";
+  } catch {
+    return "all";
+  }
+}
+
+const recurringFilter = ref(readStoredRecurringFilter());
+
+function setRecurringFilter(value) {
+  recurringFilter.value = value;
+  try {
+    localStorage.setItem(RECURRING_FILTER_KEY, value);
+  } catch {
+    // Storage unavailable (e.g. private mode): keep the session-only choice
+  }
+}
 
 const statuses = computed(() => {
   const filterId = projectsStore.selectedProjectFilter;
@@ -153,13 +196,14 @@ function fallbackStatuses() {
 }
 
 function getTasksByStatus(status) {
-  return tasksStore.tasks
-    .filter((t) => t.status === status)
-    .sort(
-      (a, b) =>
-        new Date(b.dateUpdated || b.dateCreated) -
-        new Date(a.dateUpdated || a.dateCreated),
-    );
+  return applyRecurringFilter(
+    tasksStore.tasks.filter((t) => t.status === status),
+    recurringFilter.value,
+  ).sort(
+    (a, b) =>
+      new Date(b.dateUpdated || b.dateCreated) -
+      new Date(a.dateUpdated || a.dateCreated),
+  );
 }
 
 function onDragStart(event, task) {
@@ -263,6 +307,34 @@ useRegularRefresh(() => fetchTasks({ silent: true }));
   display: flex;
   gap: var(--space-sm);
   align-items: center;
+}
+
+/* Recurring filter chips: unselected quiet (secondary look), selected
+   primary-filled — same contrast pattern as the weekday toggle */
+.recurring-filter {
+  display: flex;
+  gap: var(--space-2xs);
+  flex-wrap: wrap;
+}
+
+.recurring-chip {
+  padding: 0.3em 0.7em;
+  font-size: var(--text-sm);
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.recurring-chip:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.recurring-chip.is-active,
+.recurring-chip.is-active:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 .kanban-board {

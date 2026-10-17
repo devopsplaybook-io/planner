@@ -35,7 +35,7 @@
           </select>
         </label>
         <label>
-          Due date
+          {{ form.recurrence ? "Due date (this occurrence)" : "Due date" }}
           <input v-model="form.dueDate" type="date" />
         </label>
         <!-- Not a <label>: the weekday chips are <button>s, and a label
@@ -43,6 +43,15 @@
         <div class="recurrence-field">
           <strong>Repeats</strong>
           <TaskRecurrenceSelect v-model="form.recurrence" />
+          <template v-if="form.recurrence && form.dueDate">
+            <small v-if="nextOccurrenceDate" class="text-muted">
+              Next occurrence: {{ nextOccurrenceDate }}
+            </small>
+            <small class="text-muted">
+              Completing this task creates the next occurrence with the due
+              date shifted.
+            </small>
+          </template>
         </div>
         <fieldset>
           <legend>Assignees</legend>
@@ -89,6 +98,7 @@
 
 <script setup>
 import api from "../utils/api";
+import { computeNextDueDate } from "../utils/recurrence";
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -130,6 +140,10 @@ const form = ref({
   assignees: [],
   checklist: [],
 });
+
+const nextOccurrenceDate = computed(() =>
+  computeNextDueDate(form.value.recurrence, form.value.dueDate),
+);
 
 watch(
   () => props.open,
