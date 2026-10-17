@@ -4,6 +4,7 @@ import { FastifyInstance } from "fastify";
 import {
   normalizeStatusSelection,
   validateProjectStatusSelection,
+  validateUserAccessWrite,
   ProjectsRoutes,
 } from "./ProjectsRoutes";
 import {
@@ -122,6 +123,36 @@ describe("normalizeStatusSelection", () => {
   });
 });
 
+describe("validateUserAccessWrite", () => {
+  it("should accept the legacy string-array form", () => {
+    expect(validateUserAccessWrite(["user-1", "user-2"])).toBeNull();
+  });
+
+  it("should accept object entries with a known permission", () => {
+    for (const permission of ["all", "update", "comment", "view"]) {
+      expect(
+        validateUserAccessWrite([{ userId: "user-1", permission }]),
+      ).toBeNull();
+    }
+    expect(validateUserAccessWrite([{ userId: "user-1" }])).toBeNull();
+  });
+
+  it("should reject object entries with an unknown permission", () => {
+    expect(validateUserAccessWrite([{ userId: "user-1", permission: "admin" }])).toBe(
+      "Invalid: userAccess (unknown permission 'admin')",
+    );
+    expect(
+      validateUserAccessWrite([{ userId: "user-1", permission: 42 }]),
+    ).toBe("Invalid: userAccess (unknown permission '42')");
+  });
+
+  it("should accept non-array and legacy-agnostic input", () => {
+    expect(validateUserAccessWrite(undefined)).toBeNull();
+    expect(validateUserAccessWrite(null)).toBeNull();
+    expect(validateUserAccessWrite([])).toBeNull();
+  });
+});
+
 describe("ProjectsRoutes admin enforcement", () => {
   let app: FastifyInstance;
 
@@ -193,6 +224,60 @@ describe("ProjectsRoutes admin enforcement", () => {
     expect(created.statuses).toEqual(["To Do", "Done"]);
   });
 
+  it("should store the per-user permission levels on create", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    (ProjectsDataAdd as jest.Mock).mockResolvedValue(undefined);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        name: "New Project",
+        userAccess: [
+          { userId: "user-1", permission: "view" },
+          { userId: "user-2", permission: "update" },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const created = (ProjectsDataAdd as jest.Mock).mock.calls[0][0] as Project;
+    expect(created.userAccess).toEqual([
+      { userId: "user-1", permission: "view" },
+      { userId: "user-2", permission: "update" },
+    ]);
+    expect(res.json().userAccess).toEqual(created.userAccess);
+  });
+
+  it("should normalize the legacy string userAccess form on create", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    (ProjectsDataAdd as jest.Mock).mockResolvedValue(undefined);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { name: "New Project", userAccess: ["user-1"] },
+    });
+    expect(res.statusCode).toBe(201);
+    const created = (ProjectsDataAdd as jest.Mock).mock.calls[0][0] as Project;
+    expect(created.userAccess).toEqual([{ userId: "user-1", permission: "all" }]);
+    expect(res.json().userAccess).toEqual(created.userAccess);
+  });
+
+  it("should reject an unknown permission with 400 on create", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        name: "New Project",
+        userAccess: [{ userId: "user-1", permission: "owner" }],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe(
+      "Invalid: userAccess (unknown permission 'owner')",
+    );
+    expect(ProjectsDataAdd).not.toHaveBeenCalled();
+  });
+
   // ==================== UPDATE ====================
   it("should reject project update for a non-admin user", async () => {
     denyNonAdmin();
@@ -225,8 +310,56 @@ describe("ProjectsRoutes admin enforcement", () => {
     expect(project.name).toBe("Renamed");
     expect(project.visibility).toBe("restricted");
     expect(clearProjectUsers).toHaveBeenCalledWith(project.id);
-    expect(addProjectUser).toHaveBeenCalledWith(project.id, "user-1");
+    expect(addProjectUser).toHaveBeenCalledWith(project.id, "user-1", "all");
+    expect(project.userAccess).toEqual([{ userId: "user-1", permission: "all" }]);
     expect(ProjectsDataUpdate).toHaveBeenCalledWith(project);
+  });
+
+  it("should store the per-user permission levels on update", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const project = new Project();
+    project.name = "Old Name";
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (ProjectsDataUpdate as jest.Mock).mockResolvedValue(undefined);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${project.id}`,
+      payload: {
+        visibility: "restricted",
+        userAccess: [
+          { userId: "user-1", permission: "view" },
+          { userId: "user-2", permission: "comment" },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(clearProjectUsers).toHaveBeenCalledWith(project.id);
+    expect(addProjectUser).toHaveBeenCalledWith(project.id, "user-1", "view");
+    expect(addProjectUser).toHaveBeenCalledWith(project.id, "user-2", "comment");
+    expect(res.json().userAccess).toEqual([
+      { userId: "user-1", permission: "view" },
+      { userId: "user-2", permission: "comment" },
+    ]);
+  });
+
+  it("should reject an unknown permission with 400 on update", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const project = new Project();
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${project.id}`,
+      payload: {
+        userAccess: [{ userId: "user-1", permission: "sudo" }],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe(
+      "Invalid: userAccess (unknown permission 'sudo')",
+    );
+    expect(clearProjectUsers).not.toHaveBeenCalled();
+    expect(addProjectUser).not.toHaveBeenCalled();
+    expect(ProjectsDataUpdate).not.toHaveBeenCalled();
   });
 
   it("should return 404 when an admin updates a missing project", async () => {
@@ -393,7 +526,7 @@ describe("ProjectsRoutes admin enforcement", () => {
     const project = new Project();
     project.name = "Restricted";
     project.visibility = "restricted";
-    project.userAccess = ["user-2"];
+    project.userAccess = [{ userId: "user-2", permission: "all" }];
     (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
     const res = await app.inject({ method: "GET", url: `/${project.id}` });
     expect(res.statusCode).toBe(404);
@@ -403,7 +536,7 @@ describe("ProjectsRoutes admin enforcement", () => {
     const project = new Project();
     project.name = "Restricted";
     project.visibility = "restricted";
-    project.userAccess = ["user-1"];
+    project.userAccess = [{ userId: "user-1", permission: "all" }];
     (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
     const res = await app.inject({ method: "GET", url: `/${project.id}` });
     expect(res.statusCode).toBe(200);
@@ -420,7 +553,7 @@ describe("ProjectsRoutes admin enforcement", () => {
     const project = new Project();
     project.name = "Restricted";
     project.visibility = "restricted";
-    project.userAccess = ["user-2"];
+    project.userAccess = [{ userId: "user-2", permission: "all" }];
     (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
     const res = await app.inject({ method: "GET", url: `/${project.id}` });
     expect(res.statusCode).toBe(200);

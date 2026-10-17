@@ -1,7 +1,7 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { v4 as uuidv4 } from "uuid";
 import { Task, TaskRecurrence, TASK_TRANSPORT_FIELDS } from "../model/Task";
-import { Project } from "../model/Project";
+import { Project, ProjectPermission } from "../model/Project";
 import { UserSession } from "../model/UserSession";
 import {
   AuthGetUserSession,
@@ -11,8 +11,11 @@ import {
 import { UsersDataGet } from "../users/UsersData";
 import { NotificationsTaskUpdated } from "../notifications/Notifications";
 import {
+  hasProjectPermission,
   isProjectItemVisible,
   isProjectVisible,
+  permissionDeniedMessage,
+  projectMutationError,
 } from "../projects/ProjectVisibility";
 import { ProjectsDataGet } from "../projects/ProjectsData";
 import {
@@ -234,6 +237,31 @@ async function getVisibleTask(
   return task;
 }
 
+/**
+ * Suffix the web app appends to a task title when cancelling it (the Cancel
+ * flow moves the task to Done and renames it in one PUT).
+ */
+export const CANCEL_TASK_SUFFIX = " [cancelled]";
+
+/**
+ * Detects the Cancel flow signature on a PUT request: the status moves to
+ * "Done" and the title newly ends with the cancelled suffix (the previous
+ * title did not). Cancelling is a lifecycle action: it requires the "all"
+ * permission, unlike a plain update. Pure so it can be unit-tested.
+ */
+export function isCancelTaskRequest(
+  body: { status?: string; title?: string },
+  previousTitle: string,
+): boolean {
+  if (!body || body.status !== "Done" || typeof body.title !== "string") {
+    return false;
+  }
+  return (
+    body.title.endsWith(CANCEL_TASK_SUFFIX) &&
+    !previousTitle.endsWith(CANCEL_TASK_SUFFIX)
+  );
+}
+
 export interface DependenciesValidation {
   /** The de-duplicated dependency task ids, when the payload is valid. */
   ids?: string[];
@@ -281,19 +309,6 @@ export async function validateDependencies(
     ids.push(id);
   }
   return { ids };
-}
-
-/**
- * Error message when the project is archived, null when it is active (or
- * missing — callers answer 404 for missing projects themselves). Archived
- * projects are read-only for tasks: create, clone, update and every
- * sub-resource mutation are blocked; reads stay allowed.
- */
-async function archivedProjectError(
-  projectId: string,
-): Promise<string | null> {
-  const project = await ProjectsDataGet(projectId);
-  return project?.archived ? "Project is archived" : null;
 }
 
 export class TasksRoutes {
@@ -425,6 +440,11 @@ export class TasksRoutes {
       if (project.archived) {
         return res.status(400).send({ error: "Project is archived" });
       }
+      if (!hasProjectPermission(project, userSession, "update")) {
+        return res
+          .status(403)
+          .send({ error: permissionDeniedMessage("update") });
+      }
       if (req.body.status && !project.statuses.includes(req.body.status)) {
         return res.status(400).send({
           error: "Invalid: status (must be one of the project's statuses)",
@@ -492,6 +512,9 @@ export class TasksRoutes {
       const project = await ProjectsDataGet(task.projectId);
       if (project?.archived) {
         return res.status(400).send({ error: "Project is archived" });
+      }
+      if (!hasProjectPermission(project, userSession, "all")) {
+        return res.status(403).send({ error: permissionDeniedMessage("all") });
       }
       const clone = cloneTaskFrom(task, project?.statuses?.[0]);
       await TasksDataAdd(clone);
@@ -594,9 +617,9 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
-      const archivedError = await archivedProjectError(task.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const sourceProject = await ProjectsDataGet(task.projectId);
+      if (sourceProject?.archived) {
+        return res.status(400).send({ error: "Project is archived" });
       }
       const before = {
         title: task.title,
@@ -607,6 +630,19 @@ export class TasksRoutes {
         checklist: JSON.stringify(task.checklist),
         projectId: task.projectId,
       };
+      // Cancelling (the web Cancel flow: status to Done + renamed title) is
+      // a lifecycle action needing "all"; a plain edit needs "update"
+      const required: ProjectPermission = isCancelTaskRequest(
+        req.body,
+        before.title,
+      )
+        ? "all"
+        : "update";
+      if (!hasProjectPermission(sourceProject, userSession, required)) {
+        return res
+          .status(403)
+          .send({ error: permissionDeniedMessage(required) });
+      }
       if (req.body.title) task.title = req.body.title;
       if (req.body.description !== undefined)
         task.description = req.body.description;
@@ -646,8 +682,7 @@ export class TasksRoutes {
       if (req.body.status) {
         // The status must belong to the catalog of the project the task ends
         // up in (the move target when moving); missing projects stay permissive
-        const targetProject =
-          movedToProject || (await ProjectsDataGet(task.projectId));
+        const targetProject = movedToProject || sourceProject;
         if (targetProject && !targetProject.statuses.includes(req.body.status)) {
           return res.status(400).send({
             error: "Invalid: status (must be one of the project's statuses)",
@@ -715,6 +750,10 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
+      const project = await ProjectsDataGet(task.projectId);
+      if (!hasProjectPermission(project, userSession, "all")) {
+        return res.status(403).send({ error: permissionDeniedMessage("all") });
+      }
       await TasksDataDelete(req.params.id);
       return res.status(201).send({});
     });
@@ -733,9 +772,13 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
-      const archivedError = await archivedProjectError(task.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const guard = await projectMutationError(
+        task.projectId,
+        userSession,
+        "comment",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
       }
       if (!req.body.text)
         return res.status(400).send({ error: "Missing: text" });
@@ -765,9 +808,13 @@ export class TasksRoutes {
         const task = await getVisibleTask(req.params.id, userSession);
         if (!task)
           return res.status(404).send({ error: "Task Not Found" });
-        const archivedError = await archivedProjectError(task.projectId);
-        if (archivedError) {
-          return res.status(400).send({ error: archivedError });
+        const guard = await projectMutationError(
+          task.projectId,
+          userSession,
+          "comment",
+        );
+        if (guard) {
+          return res.status(guard.status).send({ error: guard.error });
         }
         const comment = await getComment(req.params.commentId);
         if (!comment)
@@ -800,9 +847,13 @@ export class TasksRoutes {
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task)
         return res.status(404).send({ error: "Task Not Found" });
-      const archivedError = await archivedProjectError(task.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const guard = await projectMutationError(
+        task.projectId,
+        userSession,
+        "comment",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
       }
       const comment = await getComment(req.params.commentId);
       if (!comment)
@@ -837,9 +888,13 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
-      const archivedError = await archivedProjectError(task.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const guard = await projectMutationError(
+        task.projectId,
+        userSession,
+        "update",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
       }
       if (!req.body.userId)
         return res.status(400).send({ error: "Missing: userId" });
@@ -864,9 +919,13 @@ export class TasksRoutes {
         const userSession = await AuthGetUserSession(req);
         const task = await getVisibleTask(req.params.id, userSession);
         if (!task) return res.status(404).send({ error: "Task Not Found" });
-        const archivedError = await archivedProjectError(task.projectId);
-        if (archivedError) {
-          return res.status(400).send({ error: archivedError });
+        const guard = await projectMutationError(
+          task.projectId,
+          userSession,
+          "update",
+        );
+        if (guard) {
+          return res.status(guard.status).send({ error: guard.error });
         }
         await removeAssignee(req.params.id, req.params.userId);
         await TasksDataTouch(req.params.id);
@@ -893,9 +952,13 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
-      const archivedError = await archivedProjectError(task.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const guard = await projectMutationError(
+        task.projectId,
+        userSession,
+        "update",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
       }
       const labels = req.body.labels;
       if (
@@ -930,9 +993,13 @@ export class TasksRoutes {
       const userSession = await AuthGetUserSession(req);
       const task = await getVisibleTask(req.params.id, userSession);
       if (!task) return res.status(404).send({ error: "Task Not Found" });
-      const archivedError = await archivedProjectError(task.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const guard = await projectMutationError(
+        task.projectId,
+        userSession,
+        "update",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
       }
       const validation = await validateDependencies(
         task,
@@ -972,9 +1039,13 @@ export class TasksRoutes {
         if (!task) {
           return res.status(404).send({ error: "Task Not Found" });
         }
-        const archivedError = await archivedProjectError(task.projectId);
-        if (archivedError) {
-          return res.status(400).send({ error: archivedError });
+        const guard = await projectMutationError(
+          task.projectId,
+          userSession,
+          "update",
+        );
+        if (guard) {
+          return res.status(guard.status).send({ error: guard.error });
         }
 
         const data = await req.file();
@@ -1121,11 +1192,13 @@ export class TasksRoutes {
         if (!visibleTask) {
           return res.status(404).send({ error: "Attachment Not Found" });
         }
-        const archivedError = await archivedProjectError(
+        const guard = await projectMutationError(
           visibleTask.projectId,
+          userSession,
+          "update",
         );
-        if (archivedError) {
-          return res.status(400).send({ error: archivedError });
+        if (guard) {
+          return res.status(guard.status).send({ error: guard.error });
         }
         if (await fs.pathExists(attachment.filePath)) {
           await fs.remove(attachment.filePath);

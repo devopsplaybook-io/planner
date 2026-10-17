@@ -744,6 +744,7 @@ import {
 } from "../utils/attachments";
 import { fileExtensionForMimeType } from "../utils/dictationMime";
 import { displayName } from "../utils/projectHierarchy";
+import { projectPermissionFor } from "../stores/projects";
 import {
   computeNextDueDate,
   findPreviousOccurrence,
@@ -1049,14 +1050,19 @@ const projectName = computed(() => {
 
 // Cancelling moves the task to Done and renames it, so hide the action for
 // tasks already in Done and for tasks in archived projects, where the
-// server rejects any task update ("Project is archived").
+// server rejects any task update ("Project is archived"). Cancelling is a
+// lifecycle action: it also requires the "all" permission on the project.
 const canCancelTask = computed(() => {
   if (!task.value) return false;
   if (task.value.status === "Done") return false;
   const project = projectsStore.projects.find(
     (p) => p.id === task.value.projectId,
   );
-  return !project?.archived;
+  if (project?.archived) return false;
+  return (
+    projectPermissionFor(project, authStore.currentUser?.id, authStore.isAdmin) ===
+    "all"
+  );
 });
 
 // While the dialog is open, poll the task so changes made by other users

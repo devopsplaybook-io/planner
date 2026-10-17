@@ -1,5 +1,10 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
-import { Project } from "../model/Project";
+import {
+  PROJECT_PERMISSIONS,
+  Project,
+  ProjectUserAccess,
+  normalizeUserAccess,
+} from "../model/Project";
 import { AuthGetUserSession, AuthMustBeAdmin } from "../users/Auth";
 import {
   StatusCatalogEntry,
@@ -50,6 +55,32 @@ export function normalizeStatusSelection(
     .map((s) => s.name);
 }
 
+/**
+ * Validates the userAccess list as written by an admin: the legacy
+ * string-array form and object entries without a permission are fine
+ * (normalized to "all" afterwards), but an object entry carrying a
+ * permission outside the four levels is rejected so a typo cannot silently
+ * grant elevated rights. Returns the error message, null when valid.
+ */
+export function validateUserAccessWrite(raw: unknown): string | null {
+  if (!Array.isArray(raw)) {
+    return null;
+  }
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const permission = (entry as { permission?: unknown }).permission;
+    if (
+      permission !== undefined &&
+      !PROJECT_PERMISSIONS.includes(permission as never)
+    ) {
+      return `Invalid: userAccess (unknown permission '${String(permission)}')`;
+    }
+  }
+  return null;
+}
+
 export class ProjectsRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
@@ -86,7 +117,7 @@ export class ProjectsRoutes {
         description?: string;
         statuses?: string[];
         visibility?: string;
-        userAccess?: string[];
+        userAccess?: Array<string | { userId: string; permission?: string }>;
       };
     }
     fastify.post<PostProject>("/", async (req, res) => {
@@ -98,6 +129,10 @@ export class ProjectsRoutes {
       if (!req.body.name) {
         return res.status(400).send({ error: "Missing: Name" });
       }
+      const userAccessError = validateUserAccessWrite(req.body.userAccess);
+      if (userAccessError) {
+        return res.status(400).send({ error: userAccessError });
+      }
       const project = new Project();
       project.name = req.body.name;
       project.description = req.body.description || "";
@@ -105,7 +140,7 @@ export class ProjectsRoutes {
         project.visibility = req.body.visibility;
       }
       if (req.body.userAccess) {
-        project.userAccess = req.body.userAccess;
+        project.userAccess = normalizeUserAccess(req.body.userAccess);
       }
       if (req.body.statuses) {
         const catalog = await StatusesCatalogGet();
@@ -130,7 +165,7 @@ export class ProjectsRoutes {
         description?: string;
         statuses?: string[];
         visibility?: string;
-        userAccess?: string[];
+        userAccess?: Array<string | { userId: string; permission?: string }>;
         archived?: boolean;
       };
     }
@@ -189,11 +224,18 @@ export class ProjectsRoutes {
         project.visibility = req.body.visibility;
       }
       if (req.body.userAccess) {
-        await clearProjectUsers(project.id);
-        for (const userId of req.body.userAccess) {
-          await addProjectUser(project.id, userId);
+        const userAccessError = validateUserAccessWrite(req.body.userAccess);
+        if (userAccessError) {
+          return res.status(400).send({ error: userAccessError });
         }
-        project.userAccess = req.body.userAccess;
+        const access: ProjectUserAccess[] = normalizeUserAccess(
+          req.body.userAccess,
+        );
+        await clearProjectUsers(project.id);
+        for (const entry of access) {
+          await addProjectUser(project.id, entry.userId, entry.permission);
+        }
+        project.userAccess = access;
       }
       await ProjectsDataUpdate(project);
       return res.status(201).send(project.toTransportJson());
