@@ -2211,4 +2211,78 @@ describe("TasksRoutes recurrence", () => {
     expect(res.statusCode).toBe(201);
     expect(addDependency).not.toHaveBeenCalled();
   });
+
+  // ==================== MONTH DAY ====================
+  it("should store a recurrence rule with a monthDay on creation", async () => {
+    const recurrence = { frequency: "monthly", interval: 2, monthDay: 15 };
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "Mid-month report",
+        dueDate: "2026-10-15",
+        recurrence,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().recurrence).toEqual(recurrence);
+    expect(TasksDataAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ recurrence, dueDate: "2026-10-15" }),
+    );
+  });
+
+  it("should apply a recurrence rule with a monthDay on update", async () => {
+    const task = makeTask({ dueDate: "2026-10-15" });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const recurrence = { frequency: "monthly", interval: 2, monthDay: 15 };
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { recurrence },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().recurrence).toEqual(recurrence);
+    expect(TasksDataUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ recurrence }),
+    );
+  });
+
+  it("should answer 400 for a malformed monthDay on creation", async () => {
+    for (const monthDay of [0, 32, "15", 1.5]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: {
+          projectId: publicProject.id,
+          title: "Mid-month report",
+          dueDate: "2026-10-15",
+          recurrence: { frequency: "monthly", interval: 1, monthDay },
+        },
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should spawn the next occurrence on the pinned monthDay, clamped", async () => {
+    const task = makeTask({
+      status: "To Do",
+      dueDate: "2026-01-31",
+      recurrence: { frequency: "monthly", interval: 1, monthDay: 31 },
+    });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TasksDataAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dueDate: "2026-02-28",
+        recurrence: { frequency: "monthly", interval: 1, monthDay: 31 },
+      }),
+    );
+  });
 });

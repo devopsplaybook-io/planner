@@ -40,16 +40,34 @@
         {{ day.label }}
       </button>
     </div>
+    <div v-if="isMonthly" class="recurrence-monthday">
+      <select v-model="monthDay" aria-label="Day of month" @change="onMonthDayChange">
+        <option value="">Same day as the due date</option>
+        <option v-for="d in 30" :key="d" :value="d">{{ ordinalDay(d) }}</option>
+        <option :value="31">Last day</option>
+      </select>
+      <template v-if="showAlign">
+        <small class="text-muted">
+          The due date drives the first occurrence; this rule repeats on
+          {{ alignHintDay }}.
+        </small>
+        <button type="button" class="recurrence-align" @click="onAlign">
+          Align due date
+        </button>
+      </template>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from "vue";
+import { ordinalDay, alignDueDateToMonthDay } from "../utils/recurrence";
 
 const props = defineProps({
   modelValue: { type: Object, default: null },
+  dueDate: { type: String, default: "" },
 });
-const emit = defineEmits(["update:modelValue"]);
+const emit = defineEmits(["update:modelValue", "align"]);
 
 // Presets carry interval 1; anything else (interval > 1, or a different
 // unit) is "custom". A weekly preset stays selected when weekday chips are
@@ -57,6 +75,7 @@ const emit = defineEmits(["update:modelValue"]);
 const mode = ref("none");
 const customInterval = ref(1);
 const customUnit = ref("daily");
+const monthDay = ref("");
 
 const weekdays = [
   { value: 1, label: "Mon" },
@@ -69,6 +88,21 @@ const weekdays = [
 ];
 
 const isWeekly = computed(() => props.modelValue?.frequency === "weekly");
+const isMonthly = computed(() => props.modelValue?.frequency === "monthly");
+
+const alignedDate = computed(() =>
+  isMonthly.value && props.dueDate && props.modelValue?.monthDay
+    ? alignDueDateToMonthDay(props.dueDate, props.modelValue.monthDay)
+    : null,
+);
+const showAlign = computed(
+  () => !!alignedDate.value && alignedDate.value !== props.dueDate,
+);
+const alignHintDay = computed(() =>
+  props.modelValue.monthDay >= 31
+    ? "the last day"
+    : `the ${ordinalDay(props.modelValue.monthDay)}`,
+);
 
 function clampInterval(value) {
   return Math.min(999, Math.max(1, Math.round(Number(value) || 1)));
@@ -88,6 +122,7 @@ watch(
       customInterval.value = rule.interval;
       customUnit.value = rule.frequency;
     }
+    monthDay.value = rule?.monthDay ?? "";
     if (rule !== lastEmitted.value) {
       mode.value = modeForRule(rule);
     }
@@ -103,6 +138,9 @@ function emitCustomRule(frequency, interval, source) {
     source.weekdays.length > 0
   ) {
     rule.weekdays = [...source.weekdays];
+  }
+  if (frequency === "monthly" && source?.monthDay) {
+    rule.monthDay = source.monthDay;
   }
   lastEmitted.value = rule;
   emit("update:modelValue", rule);
@@ -130,8 +168,32 @@ function onModeChange() {
   ) {
     rule.weekdays = [...props.modelValue.weekdays];
   }
+  if (mode.value === "monthly" && props.modelValue?.monthDay) {
+    rule.monthDay = props.modelValue.monthDay;
+  }
   lastEmitted.value = rule;
   emit("update:modelValue", rule);
+}
+
+function onMonthDayChange() {
+  const source = props.modelValue;
+  if (!source || source.frequency !== "monthly") {
+    return;
+  }
+  const rule = { ...source };
+  if (monthDay.value === "") {
+    delete rule.monthDay;
+  } else {
+    rule.monthDay = monthDay.value;
+  }
+  lastEmitted.value = rule;
+  emit("update:modelValue", rule);
+}
+
+function onAlign() {
+  if (alignedDate.value) {
+    emit("align", alignedDate.value);
+  }
 }
 
 function onCustomChange() {
@@ -191,6 +253,27 @@ function toggleWeekday(day) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2xs);
+}
+
+.recurrence-monthday {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.recurrence-align {
+  margin: 0;
+  padding: 0.2em 0;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.recurrence-align:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
 }
 
 .recurrence-weekdays {

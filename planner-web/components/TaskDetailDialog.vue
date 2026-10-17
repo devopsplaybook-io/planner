@@ -196,6 +196,8 @@
             <TaskRecurrenceSelect
               v-if="editing"
               v-model="editForm.recurrence"
+              :due-date="editForm.dueDate"
+              @align="editForm.dueDate = $event"
             />
             <span
               v-else

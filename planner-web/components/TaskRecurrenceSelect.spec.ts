@@ -7,13 +7,15 @@ type RecurrenceRule = {
   frequency: "daily" | "weekly" | "monthly";
   interval: number;
   weekdays?: number[];
+  monthDay?: number;
 };
 
 // Host emulating the parent dialog's v-model: writes every emitted rule back
 // into the prop, so the component's watch sees its own emissions exactly as
 // in the real dialogs.
-function mountHost(initial: RecurrenceRule | null = null) {
+function mountHost(initial: RecurrenceRule | null = null, dueDate = "") {
   const rule = ref<RecurrenceRule | null>(initial);
+  const aligned = ref<string | null>(null);
   const host = defineComponent({
     setup(_, { expose }) {
       expose({ rule });
@@ -21,8 +23,12 @@ function mountHost(initial: RecurrenceRule | null = null) {
         h(TaskRecurrenceSelect, {
           // undefined falls back to the prop's null default
           modelValue: rule.value ?? undefined,
+          dueDate,
           "onUpdate:modelValue": (value: RecurrenceRule | null) => {
             rule.value = value;
+          },
+          onAlign: (date: string) => {
+            aligned.value = date;
           },
         });
     },
@@ -31,6 +37,7 @@ function mountHost(initial: RecurrenceRule | null = null) {
   return {
     wrapper,
     rule,
+    aligned,
     getRule: () => rule.value,
   };
 }
@@ -45,6 +52,8 @@ const chipFor = (wrapper: Host["wrapper"], label: string) => {
   return chip;
 };
 const modeSelect = (wrapper: Host["wrapper"]) => wrapper.find("select");
+const daySelect = (wrapper: Host["wrapper"]) =>
+  wrapper.find('select[aria-label="Day of month"]');
 
 describe("TaskRecurrenceSelect", () => {
   it("emits preset rules and null for Does not repeat", async () => {
@@ -161,5 +170,134 @@ describe("TaskRecurrenceSelect", () => {
     rule.value = { frequency: "monthly", interval: 1 };
     await nextTick();
     expect(modeSelect(wrapper).element.value).toBe("monthly");
+  });
+
+  it("shows the day-of-month selector for monthly rules", async () => {
+    const { wrapper } = mountHost();
+    expect(daySelect(wrapper).exists()).toBe(false);
+
+    await modeSelect(wrapper).setValue("monthly");
+    expect(daySelect(wrapper).exists()).toBe(true);
+    expect(
+      daySelect(wrapper).findAll("option").map((o) => o.text()),
+    ).toContain("Same day as the due date");
+    expect(
+      daySelect(wrapper).findAll("option").map((o) => o.text()),
+    ).toContain("Last day");
+    expect(
+      daySelect(wrapper).findAll("option").map((o) => o.text()),
+    ).toContain("15th");
+    // absent monthDay keeps the "Same day" option selected
+    expect((daySelect(wrapper).element as HTMLSelectElement).value).toBe("");
+
+    await modeSelect(wrapper).setValue("weekly");
+    expect(daySelect(wrapper).exists()).toBe(false);
+  });
+
+  it("emits, strips and re-derives the monthDay", async () => {
+    const { wrapper, getRule } = mountHost();
+
+    await modeSelect(wrapper).setValue("monthly");
+    await daySelect(wrapper).setValue("15");
+    expect(getRule()).toEqual({ frequency: "monthly", interval: 1, monthDay: 15 });
+    expect((daySelect(wrapper).element as HTMLSelectElement).value).toBe("15");
+
+    await daySelect(wrapper).setValue("31");
+    expect(getRule()).toEqual({ frequency: "monthly", interval: 1, monthDay: 31 });
+
+    // "Same day as the due date" removes the monthDay again
+    await daySelect(wrapper).setValue("");
+    expect(getRule()).toEqual({ frequency: "monthly", interval: 1 });
+    expect((daySelect(wrapper).element as HTMLSelectElement).value).toBe("");
+
+    // switching to daily or weekly strips the monthDay
+    await daySelect(wrapper).setValue("15");
+    expect(getRule()).toEqual({ frequency: "monthly", interval: 1, monthDay: 15 });
+    await modeSelect(wrapper).setValue("daily");
+    expect(getRule()).toEqual({ frequency: "daily", interval: 1 });
+    await modeSelect(wrapper).setValue("weekly");
+    expect(getRule()).toEqual({ frequency: "weekly", interval: 1 });
+  });
+
+  it("re-derives the selector from a parent-seeded rule", async () => {
+    const { wrapper } = mountHost({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 20,
+    });
+    expect(modeSelect(wrapper).element.value).toBe("monthly");
+    expect((daySelect(wrapper).element as HTMLSelectElement).value).toBe("20");
+  });
+
+  it("keeps the monthDay in Custom… across interval changes", async () => {
+    const { wrapper, getRule } = mountHost({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 15,
+    });
+
+    await modeSelect(wrapper).setValue("custom");
+    expect(getRule()).toEqual({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 15,
+    });
+
+    const intervalInput = wrapper.find('input[aria-label="Repeat every"]');
+    await intervalInput.setValue("3");
+    await intervalInput.trigger("change");
+    expect(getRule()).toEqual({
+      frequency: "monthly",
+      interval: 3,
+      monthDay: 15,
+    });
+
+    // switching the custom unit away from months drops it
+    await wrapper.find('select[aria-label="Repeat unit"]').setValue("weekly");
+    expect(getRule()).toEqual({ frequency: "weekly", interval: 3 });
+    expect(daySelect(wrapper).exists()).toBe(false);
+  });
+
+  it("offers to align the due date when it does not match the picked day", async () => {
+    const { wrapper, getRule, aligned } = mountHost(null, "2026-10-16");
+
+    await modeSelect(wrapper).setValue("monthly");
+    expect(wrapper.find(".recurrence-monthday small").exists()).toBe(false);
+    expect(wrapper.find("button.recurrence-align").exists()).toBe(false);
+
+    await daySelect(wrapper).setValue("15");
+    expect(getRule()).toEqual({ frequency: "monthly", interval: 1, monthDay: 15 });
+    const hint = wrapper.find(".recurrence-monthday small");
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain("the 15th");
+
+    await wrapper.find("button.recurrence-align").trigger("click");
+    expect(aligned.value).toBe("2026-11-15");
+  });
+
+  it("offers no alignment when the monthDay is absent or already aligned", async () => {
+    const alignedWrapper = mountHost(null, "2026-10-15");
+    await modeSelect(alignedWrapper.wrapper).setValue("monthly");
+    await daySelect(alignedWrapper.wrapper).setValue("15");
+    // Oct 15 already matches the picked day
+    expect(alignedWrapper.aligned.value).toBeNull();
+    expect(
+      alignedWrapper.wrapper.find("button.recurrence-align").exists(),
+    ).toBe(false);
+
+    const noDayWrapper = mountHost(null, "2026-10-16");
+    await modeSelect(noDayWrapper.wrapper).setValue("monthly");
+    expect(
+      noDayWrapper.wrapper.find("button.recurrence-align").exists(),
+    ).toBe(false);
+  });
+
+  it("aligns a 'Last day' rule within the due date's month", async () => {
+    const { wrapper, aligned } = mountHost(null, "2026-10-16");
+
+    await modeSelect(wrapper).setValue("monthly");
+    await daySelect(wrapper).setValue("31");
+    await wrapper.find("button.recurrence-align").trigger("click");
+    expect(aligned.value).toBe("2026-10-31");
   });
 });

@@ -30,6 +30,7 @@ export interface TaskRecurrence {
   frequency: "daily" | "weekly" | "monthly";
   interval: number;
   weekdays?: number[];
+  monthDay?: number;
 }
 
 export interface Task {
