@@ -23,12 +23,18 @@ import {
 import {
   ApiKeysDataAdd,
   ApiKeysDataDeleteByUserId,
+  ApiKeysDataGetByKey,
   ApiKeysDataGetByUserId,
   ApiKeysDataList,
 } from "./ApiKeysData";
+import { buildTasksIcs, CalendarFeedEntry } from "./CalendarFeed";
+import { ProjectsDataList } from "../projects/ProjectsData";
+import { TasksDataList, TaskListFilters } from "../tasks/TasksData";
 
 const LOGIN_MAX_FAILURES = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+/** Done tasks stay in the feed for this long after their last update. */
+const CALENDAR_DONE_WINDOW_DAYS = 30;
 
 /**
  * Failed-login limiter, keyed by client IP + user name. Deliberately not a
@@ -361,6 +367,65 @@ export class UsersRoutes {
       }
       await ApiKeysDataDeleteByUserId(userSession.userId);
       return res.status(201).send({});
+    });
+
+    // ==================== CALENDAR FEED (ICS) ====================
+    interface CalendarIcsQuery extends RequestGenericInterface {
+      Querystring: { apiKey?: string };
+    }
+    fastify.get<CalendarIcsQuery>("/calendar.ics", async (req, res) => {
+      let userId: string;
+      let role: string;
+      const userSession = await AuthGetUserSession(req);
+      if (userSession.isAuthenticated) {
+        userId = userSession.userId;
+        role = userSession.role;
+      } else {
+        // Calendar clients cannot send custom headers, so this route also
+        // accepts the API key as a query parameter. The fallback is scoped
+        // to this route on purpose: a key in a URL leaks into logs and
+        // history, and the key owner treats the feed URL as a secret.
+        const apiKeyParam = req.query?.apiKey;
+        if (!apiKeyParam) {
+          return res.status(401).send({ error: "Access Denied" });
+        }
+        const keyRecord = await ApiKeysDataGetByKey(apiKeyParam);
+        const user = keyRecord ? await UsersDataGet(keyRecord.userId) : null;
+        if (!user) {
+          return res.status(401).send({ error: "Access Denied" });
+        }
+        userId = user.id;
+        role = user.role;
+      }
+
+      const filters: TaskListFilters = {
+        doneSince: new Date(
+          Date.now() - CALENDAR_DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+        hasDueDate: true,
+      };
+      // Admins see everything; other users only get tasks from projects
+      // they can see (same enforcement as the task list endpoint).
+      if (role !== "admin") {
+        filters.visibleTo = { userId };
+      }
+      const tasks = await TasksDataList(
+        filters,
+        new Set(["id", "projectId", "title", "description", "status", "dueDate"]),
+      );
+      const projects = await ProjectsDataList();
+      const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+      const entries: CalendarFeedEntry[] = tasks
+        .filter((t) => t.dueDate)
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          projectName: projectNameById.get(t.projectId),
+          dueDate: t.dueDate,
+        }));
+      res.header("Content-Type", "text/calendar; charset=utf-8");
+      return res.status(200).send(buildTasksIcs(entries, new Date()));
     });
 
     // ==================== API KEYS (Admin) ====================
