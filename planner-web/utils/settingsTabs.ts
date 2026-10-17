@@ -1,7 +1,7 @@
 /**
  * Pure permission-aware helpers for the Settings page tabs: Profile first
- * for every user, the admin tabs (Users, Projects, Statuses) only for
- * admins. Server-side authorization is unchanged (AuthMustBeAdmin).
+ * for every user, the admin tabs (Users, Projects, Statuses, Cleanup) only
+ * for admins. Server-side authorization is unchanged (AuthMustBeAdmin).
  */
 
 export interface SettingsTab {
@@ -16,6 +16,7 @@ export function getSettingsTabs(isAdmin: boolean): SettingsTab[] {
       { id: "users", label: "Users" },
       { id: "projects", label: "Projects" },
       { id: "statuses", label: "Statuses" },
+      { id: "cleanup", label: "Cleanup" },
     );
   }
   return tabs;

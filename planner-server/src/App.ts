@@ -27,6 +27,8 @@ import { DictationRoutes } from "./dictation/DictationRoutes";
 import { TaskVoiceCommentsInit } from "./tasks/TaskVoiceComments";
 import { NotificationsInit } from "./notifications/Notifications";
 import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
+import { CleanupInit } from "./cleanup/CleanupScheduler";
+import { CleanupRoutes } from "./cleanup/CleanupRoutes";
 import { StandardLogger, StandardTracer } from "@devopsplaybook.io/otel-utils";
 import { StandardTracerFastifyRegisterHooks } from "@devopsplaybook.io/otel-utils-fastify";
 
@@ -69,6 +71,7 @@ Promise.resolve()
     await DictationInit(config);
     await TaskVoiceCommentsInit(config);
     await NotificationsInit(config);
+    CleanupInit();
 
     // Ensure a default project exists
     const existingProjects = await ProjectsDataList();
@@ -225,6 +228,13 @@ Promise.resolve()
         await new NotificationsRoutes().getRoutes(instance);
       },
       { prefix: "/api/notifications" },
+    );
+
+    await fastify.register(
+      async (instance) => {
+        await new CleanupRoutes().getRoutes(instance);
+      },
+      { prefix: "/api/cleanup" },
     );
 
     fastify.register(fastifyStatic, {

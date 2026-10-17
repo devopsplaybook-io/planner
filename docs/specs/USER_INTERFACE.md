@@ -27,7 +27,7 @@ It is installable on mobile and desktop devices and works offline.
 
 ### Settings tabs
 
-- [x] Settings is a single page with permission-aware tabs: the **Profile** tab comes first and is the default for every user and holds all per-user settings (Appearance, Dictation, Notifications, Account, API Key); the **Users**, **Projects** and **Statuses** admin tabs are appended for admins only (see [ADMIN.md](ADMIN.md))
+- [x] Settings is a single page with permission-aware tabs: the **Profile** tab comes first and is the default for every user and holds all per-user settings (Appearance, Dictation, Notifications, Account, API Key); the **Users**, **Projects**, **Statuses** and **Cleanup** admin tabs are appended for admins only (see [ADMIN.md](ADMIN.md))
 - [x] Non-admin users only ever see the Profile tab (never the admin tabs); the server-side admin authorization on the admin APIs is unchanged
 - [x] The selected tab is reflected in the URL (`?tab=`) and restored on refresh and browser navigation; a deep link to an unknown or unauthorized tab (e.g. a non-admin opening `/settings?tab=users`) falls back to the Profile tab
 - [x] The former standalone `/admin` page redirects to `/settings` preserving the query parameters, so existing bookmarks and PWA-cached deep links keep working
