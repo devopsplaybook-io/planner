@@ -17,6 +17,14 @@ It is installable on mobile and desktop devices and works offline.
 - [x] The Settings entry in the menu uses a gear icon, consistent with the other navigation icons
 - [x] Offline support (PWA configured with service worker, cache strategies)
 
+### Command Palette
+
+- [x] The command palette opens with Ctrl/Cmd+K from every page (the shortcut works while focus is in an input) and from a Search button in the menu for touch access; the button shows the Ctrl K / ⌘K shortcut hint, hidden on mobile
+- [x] Typing searches tasks and notes server-side (case-insensitive substring over title and description, visibility-safe); results are grouped into Tasks and Notes and ranked by fuzzy title match; selecting a result opens its detail dialog over the current page
+- [x] With an empty query the palette offers quick actions: new task, new note, and go to view (Dashboard, Tasks, Calendar, Notes, Update Feed, History, Settings)
+- [x] Keyboard-first interaction: arrow keys move the selection with wrapping, Enter activates the selection, Escape closes the palette; the palette lists the shortcuts in its footer
+- [x] The palette is responsive and renders as a full-width panel on mobile
+
 ### Settings tabs
 
 - [x] Settings is a single page with permission-aware tabs: the **Profile** tab comes first and is the default for every user and holds all per-user settings (Appearance, Dictation, Notifications, Account, API Key); the **Users**, **Projects** and **Statuses** admin tabs are appended for admins only (see [ADMIN.md](ADMIN.md))
@@ -62,4 +70,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-11_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_

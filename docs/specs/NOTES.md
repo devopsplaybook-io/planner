@@ -20,6 +20,8 @@ exactly one project and has the following attributes:
 
 [x] Notes list: notes are displayed as cards showing the title, creation date, a description preview of up to 5 lines, labels and the comment count; cards have a minimum height so notes without a description remain readable and clickable.
 
+[x] Notes list search: the notes page offers a debounced search input (same pattern as the dashboard); the search term is sent as `q` to `GET /api/notes` and matched server-side as a case-insensitive substring over the note title and description; the search respects visibility and composes with the project filter (a selected project restricts the search to its whole subtree); while searching, the results replace the normal list and an empty result set shows a "No notes found" state.
+
 [x] Advanced menu: the note dialog offers an advanced menu with Delete; delete is no longer a standalone button.
 
 [x] Project change: when a note is opened in edit mode, the project can be changed; the target project must be visible to the user.
@@ -32,4 +34,4 @@ exactly one project and has the following attributes:
 - [x] A note the user cannot see answers 404 on the note API, like a missing note.
 - [x] Creating a note requires the target project to be visible to the user; updating, deleting and interacting with a note (comments, labels, attachments) requires the note to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-09-18_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_
