@@ -186,7 +186,7 @@ async function runJob(
     job.stage = "transcribing";
     let transcript: string;
     try {
-      transcript = await transcribeAudio(audioFilePath, audioMimeType, language);
+      transcript = await DictationTranscribeAudio(audioFilePath, audioMimeType, language);
     } finally {
       // No audio retention: delete the temp file right after the STT call,
       // success or failure
@@ -195,27 +195,10 @@ async function runJob(
 
     // Stage B: LLM polish (falls back to the raw transcript on failure)
     job.stage = "polishing";
-    let polishedText = transcript;
-    let polished = false;
-    if (config.LLM_API_KEY) {
-      try {
-        const content = await callLLMWithRetry(
-          POLISH_SYSTEM_PROMPT,
-          BuildPolishPrompt(transcript, language),
-        );
-        const parsed = ParsePolishedText(content);
-        if (parsed) {
-          polishedText = parsed;
-          polished = true;
-        } else {
-          logger.warn(`[Dictation] Unparseable polish response for job ${job.jobId}`);
-        }
-      } catch (error) {
-        logger.warn(
-          `[Dictation] Polish failed for job ${job.jobId}: ${error.message}`,
-        );
-      }
-    }
+    const { polishedText, polished } = await DictationPolishTranscript(
+      transcript,
+      language,
+    );
 
     // Stage C: LLM action proposals (skipped on failure)
     job.stage = "actions";
@@ -273,7 +256,13 @@ async function deleteAudioFile(audioFilePath: string): Promise<void> {
 
 // ── STT API call ──────────────────────────────────────────────────────────────
 
-async function transcribeAudio(
+/**
+ * Transcribes an audio file with the configured STT engine (embedded
+ * whisper.cpp or an external OpenAI-compatible endpoint). Never deletes the
+ * file — retention is the caller's responsibility. Exported so the voice
+ * comment feature can reuse the exact dictation STT stage.
+ */
+export async function DictationTranscribeAudio(
   audioFilePath: string,
   audioMimeType: string,
   language: string | null,
@@ -302,6 +291,60 @@ async function transcribeAudio(
     throw new Error("STT returned an empty transcript");
   }
   return text.trim();
+}
+
+/**
+ * Polishes a raw transcript with the LLM (Stage B), falling back to the raw
+ * transcript on any LLM failure or unparseable response. Exported so the
+ * voice comment feature reuses the exact dictation polish stage.
+ */
+export async function DictationPolishTranscript(
+  transcript: string,
+  language: string | null,
+): Promise<{ polishedText: string; polished: boolean }> {
+  if (!config.LLM_API_KEY) {
+    return { polishedText: transcript, polished: false };
+  }
+  try {
+    const content = await callLLMWithRetry(
+      POLISH_SYSTEM_PROMPT,
+      BuildPolishPrompt(transcript, language),
+    );
+    const parsed = ParsePolishedText(content);
+    if (parsed) {
+      return { polishedText: parsed, polished: true };
+    }
+    logger.warn("[Dictation] Unparseable polish response");
+    return { polishedText: transcript, polished: false };
+  } catch (error) {
+    logger.warn(
+      `[Dictation] Polish failed: ${(error as Error).message}`,
+    );
+    return { polishedText: transcript, polished: false };
+  }
+}
+
+/**
+ * STT + LLM polish for audio that is kept by the caller (voice comments):
+ * never deletes the audio file and never proposes actions. The raw
+ * transcript is returned alongside the polished text so callers can
+ * distinguish polish fallbacks.
+ */
+export async function DictationTranscribeAndPolish(
+  audioFilePath: string,
+  audioMimeType: string,
+  language: string | null,
+): Promise<{ rawTranscript: string; polishedText: string }> {
+  const rawTranscript = await DictationTranscribeAudio(
+    audioFilePath,
+    audioMimeType,
+    language,
+  );
+  const { polishedText } = await DictationPolishTranscript(
+    rawTranscript,
+    language,
+  );
+  return { rawTranscript, polishedText };
 }
 
 // ── LLM API call with retry ───────────────────────────────────────────────────

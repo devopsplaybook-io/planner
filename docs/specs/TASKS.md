@@ -72,6 +72,10 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Recurring series context: a recurring task's dialog states that the task is part of a recurring series and that editing affects this occurrence only; when the dependency chain links to a previous occurrence (matching title, ignoring the " [cancelled]" suffix), a "Previous occurrence" link opens it in the same dialog.
 
+[x] Voice comments: when dictation is enabled and STT is configured (see [DICTATION.md](DICTATION.md)), the add-comment composer offers a record-voice button with a visible recording state (elapsed time, stop/cancel, auto-stop at the maximum duration, inline microphone errors); the finished recording uploads through the regular authenticated attachment API (named `voice-message-…` with the recording's extension) and the audio stays as the attachment; a background transcription posts the polished transcript as a comment without user action. Voice recording is offered on the add-comment composer only — the edit composer, notes and deployments without the feature are unchanged.
+
+[x] Audio attachments: audio files (voice message recordings and other audio attachments) play through an inline player in the task dialog attachments section next to the regular download link; the authenticated blob mechanism keeps the JWT out of attachment URLs.
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.

@@ -41,6 +41,7 @@ import * as path from "path";
 import { buildAttachmentCopyPath, cloneTaskFrom } from "./TasksClone";
 import { buildNextOccurrence, parseRecurrence } from "./TaskRecurrence";
 import { TaskImproveText } from "./TaskImprove";
+import { TaskVoiceCommentsEnqueue } from "./TaskVoiceComments";
 import {
   TaskActivityDataAdd,
   TaskActivityDataList,
@@ -954,7 +955,11 @@ export class TasksRoutes {
     });
 
     // ==================== ATTACHMENTS ====================
-    fastify.post<{ Params: { id: string } }>(
+    interface PostTaskAttachment extends RequestGenericInterface {
+      Params: { id: string };
+      Querystring: { language?: string };
+    }
+    fastify.post<PostTaskAttachment>(
       "/:id/attachments",
       async (req, res) => {
         try {
@@ -1006,6 +1011,22 @@ export class TasksRoutes {
           "Attachment added",
         );
 
+        // Voice comments: an audio attachment may be a recorded voice
+        // message — schedule a background transcription that posts the
+        // transcript as a comment. Fire-and-forget: never touches the
+        // upload response, a no-op when the feature is not enabled.
+        if (data.mimetype.startsWith("audio/")) {
+          TaskVoiceCommentsEnqueue({
+            taskId: req.params.id,
+            userId: userSession.userId,
+            userName: userSession.userName,
+            fileName: data.filename,
+            filePath,
+            mimeType: data.mimetype,
+            requestedLanguage: req.query.language,
+          });
+        }
+
         return res.status(201).send({
           id: attachmentId,
           fileName: data.filename,
@@ -1050,6 +1071,16 @@ export class TasksRoutes {
           ".bmp": "image/bmp",
           ".ico": "image/x-icon",
           ".avif": "image/avif",
+          // Audio (voice message recordings and other audio attachments)
+          ".mp3": "audio/mpeg",
+          ".wav": "audio/wav",
+          ".ogg": "audio/ogg",
+          ".oga": "audio/ogg",
+          ".opus": "audio/opus",
+          ".m4a": "audio/mp4",
+          ".aac": "audio/aac",
+          ".flac": "audio/flac",
+          ".webm": "audio/webm",
         };
         res.type(mimeTypes[ext] || "application/octet-stream");
         res.header(

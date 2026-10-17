@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
-import { Readable } from "stream";
+import fastifyMultipart from "@fastify/multipart";
+import { Readable, Writable } from "stream";
 import {
   parseAssigneeUserId,
   parseDoneSince,
@@ -35,6 +36,7 @@ import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { UsersDataGet } from "../users/UsersData";
 import { ProjectsDataGet } from "../projects/ProjectsData";
 import { TaskImproveText } from "./TaskImprove";
+import { TaskVoiceCommentsEnqueue } from "./TaskVoiceComments";
 import { TaskActivityDataAdd, TaskActivityDataList } from "./TaskActivityData";
 import { Task } from "../model/Task";
 import { Project } from "../model/Project";
@@ -64,6 +66,10 @@ jest.mock("./TasksData", () => ({
 
 jest.mock("./TaskImprove", () => ({
   TaskImproveText: jest.fn(),
+}));
+
+jest.mock("./TaskVoiceComments", () => ({
+  TaskVoiceCommentsEnqueue: jest.fn(),
 }));
 
 jest.mock("./TaskActivityData", () => ({
@@ -407,6 +413,9 @@ describe("TasksRoutes project visibility", () => {
 
   beforeAll(async () => {
     app = Fastify();
+    // The attachment upload route reads multipart parts; register the
+    // plugin so POST /:id/attachments can be exercised end-to-end
+    await app.register(fastifyMultipart);
     await new TasksRoutes().getRoutes(app);
     await app.ready();
   });
@@ -1316,6 +1325,118 @@ describe("TasksRoutes project visibility", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-disposition"]).toContain("attachment");
+  });
+
+  it("should serve audio attachments inline with audio content types", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["audio-bytes"]));
+
+    for (const [fileName, mimeType] of [
+      ["voice-message.webm", "audio/webm"],
+      ["voice-message.m4a", "audio/mp4"],
+    ]) {
+      const task = makeTask(publicProject);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+      (getTaskAttachment as jest.Mock).mockResolvedValue({
+        id: "att-audio",
+        taskId: task.id,
+        fileName,
+        filePath: `/data/attachments/tasks/att-audio.${fileName.split(".").pop()}`,
+        dateCreated: "2026-10-17T00:00:00.000Z",
+      });
+
+      const res = await app.inject({
+        method: "GET",
+        url: `/${task.id}/attachments/att-audio?inline=true`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-type"]).toContain(mimeType);
+      expect(res.headers["content-disposition"]).toContain("inline");
+      expect(res.headers["content-security-policy"]).toBe("sandbox");
+    }
+  });
+
+  it("should enqueue a voice comment job when an audio attachment is uploaded", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const boundary = "----jestformboundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="voice-message.webm"',
+      "Content-Type: audio/webm",
+      "",
+      "fake-audio-bytes",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/attachments?language=fr`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({
+      fileName: "voice-message.webm",
+    });
+    expect(addTaskAttachment).toHaveBeenCalledTimes(1);
+    expect(TaskVoiceCommentsEnqueue).toHaveBeenCalledTimes(1);
+    expect(TaskVoiceCommentsEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        userId: "user-1",
+        userName: "User",
+        fileName: "voice-message.webm",
+        mimeType: "audio/webm",
+        requestedLanguage: "fr",
+      }),
+    );
+  });
+
+  it("should not enqueue a voice comment job for non-audio attachments", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const boundary = "----jestformboundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="notes.pdf"',
+      "Content-Type: application/pdf",
+      "",
+      "fake-pdf-bytes",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/attachments`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().fileName).toBe("notes.pdf");
+    expect(TaskVoiceCommentsEnqueue).not.toHaveBeenCalled();
   });
 
   it("should reject assignee removal on a task the user cannot see", async () => {

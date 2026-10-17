@@ -90,6 +90,17 @@ export class Config {
     this.WEB_PUSH_VAPID_PRIVATE_KEY = "";
   }
 
+  /**
+   * True when the configured STT engine can actually run: embedded mode
+   * needs a model, external mode needs endpoint URL, key and model. Shared
+   * by the dictation availability endpoint and the voice comment gate.
+   */
+  public IsDictationSttConfigured(): boolean {
+    return this.STT_MODE === "embedded"
+      ? !!this.STT_EMBEDDED_MODEL
+      : !!this.STT_API_URL && !!this.STT_API_KEY && !!this.STT_MODEL;
+  }
+
   public async reload(): Promise<void> {
     const config = await fs.readJson(this.CONFIG_FILE);
 
