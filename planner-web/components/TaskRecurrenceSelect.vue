@@ -205,9 +205,20 @@ function toggleWeekday(day) {
   font-size: var(--text-xs);
   line-height: 1.4;
   border-radius: var(--radius-sm);
+  /* Quiet off state (like button.secondary): the global button style fills
+     every button with the primary colors, which made on and off identical */
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
 }
 
-.recurrence-weekday.is-on {
+.recurrence-weekday:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.recurrence-weekday.is-on,
+.recurrence-weekday.is-on:hover {
   background: var(--color-primary);
   color: var(--color-on-primary);
   border-color: var(--color-primary);

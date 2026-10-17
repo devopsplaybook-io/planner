@@ -69,5 +69,6 @@ It is installable on mobile and desktop devices and works offline.
   - [x] A Task Detail: a dialog that displays the full task once the card is clicked
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
+- [x] The Tasks board header offers an All / Recurring only / Hide recurring filter applied client-side over the task recurrence rule; the choice persists in localStorage like the project filter and the column counts follow it
 
 _Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_
