@@ -4,8 +4,11 @@ import { Note } from "../model/Note";
 import { UserSession } from "../model/UserSession";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import {
+  hasProjectPermission,
   isProjectItemVisible,
   isProjectVisible,
+  permissionDeniedMessage,
+  projectMutationError,
 } from "../projects/ProjectVisibility";
 import { ProjectsDataGet } from "../projects/ProjectsData";
 import { parseProjectIds } from "../tasks/TasksRoutes";
@@ -46,19 +49,6 @@ async function getVisibleNote(
     return null;
   }
   return note;
-}
-
-/**
- * Error message when the project is archived, null when it is active (or
- * missing — callers answer 404 for missing projects themselves). Archived
- * projects are read-only for notes: create, update and every sub-resource
- * mutation are blocked; reads stay allowed.
- */
-async function archivedProjectError(
-  projectId: string,
-): Promise<string | null> {
-  const project = await ProjectsDataGet(projectId);
-  return project?.archived ? "Project is archived" : null;
 }
 
 export class NotesRoutes {
@@ -123,6 +113,11 @@ export class NotesRoutes {
       if (project.archived) {
         return res.status(400).send({ error: "Project is archived" });
       }
+      if (!hasProjectPermission(project, userSession, "update")) {
+        return res
+          .status(403)
+          .send({ error: permissionDeniedMessage("update") });
+      }
 
       const note = new Note();
       note.projectId = req.body.projectId;
@@ -150,9 +145,13 @@ export class NotesRoutes {
       const userSession = await AuthGetUserSession(req);
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
-      const archivedError = await archivedProjectError(note.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const guard = await projectMutationError(
+        note.projectId,
+        userSession,
+        "update",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
       }
       if (req.body.title) note.title = req.body.title;
       if (req.body.description !== undefined)
@@ -181,6 +180,10 @@ export class NotesRoutes {
       const userSession = await AuthGetUserSession(req);
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
+      const project = await ProjectsDataGet(note.projectId);
+      if (!hasProjectPermission(project, userSession, "all")) {
+        return res.status(403).send({ error: permissionDeniedMessage("all") });
+      }
       await NotesDataDelete(req.params.id);
       return res.status(201).send({});
     });
@@ -199,9 +202,13 @@ export class NotesRoutes {
       const userSession = await AuthGetUserSession(req);
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
-      const archivedError = await archivedProjectError(note.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const guard = await projectMutationError(
+        note.projectId,
+        userSession,
+        "comment",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
       }
       if (!req.body.text)
         return res.status(400).send({ error: "Missing: text" });
@@ -226,9 +233,13 @@ export class NotesRoutes {
         }
         const note = await getVisibleNote(req.params.id, userSession);
         if (!note) return res.status(404).send({ error: "Note Not Found" });
-        const archivedError = await archivedProjectError(note.projectId);
-        if (archivedError) {
-          return res.status(400).send({ error: archivedError });
+        const guard = await projectMutationError(
+          note.projectId,
+          userSession,
+          "comment",
+        );
+        if (guard) {
+          return res.status(guard.status).send({ error: guard.error });
         }
         const comment = await getNoteComment(req.params.commentId);
         if (!comment)
@@ -254,9 +265,13 @@ export class NotesRoutes {
       }
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
-      const archivedError = await archivedProjectError(note.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const guard = await projectMutationError(
+        note.projectId,
+        userSession,
+        "comment",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
       }
       const comment = await getNoteComment(req.params.commentId);
       if (!comment)
@@ -285,9 +300,13 @@ export class NotesRoutes {
       const userSession = await AuthGetUserSession(req);
       const note = await getVisibleNote(req.params.id, userSession);
       if (!note) return res.status(404).send({ error: "Note Not Found" });
-      const archivedError = await archivedProjectError(note.projectId);
-      if (archivedError) {
-        return res.status(400).send({ error: archivedError });
+      const guard = await projectMutationError(
+        note.projectId,
+        userSession,
+        "update",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
       }
       const labels = req.body.labels;
       if (
@@ -316,9 +335,13 @@ export class NotesRoutes {
         if (!note) {
           return res.status(404).send({ error: "Note Not Found" });
         }
-        const archivedError = await archivedProjectError(note.projectId);
-        if (archivedError) {
-          return res.status(400).send({ error: archivedError });
+        const guard = await projectMutationError(
+          note.projectId,
+          userSession,
+          "update",
+        );
+        if (guard) {
+          return res.status(guard.status).send({ error: guard.error });
         }
 
         const data = await req.file();
@@ -433,11 +456,13 @@ export class NotesRoutes {
         if (!visibleNote) {
           return res.status(404).send({ error: "Attachment Not Found" });
         }
-        const archivedError = await archivedProjectError(
+        const guard = await projectMutationError(
           visibleNote.projectId,
+          userSession,
+          "update",
         );
-        if (archivedError) {
-          return res.status(400).send({ error: archivedError });
+        if (guard) {
+          return res.status(guard.status).send({ error: guard.error });
         }
         if (await fs.pathExists(attachment.filePath)) {
           await fs.remove(attachment.filePath);

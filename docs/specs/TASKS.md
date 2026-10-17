@@ -81,6 +81,8 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.
 - [x] A task the user cannot see answers 404 on the task API, like a missing task.
 - [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user; changing the project requires the target project to be visible to the user.
+- [x] Writes beyond reading also require the user's project permission level (see [PROJECTS.md](PROJECTS.md)): View users get 403 on every write; Comment users can create comments and edit/delete only their own; Update users can create and update tasks including comments, assignees, labels, dependencies, attachments, checklist, status moves and project changes (the target project still must be visible); All users can additionally delete, clone and cancel tasks; admins are unaffected.
+- [x] A write below the user's permission level answers 403 with an error naming the required level; invisible projects still answer 404 and archived projects still reject edits with 400 &mdash; reading and visibility behavior are unchanged.
 
 ## Task List API
 

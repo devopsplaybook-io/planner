@@ -6,6 +6,11 @@ import {
   normalizeName,
 } from "../utils/projectHierarchy";
 
+export interface ProjectUserAccess {
+  userId: string;
+  permission: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -13,8 +18,40 @@ export interface Project {
   isDefault: boolean;
   archived: boolean;
   visibility: string;
-  userAccess: string[];
+  userAccess: ProjectUserAccess[];
   statuses: string[];
+}
+
+const PERMISSION_LABELS: Record<string, string> = {
+  all: "All",
+  update: "Update tasks",
+  comment: "Comment",
+  view: "View",
+};
+
+export function permissionLabel(permission: string): string {
+  return PERMISSION_LABELS[permission] || "All";
+}
+
+/**
+ * The user's permission level on a project: admins have every right, and
+ * the levels only restrict memberships of restricted projects (public
+ * projects grant every authenticated user full rights). Missing entries
+ * default to "all" for robustness, mirroring the server's tolerant parsing.
+ */
+export function projectPermissionFor(
+  project: Project | null | undefined,
+  userId: string | undefined,
+  isAdmin: boolean,
+): string {
+  if (isAdmin) {
+    return "all";
+  }
+  if (!project || project.visibility !== "restricted") {
+    return "all";
+  }
+  const entry = (project.userAccess || []).find((e) => e.userId === userId);
+  return entry?.permission || "all";
 }
 
 export const useProjectsStore = defineStore("projects", {
@@ -96,7 +133,7 @@ export const useProjectsStore = defineStore("projects", {
       description?: string,
       statuses?: string[],
       visibility?: string,
-      userAccess?: string[],
+      userAccess?: ProjectUserAccess[],
     ) {
       const res = await api.post("/projects", {
         name,

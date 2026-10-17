@@ -10,12 +10,13 @@ import {
   addNoteComment,
   deleteNoteAttachment,
   getNoteAttachment,
+  getNoteComment,
   replaceNoteLabels,
 } from "./NotesData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { ProjectsDataGet } from "../projects/ProjectsData";
 import { Note } from "../model/Note";
-import { Project } from "../model/Project";
+import { Project, ProjectUserAccess } from "../model/Project";
 
 jest.mock("fs-extra");
 
@@ -62,7 +63,10 @@ describe("NotesRoutes project visibility", () => {
     role: "admin" as const,
   };
 
-  function makeProject(visibility: string, userAccess: string[]): Project {
+  function makeProject(
+    visibility: string,
+    userAccess: ProjectUserAccess[],
+  ): Project {
     const project = new Project();
     project.name = "P";
     project.visibility = visibility;
@@ -71,8 +75,12 @@ describe("NotesRoutes project visibility", () => {
   }
 
   const publicProject = makeProject("public", []);
-  const memberProject = makeProject("restricted", ["user-1"]);
-  const hiddenProject = makeProject("restricted", ["user-2"]);
+  const memberProject = makeProject("restricted", [
+    { userId: "user-1", permission: "all" },
+  ]);
+  const hiddenProject = makeProject("restricted", [
+    { userId: "user-2", permission: "all" },
+  ]);
 
   function makeNote(project: Project): Note {
     const note = new Note();
@@ -558,5 +566,285 @@ describe("NotesRoutes archived project guard", () => {
     const res = await app.inject({ method: "DELETE", url: `/${note.id}` });
     expect(res.statusCode).toBe(201);
     expect(NotesDataDelete).toHaveBeenCalledWith(note.id);
+  });
+});
+
+describe("NotesRoutes project permission levels", () => {
+  let app: FastifyInstance;
+
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const adminSession = {
+    isAuthenticated: true,
+    userId: "admin-1",
+    userName: "Admin",
+    role: "admin" as const,
+  };
+
+  function projectWithLevel(permission: string): Project {
+    const project = new Project();
+    project.name = "P";
+    project.visibility = "restricted";
+    if (permission) {
+      project.userAccess = [
+        { userId: "user-1", permission: permission as never },
+      ];
+    } else {
+      project.userAccess = [] as never;
+    }
+    return project;
+  }
+
+  function makeNote(project: Project): Note {
+    const note = new Note();
+    note.projectId = project.id;
+    note.title = "Note";
+    return note;
+  }
+
+  beforeAll(async () => {
+    app = Fastify();
+    await new NotesRoutes().getRoutes(app);
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (AuthMustBeAuthenticated as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("should let a view user read but reject every write with 403", async () => {
+    const project = projectWithLevel("view");
+    const note = makeNote(project);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (getNoteAttachment as jest.Mock).mockResolvedValue({
+      id: "att-1",
+      fileName: "f.pdf",
+      filePath: "/data/attachments/notes/att-1.pdf",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+      noteId: note.id,
+    });
+
+    const read = await app.inject({ method: "GET", url: `/${note.id}` });
+    expect(read.statusCode).toBe(200);
+
+    const writes: Array<
+      [Awaited<ReturnType<typeof app.inject>>, string]
+    > = [
+      [
+        await app.inject({
+          method: "POST",
+          url: "/",
+          payload: { projectId: project.id, title: "New" },
+        }),
+        "update",
+      ],
+      [
+        await app.inject({
+          method: "PUT",
+          url: `/${note.id}`,
+          payload: { title: "Renamed" },
+        }),
+        "update",
+      ],
+      [await app.inject({ method: "DELETE", url: `/${note.id}` }), "all"],
+      [
+        await app.inject({
+          method: "POST",
+          url: `/${note.id}/comments`,
+          payload: { text: "hi" },
+        }),
+        "comment",
+      ],
+      [
+        await app.inject({
+          method: "POST",
+          url: `/${note.id}/labels`,
+          payload: { labels: ["x"] },
+        }),
+        "update",
+      ],
+      [
+        await app.inject({
+          method: "POST",
+          url: `/${note.id}/attachments`,
+          payload: {},
+        }),
+        "update",
+      ],
+      [
+        await app.inject({
+          method: "DELETE",
+          url: `/${note.id}/attachments/att-1`,
+        }),
+        "update",
+      ],
+    ];
+    for (const [res, required] of writes) {
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe(
+        `Access Denied: this action requires the ${required} permission on the project`,
+      );
+    }
+    expect(NotesDataAdd).not.toHaveBeenCalled();
+    expect(NotesDataUpdate).not.toHaveBeenCalled();
+    expect(NotesDataDelete).not.toHaveBeenCalled();
+    expect(addNoteComment).not.toHaveBeenCalled();
+    expect(replaceNoteLabels).not.toHaveBeenCalled();
+  });
+
+  it("should answer 404 (not 403) for writes on an invisible project", async () => {
+    const project = projectWithLevel(null);
+    const note = makeNote(project);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${note.id}`,
+      payload: { title: "Renamed" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(NotesDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should let a comment user comment on their own notes access level", async () => {
+    const project = projectWithLevel("comment");
+    const note = makeNote(project);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+
+    const comment = await app.inject({
+      method: "POST",
+      url: `/${note.id}/comments`,
+      payload: { text: "hi" },
+    });
+    expect(comment.statusCode).toBe(201);
+    expect(addNoteComment).toHaveBeenCalledTimes(1);
+
+    (getNoteComment as jest.Mock).mockResolvedValue({
+      id: "comment-1",
+      userId: "user-1",
+      text: "hi",
+    });
+    const edit = await app.inject({
+      method: "PUT",
+      url: `/${note.id}/comments/comment-1`,
+      payload: { text: "edited" },
+    });
+    expect(edit.statusCode).toBe(200);
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/${note.id}/comments/comment-1`,
+    });
+    expect(del.statusCode).toBe(201);
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: project.id, title: "New" },
+    });
+    expect(create.statusCode).toBe(403);
+    expect(NotesDataAdd).not.toHaveBeenCalled();
+
+    const update = await app.inject({
+      method: "PUT",
+      url: `/${note.id}`,
+      payload: { title: "Renamed" },
+    });
+    expect(update.statusCode).toBe(403);
+    expect(NotesDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should let an update user edit notes and sub-resources but not delete", async () => {
+    const project = projectWithLevel("update");
+    const note = makeNote(project);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: project.id, title: "New" },
+    });
+    expect(create.statusCode).toBe(201);
+    expect(NotesDataAdd).toHaveBeenCalledTimes(1);
+
+    const update = await app.inject({
+      method: "PUT",
+      url: `/${note.id}`,
+      payload: { title: "Renamed" },
+    });
+    expect(update.statusCode).toBe(201);
+
+    const labels = await app.inject({
+      method: "POST",
+      url: `/${note.id}/labels`,
+      payload: { labels: ["x"] },
+    });
+    expect(labels.statusCode).toBe(201);
+    expect(replaceNoteLabels).toHaveBeenCalledTimes(1);
+
+    const del = await app.inject({ method: "DELETE", url: `/${note.id}` });
+    expect(del.statusCode).toBe(403);
+    expect(NotesDataDelete).not.toHaveBeenCalled();
+  });
+
+  it("should require the update level to delete a note attachment", async () => {
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 403],
+      ["update", 201],
+      ["all", 201],
+    ] as const) {
+      jest.clearAllMocks();
+      (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+      const project = projectWithLevel(permission);
+      const note = makeNote(project);
+      (NotesDataGet as jest.Mock).mockResolvedValue(note);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      (getNoteAttachment as jest.Mock).mockResolvedValue({
+        id: "att-1",
+        fileName: "f.pdf",
+        filePath: "/data/attachments/notes/att-1.pdf",
+        dateCreated: "2026-09-01T00:00:00.000Z",
+        noteId: note.id,
+      });
+      const res = await app.inject({
+        method: "DELETE",
+        url: `/${note.id}/attachments/att-1`,
+      });
+      expect(res.statusCode).toBe(expected);
+    }
+  });
+
+  it("should let an all user delete a note", async () => {
+    const project = projectWithLevel("all");
+    const note = makeNote(project);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({ method: "DELETE", url: `/${note.id}` });
+    expect(res.statusCode).toBe(201);
+    expect(NotesDataDelete).toHaveBeenCalledWith(note.id);
+  });
+
+  it("should let an admin delete a note on a view-level project", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(adminSession);
+    const project = projectWithLevel("view");
+    const note = makeNote(project);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({ method: "DELETE", url: `/${note.id}` });
+    expect(res.statusCode).toBe(201);
   });
 });

@@ -17,6 +17,15 @@ Projects are the top-level organizational unit.
 - [x] A restricted project the user cannot see answers 404 on the project details API, like a missing project.
 - [x] The visibility rule is enforced on every API that serves project content (tasks, notes, views/dashboard, recommendations) &mdash; see the specs of those features.
 
+### User permissions
+
+- [x] For each user given access to a restricted project, the admin picks one permission level in the project dialog's Edit mode: **All** (default), **Update tasks**, **Comment** or **View** &mdash; one level per user per project, no granular flags.
+- [x] Levels are cumulative: View = read-only (the visibility rules decide what is readable; every write is rejected with 403); Comment = View + creating comments on tasks and notes, and editing/deleting only their own comments; Update = Comment + creating and updating tasks and notes, including status moves, checklist, labels, assignees, dependencies, attachments and moving an item to a project the user can see; All = Update + delete, clone and the Cancel flow.
+- [x] Existing memberships keep full access: the migration defaults every stored membership to All, and newly granted users default to All.
+- [x] Admins bypass the levels and keep full rights; public projects are unaffected (every authenticated user keeps full rights on them).
+- [x] Project management itself (visibility, user access list, statuses, archive, delete) stays admin-only.
+- [x] The project dialog Edit mode offers a compact permission select per granted user chip (default All); the display mode shows the level per granted user; the edit stays save-once, and permission changes count as visibility changes for the "Apply to all sub-projects?" propagation.
+
 ## Statuses
 
 Statuses are defined and ordered globally by admins in the Settings admin tabs (see [ADMIN.md](ADMIN.md)). The default catalog is:
