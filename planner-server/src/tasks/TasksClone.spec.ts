@@ -96,21 +96,6 @@ describe("cloneTaskFrom", () => {
     expect(clone.assignees).toEqual([]);
     expect(clone.dependencies).toEqual([]);
     expect(clone.checklist).toEqual([]);
-    expect(clone.recurrence).toBeUndefined();
-  });
-
-  it("should carry over the recurrence rule (deep copy of weekdays)", () => {
-    const source = makeSource();
-    source.recurrence = { frequency: "weekly", interval: 1, weekdays: [1, 3] };
-    const clone = cloneTaskFrom(source);
-
-    expect(clone.recurrence).toEqual({
-      frequency: "weekly",
-      interval: 1,
-      weekdays: [1, 3],
-    });
-    clone.recurrence.weekdays.push(5);
-    expect(source.recurrence.weekdays).toEqual([1, 3]);
   });
 });
 

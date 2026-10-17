@@ -270,6 +270,7 @@
     <AdminStatusesTab
       v-else-if="activeTab === 'statuses' && authStore.isAdmin"
     />
+    <TaskTemplatesTab v-else-if="activeTab === 'task-templates'" />
   </div>
 </template>
 

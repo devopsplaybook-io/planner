@@ -159,8 +159,9 @@ export async function clearProjectUsers(projectId: string): Promise<void> {
 }
 
 /**
- * Deletes the project, every child row (its tasks/notes with their children,
- * project users, in one transaction) and the attachment files on disk.
+ * Deletes the project, every child row (its tasks/notes/task templates with
+ * their children, project users, in one transaction) and the attachment
+ * files on disk.
  */
 export async function ProjectsDataDelete(id: string): Promise<void> {
   const attachmentPaths = await getProjectAttachmentPaths(id);
@@ -201,6 +202,30 @@ export async function ProjectsDataDelete(id: string): Promise<void> {
       SQL_QUERIES.DELETE_NOTES_BY_PROJECT[DbUtilsGetType()],
       [id],
     );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_LABELS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_ASSIGNEES_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_COMMENTS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_ATTACHMENTS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_RUNS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATES_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
     await DbUtilsExecSQL(SQL_QUERIES.DELETE_PROJECT_USERS[DbUtilsGetType()], [
       id,
     ]);
@@ -221,7 +246,13 @@ async function getProjectAttachmentPaths(
     SQL_QUERIES.GET_NOTE_ATTACHMENT_PATHS_BY_PROJECT[dbType],
     [projectId],
   );
-  return [...taskRows, ...noteRows].map((r) => r.filePath as string);
+  const templateRows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_TEMPLATE_ATTACHMENT_PATHS_BY_PROJECT[dbType],
+    [projectId],
+  );
+  return [...taskRows, ...noteRows, ...templateRows].map(
+    (r) => r.filePath as string,
+  );
 }
 
 const SQL_QUERIES = {
@@ -347,5 +378,45 @@ const SQL_QUERIES = {
       'SELECT "filePath" FROM note_attachments WHERE "noteId" IN (SELECT "id" FROM notes WHERE "projectId" = $1)',
     sqlite:
       "SELECT filePath FROM note_attachments WHERE noteId IN (SELECT id FROM notes WHERE projectId = ?)",
+  },
+  GET_TEMPLATE_ATTACHMENT_PATHS_BY_PROJECT: {
+    postgres:
+      'SELECT "filePath" FROM task_template_attachments WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "SELECT filePath FROM task_template_attachments WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATES_BY_PROJECT: {
+    postgres: 'DELETE FROM task_templates WHERE "projectId" = $1',
+    sqlite: "DELETE FROM task_templates WHERE projectId = ?",
+  },
+  DELETE_TEMPLATE_LABELS_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_labels WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_labels WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATE_ASSIGNEES_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_assignees WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_assignees WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATE_COMMENTS_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_comments WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_comments WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATE_ATTACHMENTS_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_attachments WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_attachments WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATE_RUNS_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_runs WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_runs WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
   },
 };

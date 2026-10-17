@@ -21,6 +21,8 @@ import {
   clearProjectUsers,
   addProjectUser,
 } from "./ProjectsData";
+import { TaskTemplatesListIdsByProject } from "../tasktemplates/TaskTemplatesData";
+import { TaskTemplatesSchedulerRefresh } from "../tasktemplates/TaskTemplatesScheduler";
 
 export function validateProjectStatusSelection(
   statuses: string[],
@@ -255,7 +257,12 @@ export class ProjectsRoutes {
       if (project.isDefault) {
         return res.status(400).send({ error: "Cannot delete default project" });
       }
+      const templateIds = await TaskTemplatesListIdsByProject(req.params.id);
       await ProjectsDataDelete(req.params.id);
+      // The templates (and their cron jobs) are gone with the project
+      for (const templateId of templateIds) {
+        TaskTemplatesSchedulerRefresh(templateId);
+      }
       return res.status(201).send({});
     });
   }

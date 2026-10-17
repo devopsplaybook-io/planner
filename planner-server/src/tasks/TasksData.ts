@@ -133,7 +133,6 @@ export async function TasksDataAdd(task: Task): Promise<void> {
     task.status,
     task.priority,
     task.dueDate || null,
-    task.recurrence ? JSON.stringify(task.recurrence) : null,
     JSON.stringify(task.checklist),
     task.dateCreated,
     task.dateUpdated,
@@ -157,7 +156,6 @@ export async function TasksDataUpdate(task: Task): Promise<void> {
     task.status,
     task.priority,
     task.dueDate || null,
-    task.recurrence ? JSON.stringify(task.recurrence) : null,
     JSON.stringify(task.checklist),
     task.dateUpdated,
     task.projectId,
@@ -556,15 +554,15 @@ const SQL_QUERIES = {
   },
   INSERT_TASK: {
     postgres:
-      'INSERT INTO tasks ("id", "projectId", "title", "description", "status", "priority", "dueDate", "recurrence", "checklist", "dateCreated", "dateUpdated") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+      'INSERT INTO tasks ("id", "projectId", "title", "description", "status", "priority", "dueDate", "checklist", "dateCreated", "dateUpdated") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
     sqlite:
-      "INSERT INTO tasks (id, projectId, title, description, status, priority, dueDate, recurrence, checklist, dateCreated, dateUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO tasks (id, projectId, title, description, status, priority, dueDate, checklist, dateCreated, dateUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   },
   UPDATE_TASK: {
     postgres:
-      'UPDATE tasks SET "title" = $1, "description" = $2, "status" = $3, "priority" = $4, "dueDate" = $5, "recurrence" = $6, "checklist" = $7, "dateUpdated" = $8, "projectId" = $9 WHERE "id" = $10',
+      'UPDATE tasks SET "title" = $1, "description" = $2, "status" = $3, "priority" = $4, "dueDate" = $5, "checklist" = $6, "dateUpdated" = $7, "projectId" = $8 WHERE "id" = $9',
     sqlite:
-      "UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, dueDate = ?, recurrence = ?, checklist = ?, dateUpdated = ?, projectId = ? WHERE id = ?",
+      "UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, dueDate = ?, checklist = ?, dateUpdated = ?, projectId = ? WHERE id = ?",
   },
   TOUCH_TASK: {
     postgres: 'UPDATE tasks SET "dateUpdated" = $1 WHERE "id" = $2',

@@ -58,6 +58,12 @@ describe("RunMigrations (fresh database)", () => {
       "task_comments",
       "task_dependencies",
       "task_labels",
+      "task_template_assignees",
+      "task_template_attachments",
+      "task_template_comments",
+      "task_template_labels",
+      "task_template_runs",
+      "task_templates",
       "tasks",
       "users",
     ]) {
@@ -96,6 +102,23 @@ describe("RunMigrations (fresh database)", () => {
     expect(dependencyFks).toHaveLength(2);
     expect(dependencyFks.every((fk) => fk.table === "tasks")).toBe(true);
     expect(dependencyFks.every((fk) => fk.on_delete === "CASCADE")).toBe(true);
+
+    const templateFks = await DbUtilsQuerySQL(
+      "PRAGMA foreign_key_list(task_templates)",
+    );
+    expect(
+      templateFks.some(
+        (fk) => fk.table === "projects" && fk.on_delete === "CASCADE",
+      ),
+    ).toBe(true);
+    const templateRunFks = await DbUtilsQuerySQL(
+      "PRAGMA foreign_key_list(task_template_runs)",
+    );
+    expect(
+      templateRunFks.some(
+        (fk) => fk.table === "task_templates" && fk.on_delete === "CASCADE",
+      ),
+    ).toBe(true);
   });
 
   it("should create the query indexes", async () => {
@@ -110,6 +133,8 @@ describe("RunMigrations (fresh database)", () => {
     expect(indexes).toContain("idx_api_keys_userId");
     expect(indexes).toContain("idx_task_dependencies_taskId");
     expect(indexes).toContain("idx_task_dependencies_dependsOnTaskId");
+    expect(indexes).toContain("idx_task_templates_projectId");
+    expect(indexes).toContain("idx_task_template_runs_templateId");
   });
 
   it("should enable foreign key enforcement and WAL mode", async () => {
