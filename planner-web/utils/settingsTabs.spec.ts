@@ -13,15 +13,17 @@ describe("getSettingsTabs", () => {
     });
   });
 
-  it("should only expose the Profile tab to non-admin users", () => {
+  it("should expose Profile and Task Templates to non-admin users", () => {
     expect(getSettingsTabs(false)).toEqual([
       { id: "profile", label: "Profile" },
+      { id: "task-templates", label: "Task Templates" },
     ]);
   });
 
   it("should expose all tabs in order to admins", () => {
     expect(getSettingsTabs(true).map((tab) => tab.id)).toEqual([
       "profile",
+      "task-templates",
       "users",
       "projects",
       "statuses",
@@ -32,6 +34,9 @@ describe("getSettingsTabs", () => {
 describe("normalizeSettingsTab", () => {
   it("should keep allowed tabs per role", () => {
     expect(normalizeSettingsTab("profile", false)).toBe("profile");
+    expect(normalizeSettingsTab("task-templates", false)).toBe(
+      "task-templates",
+    );
     expect(normalizeSettingsTab("users", true)).toBe("users");
     expect(normalizeSettingsTab("projects", true)).toBe("projects");
     expect(normalizeSettingsTab("statuses", true)).toBe("statuses");

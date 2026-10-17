@@ -26,13 +26,6 @@ export interface TaskDependency {
   status?: string;
 }
 
-export interface TaskRecurrence {
-  frequency: "daily" | "weekly" | "monthly";
-  interval: number;
-  weekdays?: number[];
-  monthDay?: number;
-}
-
 export interface Task {
   id: string;
   projectId: string;
@@ -41,7 +34,6 @@ export interface Task {
   status: string;
   priority: string;
   dueDate?: string;
-  recurrence?: TaskRecurrence | null;
   checklist: ChecklistItem[];
   assignees: TaskAssignee[];
   comments: TaskComment[];
@@ -76,7 +68,7 @@ export interface UpdateFeedEntry {
  * task by id).
  */
 const TASK_LIST_FIELDS =
-  "id,projectId,title,status,priority,dueDate,recurrence,checklist,assignees,labels,dateCreated,dateUpdated";
+  "id,projectId,title,status,priority,dueDate,checklist,assignees,labels,dateCreated,dateUpdated";
 
 /**
  * The list response omits the keys not in TASK_LIST_FIELDS; default them
@@ -188,7 +180,6 @@ export const useTasksStore = defineStore("tasks", {
       status?: string;
       priority?: string;
       dueDate?: string;
-      recurrence?: TaskRecurrence | null;
       assignees?: string[];
       labels?: string[];
     }) {

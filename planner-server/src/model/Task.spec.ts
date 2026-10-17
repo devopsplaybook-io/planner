@@ -137,55 +137,6 @@ describe("Task model", () => {
       const minimal = Task.fromJson({ projectId: "p1", title: "Minimal" });
       expect(minimal.dependencies).toEqual([]);
     });
-
-    it("should parse a recurrence rule from object or JSON string", () => {
-      const rule = { frequency: "weekly", interval: 1, weekdays: [1] };
-      expect(Task.fromJson({ projectId: "p1", title: "T", recurrence: rule }).recurrence).toEqual(rule);
-      expect(
-        Task.fromJson({
-          projectId: "p1",
-          title: "T",
-          recurrence: JSON.stringify(rule),
-        }).recurrence,
-      ).toEqual(rule);
-    });
-
-    it("should parse a monthly recurrence rule with a monthDay", () => {
-      const rule = { frequency: "monthly", interval: 1, monthDay: 15 };
-      expect(Task.fromJson({ projectId: "p1", title: "T", recurrence: rule }).recurrence).toEqual(rule);
-      expect(
-        Task.fromJson({
-          projectId: "p1",
-          title: "T",
-          recurrence: JSON.stringify(rule),
-        }).recurrence,
-      ).toEqual(rule);
-    });
-
-    it("should treat a malformed recurrence as not recurring", () => {
-      expect(
-        Task.fromJson({ projectId: "p1", title: "T", recurrence: "garbage" })
-          .recurrence,
-      ).toBeUndefined();
-      expect(
-        Task.fromJson({
-          projectId: "p1",
-          title: "T",
-          recurrence: { frequency: "yearly", interval: 1 },
-        }).recurrence,
-      ).toBeUndefined();
-      expect(
-        Task.fromJson({
-          projectId: "p1",
-          title: "T",
-          recurrence: { frequency: "daily" },
-        }).recurrence,
-      ).toBeUndefined();
-      expect(
-        Task.fromJson({ projectId: "p1", title: "T", recurrence: null })
-          .recurrence,
-      ).toBeUndefined();
-    });
   });
 
   describe("toJson", () => {
@@ -259,20 +210,6 @@ describe("Task model", () => {
       const json = task.toTransportJson(fields);
       expect(Object.keys(json)).toEqual(["dependencies"]);
       expect(json.dependencies).toEqual(task.dependencies);
-    });
-
-    it("should include recurrence in the full shape and the sparse fieldsets allowlist", () => {
-      const task = new Task();
-      task.projectId = "p1";
-      task.title = "Recurring";
-      task.recurrence = { frequency: "daily", interval: 2 };
-
-      const json = task.toTransportJson();
-      expect(json.recurrence).toEqual({ frequency: "daily", interval: 2 });
-
-      const filtered = task.toTransportJson(new Set(["recurrence"]));
-      expect(Object.keys(filtered)).toEqual(["recurrence"]);
-      expect(filtered.recurrence).toEqual({ frequency: "daily", interval: 2 });
     });
 
     it("should round-trip stored timestamps through fromJson", () => {

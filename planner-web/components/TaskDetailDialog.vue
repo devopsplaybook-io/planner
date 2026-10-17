@@ -178,9 +178,7 @@
             </span>
           </div>
           <div class="meta-field">
-            <strong>{{
-              activeRecurrence ? "Due date (this occurrence)" : "Due date"
-            }}</strong>
+            <strong>Due date</strong>
             <input v-if="editing" v-model="editForm.dueDate" type="date" />
             <span
               v-else
@@ -190,52 +188,6 @@
               {{ task.dueDate || "No due date" }}
               <i v-if="dueUrgency" class="bi bi-exclamation-triangle" />
             </span>
-          </div>
-          <div v-if="editing || task.recurrence" class="meta-field">
-            <strong>Repeats</strong>
-            <TaskRecurrenceSelect
-              v-if="editing"
-              v-model="editForm.recurrence"
-              :due-date="editForm.dueDate"
-              @align="editForm.dueDate = $event"
-            />
-            <span
-              v-else
-              :title="'Repeats: ' + recurrenceLabel(task.recurrence)"
-            >
-              <i class="bi bi-arrow-repeat" /> {{ recurrenceLabel(task.recurrence) }}
-            </span>
-            <template v-if="!editing && task.recurrence">
-              <small v-if="nextOccurrenceDate" class="text-muted">
-                Next occurrence: {{ nextOccurrenceDate }}
-              </small>
-              <small class="text-muted">
-                Completing this task creates the next occurrence with the due
-                date shifted.
-              </small>
-              <small class="text-muted">
-                This task is part of a recurring series — editing affects this
-                occurrence only.
-              </small>
-              <button
-                v-if="previousOccurrence"
-                type="button"
-                class="previous-occurrence"
-                :aria-label="`Open previous occurrence: ${previousOccurrence.title}`"
-                @click="openDependency(previousOccurrence)"
-              >
-                <i class="bi bi-arrow-left" /> Previous occurrence
-              </button>
-            </template>
-            <template v-else-if="editing && activeRecurrence && activeDueDate">
-              <small v-if="nextOccurrenceDate" class="text-muted">
-                Next occurrence: {{ nextOccurrenceDate }}
-              </small>
-              <small class="text-muted">
-                Completing this task creates the next occurrence with the due
-                date shifted.
-              </small>
-            </template>
           </div>
           <div class="meta-field">
             <strong>Assignees</strong>
@@ -745,11 +697,6 @@ import {
 import { fileExtensionForMimeType } from "../utils/dictationMime";
 import { displayName } from "../utils/projectHierarchy";
 import { projectPermissionFor } from "../stores/projects";
-import {
-  computeNextDueDate,
-  findPreviousOccurrence,
-  recurrenceLabel,
-} from "../utils/recurrence";
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -804,7 +751,6 @@ const editForm = ref({
   description: "",
   priority: "",
   dueDate: "",
-  recurrence: null,
   assignees: [],
   projectId: "",
 });
@@ -997,21 +943,6 @@ const dueUrgencyTitle = computed(() =>
     : dueUrgency.value === "today"
       ? "This task is due today"
       : null,
-);
-
-// Recurrence context: the rule and due date currently shown (the edit form's
-// while editing, so the spawn effect is visible while choosing the rule)
-const activeRecurrence = computed(() =>
-  editing.value ? editForm.value.recurrence : task.value?.recurrence || null,
-);
-const activeDueDate = computed(() =>
-  editing.value ? editForm.value.dueDate : task.value?.dueDate,
-);
-const nextOccurrenceDate = computed(() =>
-  computeNextDueDate(activeRecurrence.value, activeDueDate.value),
-);
-const previousOccurrence = computed(() =>
-  !editing.value && task.value ? findPreviousOccurrence(task.value) : null,
 );
 
 // localStorage draft keys: distinct add/edit namespaces under one prefix
@@ -1320,7 +1251,6 @@ function startEdit() {
     description: task.value.description,
     priority: task.value.priority,
     dueDate: task.value.dueDate || "",
-    recurrence: task.value.recurrence || null,
     assignees: (task.value.assignees || []).map((a) => a.userId),
     projectId: task.value.projectId,
   };
@@ -1353,7 +1283,6 @@ async function saveEdit() {
       description: editForm.value.description,
       priority: editForm.value.priority,
       dueDate: editForm.value.dueDate || null,
-      recurrence: editForm.value.recurrence || null,
       projectId: editForm.value.projectId,
     });
     // Update assignees separately
@@ -2042,22 +1971,6 @@ section h4 {
 .dependency-result-title {
   min-width: 0;
   overflow-wrap: break-word;
-}
-
-/* Previous occurrence link in the Repeats meta field (display mode): styled
-   like the dependency-link rows, left-aligned within the meta field */
-.previous-occurrence {
-  justify-content: flex-start;
-  padding: var(--space-2xs) var(--space-xs);
-  font-size: var(--text-sm);
-  background: var(--color-surface);
-  color: var(--color-text);
-  border-color: var(--color-border);
-}
-
-.previous-occurrence:hover {
-  background: var(--color-surface);
-  border-color: var(--color-primary);
 }
 
 /* The comment form stacks: composer (tabs + textarea) with the action row
