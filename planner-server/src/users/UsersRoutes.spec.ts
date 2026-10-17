@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
 import { LoginRateLimiter, UsersRoutes } from "./UsersRoutes";
 import { ApiKey } from "../model/ApiKey";
+import { Task } from "../model/Task";
 import { User } from "../model/User";
 import {
   AuthGenerateJWT,
@@ -26,9 +27,12 @@ import {
 import {
   ApiKeysDataAdd,
   ApiKeysDataDeleteByUserId,
+  ApiKeysDataGetByKey,
   ApiKeysDataGetByUserId,
   ApiKeysDataList,
 } from "./ApiKeysData";
+import { TasksDataList } from "../tasks/TasksData";
+import { ProjectsDataList } from "../projects/ProjectsData";
 
 jest.mock("./Auth", () => ({
   AuthGenerateJWT: jest.fn(),
@@ -55,8 +59,17 @@ jest.mock("./UsersData", () => ({
 jest.mock("./ApiKeysData", () => ({
   ApiKeysDataAdd: jest.fn(),
   ApiKeysDataDeleteByUserId: jest.fn(),
+  ApiKeysDataGetByKey: jest.fn(),
   ApiKeysDataGetByUserId: jest.fn(),
   ApiKeysDataList: jest.fn(async () => []),
+}));
+
+jest.mock("../tasks/TasksData", () => ({
+  TasksDataList: jest.fn(async () => []),
+}));
+
+jest.mock("../projects/ProjectsData", () => ({
+  ProjectsDataList: jest.fn(async () => []),
 }));
 
 function makeUser(overrides: Record<string, unknown> = {}): User {
@@ -547,5 +560,105 @@ describe("UsersRoutes", () => {
     });
     expect(res.statusCode).toBe(201);
     expect((ApiKeysDataAdd as jest.Mock).mock.calls[0][0].userId).toBe("user-2");
+  });
+
+  // ==================== CALENDAR FEED (ICS) ====================
+  function makeTask(overrides: Record<string, unknown> = {}): Task {
+    const task = new Task();
+    task.id = "task-1";
+    task.projectId = "proj-1";
+    task.title = "Task title";
+    task.description = "Task description";
+    task.dueDate = "2026-10-17";
+    Object.assign(task, overrides);
+    return task;
+  }
+
+  it("should answer 401 for the calendar feed without any credentials", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    (ApiKeysDataGetByKey as jest.Mock).mockResolvedValue(null);
+    const res = await app.inject({ method: "GET", url: "/calendar.ics" });
+    expect(res.statusCode).toBe(401);
+    expect(TasksDataList).not.toHaveBeenCalled();
+  });
+
+  it("should answer 401 for an unknown api key query parameter", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    (ApiKeysDataGetByKey as jest.Mock).mockResolvedValue(null);
+    const res = await app.inject({
+      method: "GET",
+      url: "/calendar.ics?apiKey=pk_unknown",
+    });
+    expect(res.statusCode).toBe(401);
+    expect(ApiKeysDataGetByKey).toHaveBeenCalledWith("pk_unknown");
+    expect(TasksDataList).not.toHaveBeenCalled();
+  });
+
+  it("should serve an ICS feed for an authenticated session", async () => {
+    (TasksDataList as jest.Mock).mockResolvedValue([makeTask()]);
+    (ProjectsDataList as jest.Mock).mockResolvedValue([
+      { id: "proj-1", name: "Home/Parents" },
+    ]);
+
+    const res = await app.inject({ method: "GET", url: "/calendar.ics" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/calendar");
+    const body = res.body;
+    expect(body).toContain("BEGIN:VCALENDAR");
+    expect(body).toContain("UID:task-1@planner");
+    expect(body).toContain("SUMMARY:Home/Parents / Task title");
+    expect(body).toContain("END:VCALENDAR");
+  });
+
+  it("should resolve the feed through the apiKey query parameter fallback", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    (ApiKeysDataGetByKey as jest.Mock).mockResolvedValue({
+      userId: "user-1",
+    });
+    (UsersDataGet as jest.Mock).mockResolvedValue(makeUser({ id: "user-1" }));
+    (TasksDataList as jest.Mock).mockResolvedValue([]);
+    (ProjectsDataList as jest.Mock).mockResolvedValue([]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/calendar.ics?apiKey=pk_12345",
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/calendar");
+    expect(ApiKeysDataGetByKey).toHaveBeenCalledWith("pk_12345");
+    expect(UsersDataGet).toHaveBeenCalledWith("user-1");
+  });
+
+  it("should scope the task list to visible projects for non-admin users", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (TasksDataList as jest.Mock).mockResolvedValue([]);
+    (ProjectsDataList as jest.Mock).mockResolvedValue([]);
+
+    await app.inject({ method: "GET", url: "/calendar.ics" });
+
+    const filters = (TasksDataList as jest.Mock).mock.calls[0][0];
+    expect(filters.visibleTo).toEqual({ userId: "user-1" });
+    expect(filters.hasDueDate).toBe(true);
+    expect(filters.doneSince).toBeDefined();
+  });
+
+  it("should not restrict the task list for admin users", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(adminSession);
+    (TasksDataList as jest.Mock).mockResolvedValue([]);
+    (ProjectsDataList as jest.Mock).mockResolvedValue([]);
+
+    await app.inject({ method: "GET", url: "/calendar.ics" });
+
+    const filters = (TasksDataList as jest.Mock).mock.calls[0][0];
+    expect(filters.visibleTo).toBeUndefined();
+    expect(filters.hasDueDate).toBe(true);
   });
 });
