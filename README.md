@@ -9,7 +9,8 @@
 - **Task Tracking** - Tasks with title, description, checklists, comments, attachments, due dates, priorities, and labels
 - **Task Assignment** - Assign tasks to one or more users
 - **Smart Refresh** - Lists refresh when a dialog closes and open tasks are polled for changes; assignees receive a push notification when their task is updated by another user
-- **Note Taking** - Notes with title, description, comments, attachments, and labels
+- **Note Taking** - Notes with title, description, comments, attachments, and labels, with a debounced search over titles and descriptions
+- **Global Search & Command Palette** - Jump to any task or note from every page with Ctrl/Cmd+K (fuzzy search across tasks and notes) plus quick actions for new task, new note and go to view
 - **Multiple Views** - Next (overdue/upcoming), Calendar view, and Kanban board
 - **Markdown Support** - Task, note, and project descriptions support markdown syntax
 - **User Management** - First user automatically set as admin, additional users can be added
