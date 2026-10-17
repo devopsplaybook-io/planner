@@ -38,10 +38,12 @@
           Due date
           <input v-model="form.dueDate" type="date" />
         </label>
-        <label>
-          Repeats
+        <!-- Not a <label>: the weekday chips are <button>s, and a label
+             forwards clicks on them to the Repeats select. -->
+        <div class="recurrence-field">
+          <strong>Repeats</strong>
           <TaskRecurrenceSelect v-model="form.recurrence" />
-        </label>
+        </div>
         <fieldset>
           <legend>Assignees</legend>
           <UserMultiSelect v-model="form.assignees" :users="users" />
@@ -179,6 +181,13 @@ async function createTask() {
 </script>
 
 <style scoped>
+.recurrence-field {
+  display: block;
+  margin-bottom: var(--space-sm);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
 .checklist-input-row {
   display: grid;
   grid-template-columns: 1fr auto;

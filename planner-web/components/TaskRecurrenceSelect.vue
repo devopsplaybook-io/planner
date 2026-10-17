@@ -44,6 +44,8 @@
 </template>
 
 <script setup>
+import { ref, computed, watch } from "vue";
+
 const props = defineProps({
   modelValue: { type: Object, default: null },
 });
@@ -78,13 +80,16 @@ function modeForRule(rule) {
   return "custom";
 }
 
+const lastEmitted = ref(null);
 watch(
   () => props.modelValue,
   (rule) => {
-    mode.value = modeForRule(rule);
     if (rule && rule.frequency) {
       customInterval.value = rule.interval;
       customUnit.value = rule.frequency;
+    }
+    if (rule !== lastEmitted.value) {
+      mode.value = modeForRule(rule);
     }
   },
   { immediate: true },
@@ -99,6 +104,7 @@ function emitCustomRule(frequency, interval, source) {
   ) {
     rule.weekdays = [...source.weekdays];
   }
+  lastEmitted.value = rule;
   emit("update:modelValue", rule);
 }
 
@@ -124,6 +130,7 @@ function onModeChange() {
   ) {
     rule.weekdays = [...props.modelValue.weekdays];
   }
+  lastEmitted.value = rule;
   emit("update:modelValue", rule);
 }
 
@@ -164,6 +171,7 @@ function toggleWeekday(day) {
   } else {
     delete rule.weekdays;
   }
+  lastEmitted.value = rule;
   emit("update:modelValue", rule);
 }
 </script>
