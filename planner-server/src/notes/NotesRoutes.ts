@@ -65,7 +65,7 @@ export class NotesRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
     fastify.get<{
-      Querystring: { projectId?: string; projectIds?: string };
+      Querystring: { projectId?: string; projectIds?: string; q?: string };
     }>("/", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
@@ -74,6 +74,7 @@ export class NotesRoutes {
       const filters: NoteListFilters = {
         projectId: req.query.projectId,
         projectIds: parseProjectIds(req.query.projectIds),
+        q: req.query.q?.trim() || undefined,
       };
       if (userSession.role !== "admin") {
         filters.visibleTo = { userId: userSession.userId };

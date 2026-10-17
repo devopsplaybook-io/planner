@@ -132,6 +132,20 @@ describe("NotesRoutes project visibility", () => {
     );
   });
 
+  it("should forward the q search term to the data layer", async () => {
+    await app.inject({ method: "GET", url: "/?q=%20meeting%20" });
+    expect(NotesDataList).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "meeting" }),
+    );
+  });
+
+  it("should not set q when the search param is absent", async () => {
+    await app.inject({ method: "GET", url: "/" });
+    expect(NotesDataList).toHaveBeenCalledWith(
+      expect.not.objectContaining({ q: expect.anything() }),
+    );
+  });
+
   // ==================== GET BY ID ====================
   it("should return a note from a public project", async () => {
     const note = makeNote(publicProject);
