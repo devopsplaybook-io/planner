@@ -7,12 +7,16 @@ type RecurrenceRule = {
   frequency: "daily" | "weekly" | "monthly";
   interval: number;
   weekdays?: number[];
+  monthDay?: number;
 };
 
 // Host emulating the parent dialog's v-model: writes every emitted rule back
 // into the prop, so the component's watch sees its own emissions exactly as
 // in the real dialogs.
-function mountHost(initial: RecurrenceRule | null = null) {
+function mountHost(
+  initial: RecurrenceRule | null = null,
+  defaultMonthDay: number | null = null,
+) {
   const rule = ref<RecurrenceRule | null>(initial);
   const host = defineComponent({
     setup(_, { expose }) {
@@ -21,6 +25,7 @@ function mountHost(initial: RecurrenceRule | null = null) {
         h(TaskRecurrenceSelect, {
           // undefined falls back to the prop's null default
           modelValue: rule.value ?? undefined,
+          defaultMonthDay: defaultMonthDay ?? undefined,
           "onUpdate:modelValue": (value: RecurrenceRule | null) => {
             rule.value = value;
           },
@@ -161,5 +166,166 @@ describe("TaskRecurrenceSelect", () => {
     rule.value = { frequency: "monthly", interval: 1 };
     await nextTick();
     expect(modeSelect(wrapper).element.value).toBe("monthly");
+  });
+
+  const dayInput = (wrapper: Host["wrapper"]) =>
+    wrapper.find('input[aria-label="Day of month"]');
+
+  it("shows the day input seeded from defaultMonthDay on the monthly preset", async () => {
+    const { wrapper, getRule } = mountHost(null, 15);
+
+    await modeSelect(wrapper).setValue("monthly");
+    expect(getRule()).toEqual({ frequency: "monthly", interval: 1 });
+    expect(wrapper.find(".recurrence-monthday").exists()).toBe(true);
+    expect((dayInput(wrapper).element as HTMLInputElement).value).toBe("15");
+    expect(wrapper.find(".recurrence-weekdays").exists()).toBe(false);
+  });
+
+  it("emits monthDay when the day input changes and keeps the mode", async () => {
+    const { wrapper, getRule } = mountHost(null, 15);
+
+    await modeSelect(wrapper).setValue("monthly");
+    await dayInput(wrapper).setValue(20);
+    await dayInput(wrapper).trigger("change");
+    expect(getRule()).toEqual({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 20,
+    });
+    expect(modeSelect(wrapper).element.value).toBe("monthly");
+    expect(wrapper.find(".recurrence-monthday").exists()).toBe(true);
+
+    // Out-of-range values clamp into 1..31
+    await dayInput(wrapper).setValue(32);
+    await dayInput(wrapper).trigger("change");
+    expect(getRule()).toEqual({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 31,
+    });
+  });
+
+  it("keeps Custom… selected with the day row when the custom unit is months", async () => {
+    const { wrapper, getRule } = mountHost(null, 15);
+
+    await modeSelect(wrapper).setValue("custom");
+    await wrapper
+      .find('select[aria-label="Repeat unit"]')
+      .setValue("monthly");
+    await wrapper
+      .find('input[aria-label="Repeat every"]')
+      .setValue(2);
+    await wrapper
+      .find('input[aria-label="Repeat every"]')
+      .trigger("change");
+    expect(getRule()).toEqual({ frequency: "monthly", interval: 2 });
+    expect(modeSelect(wrapper).element.value).toBe("custom");
+    expect(wrapper.find(".recurrence-custom").exists()).toBe(true);
+    expect(wrapper.find(".recurrence-monthday").exists()).toBe(true);
+    expect((dayInput(wrapper).element as HTMLInputElement).value).toBe("15");
+
+    await dayInput(wrapper).setValue(10);
+    await dayInput(wrapper).trigger("change");
+    expect(getRule()).toEqual({
+      frequency: "monthly",
+      interval: 2,
+      monthDay: 10,
+    });
+    expect(modeSelect(wrapper).element.value).toBe("custom");
+  });
+
+  it("seeds an external monthly rule without monthDay and re-derives the mode", async () => {
+    // Rule saved before this feature: no monthDay — the day input falls
+    // back to the seed and the mode still re-derives to the monthly preset
+    const { wrapper, rule } = mountHost(
+      { frequency: "monthly", interval: 1 },
+      8,
+    );
+    expect(modeSelect(wrapper).element.value).toBe("monthly");
+    expect((dayInput(wrapper).element as HTMLInputElement).value).toBe("8");
+
+    rule.value = { frequency: "monthly", interval: 1, monthDay: 22 };
+    await nextTick();
+    expect((dayInput(wrapper).element as HTMLInputElement).value).toBe("22");
+  });
+
+  it("keeps a chosen monthDay when bouncing between the preset and Custom", async () => {
+    const { wrapper, getRule } = mountHost(null, 15);
+
+    await modeSelect(wrapper).setValue("monthly");
+    await dayInput(wrapper).setValue(20);
+    await dayInput(wrapper).trigger("change");
+    expect(getRule()).toEqual({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 20,
+    });
+
+    // Into Custom… (unit months): the day rides along
+    await modeSelect(wrapper).setValue("custom");
+    expect(getRule()).toEqual({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 20,
+    });
+    expect(modeSelect(wrapper).element.value).toBe("custom");
+    expect((dayInput(wrapper).element as HTMLInputElement).value).toBe("20");
+
+    // Back to the monthly preset: the day survives
+    await modeSelect(wrapper).setValue("monthly");
+    expect(getRule()).toEqual({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 20,
+    });
+    expect(modeSelect(wrapper).element.value).toBe("monthly");
+  });
+
+  it("re-seeds the day input when the seed prop changes for a rule without monthDay", async () => {
+    // Picking monthly before the due date is filled seeds today's day;
+    // when the due date is filled in afterwards, the seed follows the new
+    // fallback day (the host re-renders with a changed defaultMonthDay)
+    const seed = ref(17);
+    const rule = ref<RecurrenceRule | null>(null);
+    const wrapper = mount(
+      defineComponent({
+        setup() {
+          return () =>
+            h(TaskRecurrenceSelect, {
+              modelValue: rule.value ?? undefined,
+              defaultMonthDay: seed.value,
+              "onUpdate:modelValue": (value: RecurrenceRule | null) => {
+                rule.value = value;
+              },
+            });
+        },
+      }),
+    );
+    const day = () =>
+      wrapper.find('input[aria-label="Day of month"]')
+        .element as HTMLInputElement;
+    const repeats = () => wrapper.find('select[aria-label="Repeats"]');
+
+    await repeats().setValue("monthly");
+    expect(rule.value).toEqual({ frequency: "monthly", interval: 1 });
+    expect(day().value).toBe("17");
+
+    seed.value = 5;
+    await nextTick();
+    expect(day().value).toBe("5");
+
+    // An explicit monthDay is never overridden by a seed change
+    await wrapper.find('input[aria-label="Day of month"]').setValue(20);
+    await wrapper
+      .find('input[aria-label="Day of month"]')
+      .trigger("change");
+    seed.value = 9;
+    await nextTick();
+    expect(day().value).toBe("20");
+    expect(rule.value).toEqual({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 20,
+    });
   });
 });

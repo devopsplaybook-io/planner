@@ -8,6 +8,20 @@
       <NuxtPage />
     </main>
 
+    <!-- PWA update fallback: shown when the app updated itself but a
+         reload would be unsafe right now (open dialog, recent reload) -->
+    <div v-if="showUpdateBanner" class="update-banner" role="status">
+      <span>A new version of Planner is available</span>
+      <button class="update-banner-reload" @click="reloadApp">Reload</button>
+      <button
+        class="update-banner-dismiss"
+        aria-label="Dismiss update banner"
+        @click="showUpdateBanner = false"
+      >
+        ×
+      </button>
+    </div>
+
     <!-- App-level detail dialogs controlled by URL query params -->
     <TaskDetailDialog
       :task-id="route.query.taskId || null"
@@ -57,6 +71,13 @@ const dictationStore = useDictationStore();
 
 const showTaskCreate = ref(false);
 const showNoteCreate = ref(false);
+
+// PWA update flow (safe auto-reload or banner)
+const { showUpdateBanner } = useAppUpdate();
+
+function reloadApp() {
+  window.location.reload();
+}
 
 /**
  * Point the open task dialog at the freshly created task.
@@ -224,6 +245,42 @@ main {
 }
 
 /* Dialog styling lives in assets/css/base.css */
+
+/* PWA update banner */
+
+.update-banner {
+  position: fixed;
+  top: var(--space-md);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-contrast-bg);
+  color: var(--color-contrast-on);
+  border-radius: var(--radius-full);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-size: var(--text-md);
+}
+
+.update-banner-reload {
+  margin: 0;
+  padding: 0.2em 0.8em;
+  font-size: var(--text-md);
+}
+
+.update-banner-dismiss {
+  margin: 0;
+  padding: 0 0.4em;
+  font-size: var(--text-lg);
+  line-height: 1;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}
 
 /* Animations */
 

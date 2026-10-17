@@ -23,6 +23,10 @@ RUN cd planner-server && \
 
 COPY planner-web planner-web
 
+# nuxt.config.ts reads the root package.json at config time for the app
+# version shown in the UI
+COPY package.json /opt/src/package.json
+
 RUN cd planner-web && \
     npm ci && \
     npm run generate
