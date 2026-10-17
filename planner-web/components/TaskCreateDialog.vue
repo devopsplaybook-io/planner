@@ -42,7 +42,11 @@
              forwards clicks on them to the Repeats select. -->
         <div class="recurrence-field">
           <strong>Repeats</strong>
-          <TaskRecurrenceSelect v-model="form.recurrence" />
+          <TaskRecurrenceSelect
+            v-model="form.recurrence"
+            :due-date="form.dueDate"
+            @align="form.dueDate = $event"
+          />
           <template v-if="form.recurrence && form.dueDate">
             <small v-if="nextOccurrenceDate" class="text-muted">
               Next occurrence: {{ nextOccurrenceDate }}

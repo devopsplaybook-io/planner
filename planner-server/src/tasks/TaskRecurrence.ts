@@ -1,7 +1,7 @@
 import { Task, TaskRecurrence } from "../model/Task";
 
 export const RECURRENCE_ERROR =
-  "Invalid: recurrence (must be an object with frequency \"daily\" | \"weekly\" | \"monthly\", an interval between 1 and 999 and optional weekdays 0-6)";
+  "Invalid: recurrence (must be an object with frequency \"daily\" | \"weekly\" | \"monthly\", an interval between 1 and 999, optional weekdays 0-6 and, for monthly rules, an optional monthDay 1-31)";
 
 /**
  * Validates a recurrence rule payload. Returns the normalized rule (with a
@@ -42,12 +42,26 @@ export function parseRecurrence(value: unknown): {
     }
     weekdays = [...new Set(raw.weekdays as number[])];
   }
+  let monthDay: number | undefined;
+  if (raw.monthDay !== undefined && raw.monthDay !== null) {
+    if (
+      !Number.isInteger(raw.monthDay) ||
+      (raw.monthDay as number) < 1 ||
+      (raw.monthDay as number) > 31
+    ) {
+      return { error: RECURRENCE_ERROR };
+    }
+    monthDay = raw.monthDay as number;
+  }
   const recurrence: TaskRecurrence = {
     frequency: raw.frequency,
     interval: raw.interval as number,
   };
   if (weekdays && weekdays.length > 0) {
     recurrence.weekdays = weekdays;
+  }
+  if (monthDay !== undefined && raw.frequency === "monthly") {
+    recurrence.monthDay = monthDay;
   }
   return { recurrence };
 }
@@ -91,7 +105,9 @@ function formatDateParts(year: number, month: number, day: number): string {
  *   current due date whose weekday is in the set (the interval is ignored
  *   for this case — documented v1 simplification)
  * - monthly: same day-of-month, interval months later, clamped to the
- *   target month's last day
+ *   target month's last day; when the rule carries a monthDay (1–31) it is
+ *   used as the day instead of the due date's own day (stable across
+ *   rescheduled occurrences), clamped the same way
  * Returns null when the due date is missing or malformed.
  */
 export function computeNextDueDate(
@@ -138,7 +154,9 @@ export function computeNextDueDate(
     }
     return null;
   }
-  // monthly: clamp to the target month's last day (Jan 31 -> Feb 28/29)
+  // monthly: clamp to the target month's last day (Jan 31 -> Feb 28/29);
+  // an explicit monthDay pins the day independently of the due date
+  const anchorDay = rule.monthDay ?? day;
   const target = new Date(Date.UTC(year, month - 1 + rule.interval, 1));
   const daysInTargetMonth = new Date(
     Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
@@ -146,7 +164,7 @@ export function computeNextDueDate(
   return formatDateParts(
     target.getUTCFullYear(),
     target.getUTCMonth() + 1,
-    Math.min(day, daysInTargetMonth),
+    Math.min(anchorDay, daysInTargetMonth),
   );
 }
 

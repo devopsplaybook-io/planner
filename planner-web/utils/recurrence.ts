@@ -6,8 +6,10 @@ const CANCELLED_SUFFIX = " [cancelled]";
 /**
  * Human label of a recurrence rule: "Every day", "Every 3 days",
  * "Every week on Mon, Fri", "Every 2 weeks", "Every month",
- * "Every 3 months". Weekly rules with a weekday set repeat weekly
- * (the interval is not applied to them), so the label says "Every week".
+ * "Every 3 months", "Every month on the 15th" or
+ * "Every 2 months on the last day" for monthly rules with a monthDay.
+ * Weekly rules with a weekday set repeat weekly (the interval is not
+ * applied to them), so the label says "Every week".
  */
 export function recurrenceLabel(rule: TaskRecurrence | null | undefined): string {
   if (!rule || !rule.frequency) {
@@ -22,11 +24,26 @@ export function recurrenceLabel(rule: TaskRecurrence | null | undefined): string
       return `Every week on ${days.join(", ")}`;
     }
   }
+  if (rule.frequency === "monthly" && rule.monthDay) {
+    const day =
+      rule.monthDay >= 31 ? "the last day" : `the ${ordinalDay(rule.monthDay)}`;
+    return `${every} ${rule.interval > 1 ? "months" : "month"} on ${day}`;
+  }
   const unit =
     rule.interval > 1
       ? { daily: "days", weekly: "weeks", monthly: "months" }[rule.frequency]
       : { daily: "day", weekly: "week", monthly: "month" }[rule.frequency];
   return `${every} ${unit}`;
+}
+
+/** "1st", "2nd", "3rd", "4th", … (11th–13th always get "th"). */
+export function ordinalDay(n: number): string {
+  const rem = n % 100;
+  if (rem >= 11 && rem <= 13) {
+    return `${n}th`;
+  }
+  const suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th";
+  return `${n}${suffix}`;
 }
 
 /** Parses a "YYYY-MM-DD" date part; returns null when malformed. */
@@ -66,8 +83,9 @@ function formatDateParts(year: number, month: number, day: number): string {
  * weeks, or with a weekday set the next calendar day strictly after the due
  * date whose weekday is in the set (the interval is ignored for that case);
  * monthly the same day-of-month interval months later, clamped to the target
- * month's last day. Returns null when the rule or the due date is missing or
- * malformed.
+ * month's last day — a monthDay on the rule (1–31) pins the day instead of
+ * the due date's own day. Returns null when the rule or the due date is
+ * missing or malformed.
  */
 export function computeNextDueDate(
   rule: TaskRecurrence | null | undefined,
@@ -113,7 +131,9 @@ export function computeNextDueDate(
     }
     return null;
   }
-  // monthly: clamp to the target month's last day (Jan 31 -> Feb 28/29)
+  // monthly: clamp to the target month's last day (Jan 31 -> Feb 28/29);
+  // an explicit monthDay pins the day independently of the due date
+  const anchorDay = rule.monthDay ?? day;
   const target = new Date(Date.UTC(year, month - 1 + rule.interval, 1));
   const daysInTargetMonth = new Date(
     Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
@@ -121,7 +141,45 @@ export function computeNextDueDate(
   return formatDateParts(
     target.getUTCFullYear(),
     target.getUTCMonth() + 1,
-    Math.min(day, daysInTargetMonth),
+    Math.min(anchorDay, daysInTargetMonth),
+  );
+}
+
+/**
+ * The "YYYY-MM-DD" due date aligned to a monthly rule's monthDay: the
+ * monthDay clamped to the due date's month last day when it is on or after
+ * the current day (equality means the due date already matches the rule),
+ * otherwise the day clamped to the next month's last day. Used by the
+ * recurrence selector's "Align due date" action. Returns null on malformed
+ * input or an out-of-range monthDay.
+ */
+export function alignDueDateToMonthDay(
+  dueDate: string,
+  monthDay: number,
+): string | null {
+  if (!Number.isInteger(monthDay) || monthDay < 1 || monthDay > 31) {
+    return null;
+  }
+  const parts = parseDateParts(dueDate);
+  if (!parts) {
+    return null;
+  }
+  const { year, month, day } = parts;
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const clamped = Math.min(monthDay, daysInMonth);
+  if (clamped >= day) {
+    return formatDateParts(year, month, clamped);
+  }
+  // Date.UTC month index `month` (1-based) is the next month; clamp the day
+  // to that month's last day (Jan 31 + monthDay 30 -> Feb 28, not Mar 2)
+  const next = new Date(Date.UTC(year, month, 1));
+  const daysInNextMonth = new Date(
+    Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  return formatDateParts(
+    next.getUTCFullYear(),
+    next.getUTCMonth() + 1,
+    Math.min(monthDay, daysInNextMonth),
   );
 }
 

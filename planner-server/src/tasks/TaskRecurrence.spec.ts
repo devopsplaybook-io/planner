@@ -35,6 +35,69 @@ describe("parseRecurrence", () => {
     });
   });
 
+  it("should accept a monthly rule with a monthDay", () => {
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: 15 }),
+    ).toEqual({
+      recurrence: { frequency: "monthly", interval: 1, monthDay: 15 },
+    });
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 2, monthDay: 1 }),
+    ).toEqual({
+      recurrence: { frequency: "monthly", interval: 2, monthDay: 1 },
+    });
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: 31 }),
+    ).toEqual({
+      recurrence: { frequency: "monthly", interval: 1, monthDay: 31 },
+    });
+  });
+
+  it("should drop a monthDay on non-monthly rules", () => {
+    expect(
+      parseRecurrence({ frequency: "daily", interval: 1, monthDay: 15 }),
+    ).toEqual({
+      recurrence: { frequency: "daily", interval: 1 },
+    });
+    expect(
+      parseRecurrence({ frequency: "weekly", interval: 1, monthDay: 15 }),
+    ).toEqual({
+      recurrence: { frequency: "weekly", interval: 1 },
+    });
+  });
+
+  it("should treat a null or absent monthDay as absent", () => {
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: null }),
+    ).toEqual({
+      recurrence: { frequency: "monthly", interval: 1 },
+    });
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1 }),
+    ).toEqual({
+      recurrence: { frequency: "monthly", interval: 1 },
+    });
+  });
+
+  it("should reject out-of-range or non-integer monthDays", () => {
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: 0 }).error,
+    ).toBeTruthy();
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: 32 }).error,
+    ).toBeTruthy();
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: 1.5 }).error,
+    ).toBeTruthy();
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: "15" })
+        .error,
+    ).toBeTruthy();
+    expect(
+      parseRecurrence({ frequency: "monthly", interval: 1, monthDay: -1 }).error,
+    ).toBeTruthy();
+  });
+
   it("should reject non-object shapes", () => {
     expect(parseRecurrence(null).error).toBeTruthy();
     expect(parseRecurrence(undefined).error).toBeTruthy();
@@ -137,6 +200,46 @@ describe("computeNextDueDate", () => {
     ).toBe("2026-04-30");
   });
 
+  it("should use the rule's monthDay instead of the due date's day", () => {
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 1, monthDay: 15 },
+        "2026-10-16",
+      ),
+    ).toBe("2026-11-15");
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 2, monthDay: 5 },
+        "2026-10-16",
+      ),
+    ).toBe("2026-12-05");
+  });
+
+  it("should stay stable across rescheduled occurrences with a monthDay", () => {
+    // the due date was pushed to the 20th, but the pinned day wins
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 1, monthDay: 15 },
+        "2026-10-20",
+      ),
+    ).toBe("2026-11-15");
+  });
+
+  it("should clamp the monthDay to the target month's last day", () => {
+    // monthDay 31: Jan 31 -> Feb 28 (2026), Feb 29 (2028), Mar 31 -> Apr 30
+    const last = { frequency: "monthly" as const, interval: 1, monthDay: 31 };
+    expect(computeNextDueDate(last, "2026-01-31")).toBe("2026-02-28");
+    expect(computeNextDueDate(last, "2028-01-31")).toBe("2028-02-29");
+    expect(computeNextDueDate(last, "2026-03-31")).toBe("2026-04-30");
+    // monthDay 30 in February -> Feb 28
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 1, monthDay: 30 },
+        "2026-01-31",
+      ),
+    ).toBe("2026-02-28");
+  });
+
   it("should return null for a missing or malformed due date", () => {
     expect(computeNextDueDate({ frequency: "daily", interval: 1 })).toBeNull();
     expect(computeNextDueDate({ frequency: "daily", interval: 1 }, "")).toBeNull();
@@ -234,5 +337,19 @@ describe("buildNextOccurrence", () => {
 
     expect(completed.recurrence.weekdays).toEqual([3]);
     expect(completed.checklist[0].done).toBe(true);
+  });
+
+  it("should carry the monthDay into the next occurrence and honor it", () => {
+    const completed = makeCompleted();
+    completed.recurrence = { frequency: "monthly", interval: 1, monthDay: 15 };
+    completed.dueDate = "2026-10-20";
+    const next = buildNextOccurrence(completed, "To Do");
+
+    expect(next.recurrence).toEqual({
+      frequency: "monthly",
+      interval: 1,
+      monthDay: 15,
+    });
+    expect(next.dueDate).toBe("2026-11-15");
   });
 });

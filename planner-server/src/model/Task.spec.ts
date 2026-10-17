@@ -150,6 +150,18 @@ describe("Task model", () => {
       ).toEqual(rule);
     });
 
+    it("should parse a monthly recurrence rule with a monthDay", () => {
+      const rule = { frequency: "monthly", interval: 1, monthDay: 15 };
+      expect(Task.fromJson({ projectId: "p1", title: "T", recurrence: rule }).recurrence).toEqual(rule);
+      expect(
+        Task.fromJson({
+          projectId: "p1",
+          title: "T",
+          recurrence: JSON.stringify(rule),
+        }).recurrence,
+      ).toEqual(rule);
+    });
+
     it("should treat a malformed recurrence as not recurring", () => {
       expect(
         Task.fromJson({ projectId: "p1", title: "T", recurrence: "garbage" })

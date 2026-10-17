@@ -46,6 +46,8 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Recurrence UX: the weekday toggle has visually distinct on/off states in both themes; when a recurrence rule is set, the create and detail dialogs label the due date as the current occurrence's ("Due date (this occurrence)"), explain that completing the task creates the next occurrence with the due date shifted, and preview the computed next occurrence date (client-side mirror of the server's shift).
 
+[x] Monthly day of month: a monthly rule can pin an explicit day of month (`monthDay`, integer 1–31; 29–31 clamp to the target month's last day, so 31 means the last day of the month); when set, the next occurrence uses it instead of the due date's day and stays stable when an occurrence is rescheduled; when absent, the day keeps being derived from the due date. The create and edit dialogs offer a day-of-month selector ("Same day as the due date", 1–31 with "Last day") and, when the due date does not match the picked day, a hint plus an "Align due date" action; the repeats label reads e.g. "Every month on the 15th" / "Every 2 months on the last day".
+
 ## Task Dialog UX
 
 [x] Comment display: comment headers show relative timestamps with the full date as tooltip and an "(edited)" marker for edited comments; comment actions are visible on touch devices; the per-comment Show more/less disclosure exposes its state with `aria-expanded`; overflowing comments also get an icon-only expand/collapse toggle in the comment actions (chevron up/down, `aria-expanded`/`aria-controls`, kept in sync with the bottom disclosure, which stays); rendered markdown links open in a new tab with `rel="noopener noreferrer"`.

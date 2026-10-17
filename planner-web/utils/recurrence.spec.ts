@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { TaskRecurrence } from "../stores/tasks";
 import {
+  alignDueDateToMonthDay,
   applyRecurringFilter,
   computeNextDueDate,
   findPreviousOccurrence,
+  ordinalDay,
   recurrenceLabel,
 } from "./recurrence";
 
@@ -45,6 +47,40 @@ describe("recurrenceLabel", () => {
     expect(recurrenceLabel({ frequency: "monthly", interval: 3 })).toBe(
       "Every 3 months",
     );
+  });
+
+  it("labels monthly rules with a monthDay", () => {
+    expect(
+      recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: 15 }),
+    ).toBe("Every month on the 15th");
+    expect(
+      recurrenceLabel({ frequency: "monthly", interval: 2, monthDay: 15 }),
+    ).toBe("Every 2 months on the 15th");
+    expect(
+      recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: 31 }),
+    ).toBe("Every month on the last day");
+    expect(
+      recurrenceLabel({ frequency: "monthly", interval: 3, monthDay: 31 }),
+    ).toBe("Every 3 months on the last day");
+    // absent monthDay keeps the plain label
+    expect(
+      recurrenceLabel({ frequency: "monthly", interval: 1, monthDay: undefined }),
+    ).toBe("Every month");
+  });
+
+  it("builds ordinal day labels", () => {
+    expect(ordinalDay(1)).toBe("1st");
+    expect(ordinalDay(2)).toBe("2nd");
+    expect(ordinalDay(3)).toBe("3rd");
+    expect(ordinalDay(4)).toBe("4th");
+    expect(ordinalDay(11)).toBe("11th");
+    expect(ordinalDay(12)).toBe("12th");
+    expect(ordinalDay(13)).toBe("13th");
+    expect(ordinalDay(21)).toBe("21st");
+    expect(ordinalDay(22)).toBe("22nd");
+    expect(ordinalDay(23)).toBe("23rd");
+    expect(ordinalDay(30)).toBe("30th");
+    expect(ordinalDay(31)).toBe("31st");
   });
 
   it("returns an empty string for a missing rule", () => {
@@ -114,6 +150,31 @@ describe("computeNextDueDate", () => {
     ).toBe("2026-04-30");
   });
 
+  it("uses the rule's monthDay instead of the due date's day, clamped", () => {
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 1, monthDay: 15 },
+        "2026-10-16",
+      ),
+    ).toBe("2026-11-15");
+    // stable across a rescheduled occurrence
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 1, monthDay: 15 },
+        "2026-10-20",
+      ),
+    ).toBe("2026-11-15");
+    const last = { frequency: "monthly" as const, interval: 1, monthDay: 31 };
+    expect(computeNextDueDate(last, "2026-01-31")).toBe("2026-02-28");
+    expect(computeNextDueDate(last, "2028-01-31")).toBe("2028-02-29");
+    expect(
+      computeNextDueDate(
+        { frequency: "monthly", interval: 1, monthDay: 30 },
+        "2026-01-31",
+      ),
+    ).toBe("2026-02-28");
+  });
+
   it("returns null for a missing rule or a missing/malformed due date", () => {
     expect(computeNextDueDate(null, "2026-10-16")).toBeNull();
     expect(computeNextDueDate(undefined, "2026-10-16")).toBeNull();
@@ -127,6 +188,39 @@ describe("computeNextDueDate", () => {
     expect(
       computeNextDueDate({ frequency: "daily", interval: 1 }, "2026-13-40"),
     ).toBeNull();
+  });
+});
+
+describe("alignDueDateToMonthDay", () => {
+  it("aligns to the picked day later in the same month", () => {
+    expect(alignDueDateToMonthDay("2026-10-16", 31)).toBe("2026-10-31");
+    expect(alignDueDateToMonthDay("2026-04-10", 15)).toBe("2026-04-15");
+  });
+
+  it("aligns to the next month when the picked day already passed", () => {
+    expect(alignDueDateToMonthDay("2026-10-16", 15)).toBe("2026-11-15");
+    expect(alignDueDateToMonthDay("2026-04-20", 15)).toBe("2026-05-15");
+  });
+
+  it("keeps an already-aligned due date unchanged", () => {
+    expect(alignDueDateToMonthDay("2026-01-31", 31)).toBe("2026-01-31");
+    expect(alignDueDateToMonthDay("2026-10-15", 15)).toBe("2026-10-15");
+  });
+
+  it("clamps the picked day to the month's last day", () => {
+    // Feb has 28 days in 2026
+    expect(alignDueDateToMonthDay("2026-02-10", 31)).toBe("2026-02-28");
+    // next-month branch clamps too: Jan 31 + day 30 -> Feb 28
+    expect(alignDueDateToMonthDay("2026-01-31", 30)).toBe("2026-02-28");
+    expect(alignDueDateToMonthDay("2026-04-05", 31)).toBe("2026-04-30");
+  });
+
+  it("returns null on malformed input", () => {
+    expect(alignDueDateToMonthDay("garbage", 15)).toBeNull();
+    expect(alignDueDateToMonthDay("", 15)).toBeNull();
+    expect(alignDueDateToMonthDay("2026-13-40", 15)).toBeNull();
+    expect(alignDueDateToMonthDay("2026-10-16", 0)).toBeNull();
+    expect(alignDueDateToMonthDay("2026-10-16", 32)).toBeNull();
   });
 });
 
