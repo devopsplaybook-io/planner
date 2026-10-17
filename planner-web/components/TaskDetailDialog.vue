@@ -189,6 +189,19 @@
               <i v-if="dueUrgency" class="bi bi-exclamation-triangle" />
             </span>
           </div>
+          <div v-if="editing || task.recurrence" class="meta-field">
+            <strong>Repeats</strong>
+            <TaskRecurrenceSelect
+              v-if="editing"
+              v-model="editForm.recurrence"
+            />
+            <span
+              v-else
+              :title="'Repeats: ' + recurrenceLabel(task.recurrence)"
+            >
+              <i class="bi bi-arrow-repeat" /> {{ recurrenceLabel(task.recurrence) }}
+            </span>
+          </div>
           <div class="meta-field">
             <strong>Assignees</strong>
             <UserMultiSelect
@@ -682,6 +695,7 @@ import {
   fetchAttachmentObjectUrl,
 } from "../utils/attachments";
 import { displayName } from "../utils/projectHierarchy";
+import { recurrenceLabel } from "../utils/recurrence";
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -729,6 +743,7 @@ const editForm = ref({
   description: "",
   priority: "",
   dueDate: "",
+  recurrence: null,
   assignees: [],
   projectId: "",
 });
@@ -1213,6 +1228,7 @@ function startEdit() {
     description: task.value.description,
     priority: task.value.priority,
     dueDate: task.value.dueDate || "",
+    recurrence: task.value.recurrence || null,
     assignees: (task.value.assignees || []).map((a) => a.userId),
     projectId: task.value.projectId,
   };
@@ -1245,6 +1261,7 @@ async function saveEdit() {
       description: editForm.value.description,
       priority: editForm.value.priority,
       dueDate: editForm.value.dueDate || null,
+      recurrence: editForm.value.recurrence || null,
       projectId: editForm.value.projectId,
     });
     // Update assignees separately

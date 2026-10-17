@@ -38,6 +38,12 @@
           Due date
           <input v-model="form.dueDate" type="date" />
         </label>
+        <!-- Not a <label>: the weekday chips are <button>s, and a label
+             forwards clicks on them to the Repeats select. -->
+        <div class="recurrence-field">
+          <strong>Repeats</strong>
+          <TaskRecurrenceSelect v-model="form.recurrence" />
+        </div>
         <fieldset>
           <legend>Assignees</legend>
           <UserMultiSelect v-model="form.assignees" :users="users" />
@@ -120,6 +126,7 @@ const form = ref({
   description: "",
   priority: "medium",
   dueDate: "",
+  recurrence: null,
   assignees: [],
   checklist: [],
 });
@@ -134,6 +141,7 @@ watch(
         description: "",
         priority: "medium",
         dueDate: "",
+        recurrence: null,
         assignees: authStore.currentUser?.id ? [authStore.currentUser.id] : [],
         checklist: [],
       };
@@ -157,6 +165,7 @@ async function createTask() {
       description: form.value.description,
       priority: form.value.priority,
       dueDate: form.value.dueDate || undefined,
+      recurrence: form.value.recurrence || undefined,
       assignees: form.value.assignees,
       checklist: form.value.checklist.filter((c) => c.text.trim()),
     };
@@ -172,6 +181,13 @@ async function createTask() {
 </script>
 
 <style scoped>
+.recurrence-field {
+  display: block;
+  margin-bottom: var(--space-sm);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
 .checklist-input-row {
   display: grid;
   grid-template-columns: 1fr auto;

@@ -15,6 +15,7 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 | [x] Priority    | Importance level of the task                                                                                                |
 | [x] Labels      | Zero, one, or multiple labels for categorization                                                                            |
 | [x] Dependencies| Zero, one, or multiple other tasks this task depends on                                                                     |
+| [x] Recurrence  | A recurrence rule (daily / weekly with weekday set / monthly by day-of-month / custom interval) that spawns the next occurrence when the task is completed |
 | [x] Project     | The project the task belongs to (exactly one)                                                                               |
 
 ## Management of Tasks
@@ -36,6 +37,12 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 [x] Cancel: the task dialog advanced menu offers Cancel; cancelling moves the task to Done and appends " [cancelled]" to its title; the action is confirmed before applying; it is not offered for Done tasks or tasks in archived projects.
 
 [x] Dependencies: a task can declare zero or multiple dependencies on other tasks (references, not copies); the list is set at creation with task ids and fully replaceable afterwards; each entry exposes the dependency's current title and status alongside its id; dependencies may cross projects (any task visible to the user, in any status including Done); a task cannot depend on itself; deleting either task removes the link; Planner itself does not enforce any flow from dependencies (informational only — consumers like the LLM agent decide what "all dependencies Done" means).
+
+### Recurrence
+
+[x] Recurring tasks: a task carries a recurrence rule — daily, weekly (optionally with a weekday set), monthly by day-of-month, or a custom "every N days/weeks/months" interval — chosen with a selector in the create and edit dialogs next to the due date; a rule requires a due date. The rule shows as a "Repeats" field in the task dialog (with a human-readable label such as "Every week on Mon, Fri") and as a repeats hint on task cards.
+
+[x] Spawn on completion: completing a recurring task (moving it to Done by any means, including the Cancel flow) automatically creates the next occurrence with the due date shifted by the rule (daily +N days; weekly +N weeks, or with a weekday set the next calendar day in the set after the due date; monthly the same day-of-month N months later, clamped to the target month's last day). The next occurrence carries over the title (a trailing " [cancelled]" suffix is stripped), description, checklist (every item reset to not done), priority, labels, assignees and the recurrence rule, but not comments, attachments or dependencies; it starts in the project's first status and depends on the completed task (traceability through the existing dependency mechanism). A series ends by removing the recurrence rule; a spawn failure never fails the completion.
 
 ## Task Dialog UX
 
@@ -71,6 +78,6 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 - `doneSince` — ISO 8601 timestamp; keeps non-Done tasks and Done tasks updated since the cutoff.
 - `assigneeUserId` — only tasks assigned to this user, in all statuses.
 - `limit` / `offset` — pagination (default limit 1000).
-- [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dependencies`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees, dependencies) are not queried server-side.
+- [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `recurrence`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dependencies`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees, dependencies) are not queried server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-12_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-16_

@@ -35,7 +35,7 @@ describe("tasks store list reads", () => {
     expect(mockApiGet).toHaveBeenCalledWith("/tasks", {
       params: {
         fields:
-          "id,projectId,title,status,priority,dueDate,checklist,assignees,labels,dateCreated,dateUpdated",
+          "id,projectId,title,status,priority,dueDate,recurrence,checklist,assignees,labels,dateCreated,dateUpdated",
         projectId: "proj-1",
         projectIds: "proj-1,proj-2",
         doneSince: "2026-10-01T00:00:00.000Z",

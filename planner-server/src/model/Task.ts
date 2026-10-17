@@ -38,6 +38,17 @@ export interface TaskDependency {
 }
 
 /**
+ * Recurrence rule of a recurring task. `weekdays` (0–6, 0 = Sunday) is only
+ * meaningful for weekly rules; an empty or absent list means "every N weeks"
+ * on the due date's own weekday. Stored as JSON in the `recurrence` column.
+ */
+export interface TaskRecurrence {
+  frequency: "daily" | "weekly" | "monthly";
+  interval: number;
+  weekdays?: number[];
+}
+
+/**
  * Top-level keys of the task transport shape, in response order. Used by
  * the list endpoint's sparse fieldsets: a "fields" query param names a
  * subset of these and unrequested keys are omitted from the response.
@@ -50,6 +61,7 @@ export const TASK_TRANSPORT_FIELDS = [
   "status",
   "priority",
   "dueDate",
+  "recurrence",
   "checklist",
   "assignees",
   "comments",
@@ -75,6 +87,27 @@ export class Task {
     task.status = (json.status as string) || "To Do";
     task.priority = (json.priority as string) || "medium";
     task.dueDate = json.dueDate as string | undefined;
+    if (json.recurrence) {
+      try {
+        const raw =
+          typeof json.recurrence === "string"
+            ? JSON.parse(json.recurrence as string)
+            : json.recurrence;
+        // Lenient shape check: rows are written through validated routes;
+        // this only keeps malformed data from reaching the transport shape.
+        if (
+          raw &&
+          typeof raw === "object" &&
+          !Array.isArray(raw) &&
+          ["daily", "weekly", "monthly"].includes(raw.frequency) &&
+          Number.isInteger(raw.interval)
+        ) {
+          task.recurrence = raw as TaskRecurrence;
+        }
+      } catch {
+        // Invalid stored value: treated as not recurring
+      }
+    }
     if (json.dateCreated) {
       task.dateCreated = json.dateCreated as string;
     }
@@ -116,6 +149,7 @@ export class Task {
   public status: string;
   public priority: string;
   public dueDate?: string;
+  public recurrence?: TaskRecurrence;
   public checklist: ChecklistItem[];
   public assignees: TaskAssignee[];
   public comments: TaskComment[];
@@ -169,6 +203,7 @@ export class Task {
       status: this.status,
       priority: this.priority,
       dueDate: this.dueDate,
+      recurrence: this.recurrence,
       checklist: this.checklist,
       assignees: this.assignees,
       comments: this.comments,

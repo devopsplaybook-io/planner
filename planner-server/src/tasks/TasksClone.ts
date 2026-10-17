@@ -3,11 +3,11 @@ import { Task } from "../model/Task";
 
 /**
  * Builds a copy of the source task: a new id, the same fields (project,
- * title, description, priority, due date, labels, assignees, dependencies,
- * checklist) and no comments or attachments. Comments never carry over;
- * attachments are copied file-by-file by the caller. The clone lands in the
- * first status of the project (resolved by the caller; without it the source
- * status is kept).
+ * title, description, priority, due date, recurrence, labels, assignees,
+ * dependencies, checklist) and no comments or attachments. Comments never
+ * carry over; attachments are copied file-by-file by the caller. The clone
+ * lands in the first status of the project (resolved by the caller; without
+ * it the source status is kept).
  */
 export function cloneTaskFrom(source: Task, firstStatus?: string): Task {
   const clone = new Task();
@@ -23,6 +23,12 @@ export function cloneTaskFrom(source: Task, firstStatus?: string): Task {
     taskId: d.taskId,
   }));
   clone.checklist = (source.checklist || []).map((item) => ({ ...item }));
+  if (source.recurrence) {
+    clone.recurrence = { ...source.recurrence };
+    if (source.recurrence.weekdays) {
+      clone.recurrence.weekdays = [...source.recurrence.weekdays];
+    }
+  }
   return clone;
 }
 
