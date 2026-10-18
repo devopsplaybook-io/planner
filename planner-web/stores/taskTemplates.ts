@@ -14,6 +14,7 @@ export interface TemplateAutomation {
   scheduleCron: string | null;
   skipIfPreviousNotDone: boolean;
   addDateToTitle: boolean;
+  instanceStatus: string | null;
 }
 
 export interface TaskTemplate {

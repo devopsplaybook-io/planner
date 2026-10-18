@@ -96,6 +96,7 @@ describe("TaskTemplate", () => {
         scheduleCron: "0 9 * * 1",
         skipIfPreviousNotDone: true,
         addDateToTitle: false,
+        instanceStatus: null,
       });
       expect(json.checklist).toEqual(template.checklist);
       expect(json.assignees).toEqual(template.assignees);
@@ -110,6 +111,7 @@ describe("TaskTemplate", () => {
         scheduleCron: null,
         skipIfPreviousNotDone: false,
         addDateToTitle: false,
+        instanceStatus: null,
       });
     });
   });

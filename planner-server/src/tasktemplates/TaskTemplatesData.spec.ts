@@ -1,4 +1,13 @@
-import { buildListTemplatesQuery } from "./TaskTemplatesData";
+import { TaskTemplatesAdd, TaskTemplatesUpdate, buildListTemplatesQuery } from "./TaskTemplatesData";
+import { DbUtilsExecSQL } from "../utils/DbUtils";
+import { TaskTemplate } from "../model/TaskTemplate";
+
+jest.mock("../utils/DbUtils", () => ({
+  DbUtilsExecSQL: jest.fn(),
+  DbUtilsQuerySQL: jest.fn(async () => []),
+  DbUtilsGetType: jest.fn(() => "sqlite"),
+  DbUtilsTransaction: jest.fn(async (fn: () => Promise<void>) => fn()),
+}));
 
 describe("buildListTemplatesQuery", () => {
   it("should build an unfiltered query for sqlite", () => {
@@ -87,5 +96,52 @@ describe("buildListTemplatesQuery", () => {
       "SELECT * FROM task_templates ORDER BY dateCreated DESC",
     );
     expect(params).toEqual([]);
+  });
+});
+
+describe("TaskTemplatesAdd / TaskTemplatesUpdate instanceStatus persistence", () => {
+  function makeTemplate(): TaskTemplate {
+    const template = new TaskTemplate();
+    template.projectId = "p1";
+    template.title = "Weekly report";
+    return template;
+  }
+
+  beforeEach(() => {
+    (DbUtilsExecSQL as jest.Mock).mockClear();
+  });
+
+  it("should insert the instanceStatus column when set", async () => {
+    const template = makeTemplate();
+    template.instanceStatus = "Doing";
+    await TaskTemplatesAdd(template);
+    const [sql, params] = (DbUtilsExecSQL as jest.Mock).mock.calls[0];
+    expect(sql).toContain("instanceStatus");
+    expect(params).toContain("Doing");
+  });
+
+  it("should insert null when the instanceStatus is not set", async () => {
+    const template = makeTemplate();
+    await TaskTemplatesAdd(template);
+    const [sql, params] = (DbUtilsExecSQL as jest.Mock).mock.calls[0];
+    expect(sql).toContain("instanceStatus");
+    expect(params).toContain(null);
+  });
+
+  it("should update the instanceStatus column when set", async () => {
+    const template = makeTemplate();
+    template.instanceStatus = "Review";
+    await TaskTemplatesUpdate(template);
+    const [sql, params] = (DbUtilsExecSQL as jest.Mock).mock.calls[0];
+    expect(sql).toContain("instanceStatus");
+    expect(params).toContain("Review");
+  });
+
+  it("should update to null when the instanceStatus is cleared", async () => {
+    const template = makeTemplate();
+    await TaskTemplatesUpdate(template);
+    const [sql, params] = (DbUtilsExecSQL as jest.Mock).mock.calls[0];
+    expect(sql).toContain("instanceStatus");
+    expect(params).toContain(null);
   });
 });

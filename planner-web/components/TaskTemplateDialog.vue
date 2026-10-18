@@ -148,6 +148,24 @@
             "<strong>{{ datedTitlePreview }}</strong
             >".
           </p>
+          <label class="automation-row">
+            <span class="automation-label">Initial status</span>
+            <select v-model="form.instanceStatus">
+              <option value="">Project default</option>
+              <option
+                v-for="status in selectedProject?.statuses || []"
+                :key="status"
+                :value="status"
+              >
+                {{ status }}
+              </option>
+            </select>
+          </label>
+          <p class="automation-hint">
+            <i class="bi bi-flag" />
+            Status every created instance starts in; "Project default" uses
+            the project's first status.
+          </p>
         </fieldset>
 
         <template v-if="!isCreate">
@@ -341,6 +359,7 @@ function emptyForm() {
     scheduleCron: "",
     skipIfPreviousNotDone: false,
     addDateToTitle: false,
+    instanceStatus: "",
   };
 }
 
@@ -355,6 +374,7 @@ function seedForm(data) {
     scheduleCron: data.automation?.scheduleCron || "",
     skipIfPreviousNotDone: !!data.automation?.skipIfPreviousNotDone,
     addDateToTitle: !!data.automation?.addDateToTitle,
+    instanceStatus: data.automation?.instanceStatus || "",
   };
   labelsText.value = (data.labels || []).join(", ");
 }
@@ -405,6 +425,7 @@ function buildPayload() {
       scheduleCron: form.value.scheduleCron.trim() || null,
       skipIfPreviousNotDone: form.value.skipIfPreviousNotDone,
       addDateToTitle: form.value.addDateToTitle,
+      instanceStatus: form.value.instanceStatus || null,
     },
     assignees: form.value.assignees,
     labels: labelsText.value
