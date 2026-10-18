@@ -21,6 +21,14 @@
           all-label="All projects"
           @update:model-value="onFilterChange"
         />
+        <div class="label-filter">
+          <LabelMultiSelect
+            v-model="selectedLabels"
+            :suggestions="noteLabelSuggestions"
+            placeholder="Filter by label…"
+            aria-label="Filter by labels"
+          />
+        </div>
         <button class="fab-button" @click="showCreateDialog = true">
           <i class="bi bi-plus-lg" />
         </button>
@@ -36,13 +44,13 @@
         <template v-else>
           <div class="note-list">
             <NoteCard
-              v-for="note in searchResults"
+              v-for="note in filteredSearchResults"
               :key="note.id"
               :note="note"
               @click="openNote(note)"
             />
           </div>
-          <div v-if="searchResults.length === 0" class="empty-state">
+          <div v-if="filteredSearchResults.length === 0" class="empty-state">
             <i class="bi bi-search" />
             <p>No notes found</p>
           </div>
@@ -78,12 +86,38 @@ const route = useRoute();
 const loading = ref(true);
 const showCreateDialog = ref(false);
 
+// Label filter: a note must carry every selected label; it composes with
+// the project subtree filter and, while searching, with the server-side
+// search results
+const selectedLabels = ref([]);
+
+// Suggestions come from the labels actually in use on the loaded notes
+const noteLabelSuggestions = computed(() => {
+  const counts = new Map();
+  for (const note of notesStore.notes) {
+    for (const label of note.labels || []) {
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+});
+
 const filteredNotes = computed(() => {
+  let notes = notesStore.notes;
   const filterId = projectsStore.selectedProjectFilter;
-  if (!filterId) return notesStore.notes;
-  // The filter spans the selected project's whole subtree
-  const ids = new Set(projectsStore.subtreeProjectIds(filterId));
-  return notesStore.notes.filter((n) => ids.has(n.projectId));
+  if (filterId) {
+    // The filter spans the selected project's whole subtree
+    const ids = new Set(projectsStore.subtreeProjectIds(filterId));
+    notes = notes.filter((n) => ids.has(n.projectId));
+  }
+  if (selectedLabels.value.length) {
+    notes = notes.filter((n) =>
+      selectedLabels.value.every((label) => (n.labels || []).includes(label)),
+    );
+  }
+  return notes;
 });
 
 const searchQuery = ref("");
@@ -115,6 +149,13 @@ async function runSearch() {
 }
 
 watchDebounced(searchQuery, runSearch, { debounce: 300 });
+
+const filteredSearchResults = computed(() => {
+  if (!selectedLabels.value.length) return searchResults.value;
+  return searchResults.value.filter((n) =>
+    selectedLabels.value.every((label) => (n.labels || []).includes(label)),
+  );
+});
 
 function onFilterChange(projectId) {
   projectsStore.setProjectFilter(projectId);
@@ -196,4 +237,14 @@ useRegularRefresh(() => notesStore.fetchAll());
      inset from the outer search box; keep the highlight on .search-box */
   box-shadow: none;
 }
+/* Compact chip editor for the label filter */
+.label-filter {
+  width: 12rem;
+  max-width: 40vw;
+}
+
+.label-filter :deep(.lms-input) {
+  min-width: 6em;
+}
+
 </style>

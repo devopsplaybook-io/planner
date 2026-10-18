@@ -25,6 +25,8 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 
 [x] Update: when a task is clicked, the task is displayed and the user can edit the task.
 
+[x] Labels: labels are free-form strings set at creation and in the task dialog edit mode via the chip editor with autocomplete from existing labels; they are saved through the labels replace API (`POST /api/tasks/:id/labels`).
+
 [x] Advanced menu: the task dialog offers an advanced menu with Clone, Improve and Delete; delete is no longer a standalone button.
 
 [x] Clone: cloning a task creates a copy with all its info, including attachments and checklist, but not comments; the copy starts in the first status of the project and its dialog opens.
@@ -81,7 +83,8 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 - `q` — case-insensitive substring matched against title and description.
 - `doneSince` — ISO 8601 timestamp; keeps non-Done tasks and Done tasks updated since the cutoff.
 - `assigneeUserId` — only tasks assigned to this user, in all statuses.
+- `labels` — comma-separated label names; only tasks carrying every listed label are returned.
 - `limit` / `offset` — pagination (default limit 1000).
 - [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dependencies`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees, dependencies) are not queried server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-18_

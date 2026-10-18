@@ -106,15 +106,21 @@
             <ProjectSelect v-if="editing" v-model="editForm.projectId" />
             <span v-else>{{ projectName || note.projectId }}</span>
           </div>
-        </section>
-
-        <!-- Labels -->
-        <section v-if="note.labels && note.labels.length">
-          <h4>Labels</h4>
-          <div class="tag-list">
-            <span v-for="l in note.labels" :key="l" class="label-tag">{{
-              l
-            }}</span>
+          <div
+            v-if="editing || (note.labels && note.labels.length)"
+            class="meta-field"
+          >
+            <strong>Labels</strong>
+            <LabelMultiSelect
+              v-if="editing"
+              v-model="editForm.labels"
+              :suggestions="labelsStore.labels"
+            />
+            <div v-else class="tag-list">
+              <span v-for="l in note.labels" :key="l" class="tag">{{
+                l
+              }}</span>
+            </div>
           </div>
         </section>
 
@@ -326,6 +332,7 @@ const dialogEl = useModalDialog(() => !!props.noteId);
 
 const notesStore = useNotesStore();
 const projectsStore = useProjectsStore();
+const labelsStore = useLabelsStore();
 const authStore = useAuthStore();
 
 const note = computed(() => notesStore.currentNote);
@@ -341,7 +348,7 @@ const fileInput = ref(null);
 const editing = ref(false);
 const saving = ref(false);
 const advancedMenuEl = ref(null);
-const editForm = ref({ title: "", description: "", projectId: "" });
+const editForm = ref({ title: "", description: "", labels: [], projectId: "" });
 const fullscreenImage = ref(null);
 // att.id -> blob object URL for image previews. Attachments are fetched
 // with the Bearer header; the JWT never appears in an attachment URL.
@@ -472,11 +479,14 @@ function startEdit() {
   editForm.value = {
     title: note.value.title,
     description: note.value.description,
+    labels: [...(note.value.labels || [])],
     projectId: note.value.projectId,
   };
   editing.value = true;
   // Fetch projects for the project picker
   projectsStore.fetchAll();
+  // Existing labels feed the autocomplete suggestions
+  labelsStore.fetchAll().catch(() => {});
 }
 
 function cancelEdit() {
@@ -492,6 +502,17 @@ async function saveEdit() {
       description: editForm.value.description,
       projectId: editForm.value.projectId,
     });
+    // Replace the labels when the draft diverges
+    const currentLabels = note.value.labels || [];
+    const newLabels = editForm.value.labels;
+    if (
+      newLabels.length !== currentLabels.length ||
+      newLabels.some((label, index) => label !== currentLabels[index])
+    ) {
+      await notesStore.setLabels(props.noteId, newLabels);
+      // setLabels does not return the note: re-fetch so view mode shows it
+      await notesStore.fetchById(props.noteId);
+    }
     editing.value = false;
     emit("updated");
   } catch (e) {
