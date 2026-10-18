@@ -113,6 +113,10 @@ watch(
         canvas.width = viewport.width;
         canvas.height = viewport.height;
         canvas.className = "pdf-page";
+        // Scoped CSS never matches elements created imperatively: set the
+        // display size inline so pages always fit the panel width
+        canvas.style.width = "100%";
+        canvas.style.height = "auto";
         canvas.setAttribute("aria-label", `Page ${pageNum} of ${doc.numPages}`);
         container.appendChild(canvas);
         await page.render({ canvas, viewport }).promise;
@@ -181,9 +185,7 @@ function download() {
   align-items: center;
 }
 
-.pdf-page {
-  width: 100%;
-  height: auto;
+.pdf-pages :deep(.pdf-page) {
   display: block;
   box-shadow: var(--shadow-md);
   background: #fff;
