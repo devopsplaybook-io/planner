@@ -27,6 +27,7 @@ The **Automation** section is specific to templates (tasks do not have it):
 | [x] Schedule | A cron expression (validated server-side with node-cron, e.g. `0 0 * * *`); when empty, the template is manual and only creates instances on demand. The UI shows a human-readable label ("Every day at 00:00", "Every Mon, Fri at 00:00", "On day 15 of the month at 00:00") and falls back to the raw expression for unknown shapes |
 | [x] Skip if previous instance not done | When enabled and the previous instance still exists in a status other than Done, the scheduled tick creates nothing; when the previous instance was deleted, a new one is created |
 | [x] Add the date to the title | When enabled, every created instance's title gets a " YYYY.MN.DD" suffix (zero-padded creation date, e.g. "Report 2026.10.17") |
+| [x] Initial status of instances | When set, created instances start in this status instead of the project's first status; the value is validated against the template's project statuses (server-side) and the UI offers the selected project's statuses plus a "Project default" empty option |
 
 ## Management of Templates
 
@@ -50,7 +51,7 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 ## Instance contents
 
-[x] An instance carries over the template's title (optionally suffixed with the creation date), description, priority, labels, assignees and checklist (with the template's initial done states); it starts in the project's first status (or "To Do" when the catalog has no statuses) with no due date.
+[x] An instance carries over the template's title (optionally suffixed with the creation date), description, priority, labels, assignees and checklist (with the template's initial done states); it starts in the template's configured initial status when valid, else the project's first status (or "To Do" when the catalog has no statuses) with no due date.
 
 [x] Template attachment files are copied into the instance (each instance owns its copy, so deleting one never affects the other); template comments are not copied.
 
@@ -83,4 +84,4 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 [x] The migration is transactional per task, isolated (one failing task does not block the others), runs before the scheduler starts, and when no recurring tasks remain it drops the legacy column and records its completion so later startups are no-ops.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-18_

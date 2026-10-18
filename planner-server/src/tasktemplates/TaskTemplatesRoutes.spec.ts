@@ -197,6 +197,7 @@ describe("TaskTemplatesRoutes list and read", () => {
       scheduleCron: null,
       skipIfPreviousNotDone: false,
       addDateToTitle: false,
+      instanceStatus: null,
     });
   });
 
@@ -270,6 +271,55 @@ describe("TaskTemplatesRoutes create and update", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toContain("cron");
     expect(TaskTemplatesAdd).not.toHaveBeenCalled();
+  });
+
+  it("should create a template with a valid instanceStatus", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "Weekly report",
+        automation: { instanceStatus: "Done" },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const created = (TaskTemplatesAdd as jest.Mock).mock.calls[0][0];
+    expect(created.instanceStatus).toBe("Done");
+    expect(res.json().automation.instanceStatus).toBe("Done");
+  });
+
+  it("should answer 400 for an instanceStatus that is not a project status", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "T",
+        automation: { instanceStatus: "Nonexistent" },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("instanceStatus");
+    expect(TaskTemplatesAdd).not.toHaveBeenCalled();
+  });
+
+  it("should clear the instanceStatus on create when null", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "T",
+        automation: { instanceStatus: null },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const created = (TaskTemplatesAdd as jest.Mock).mock.calls[0][0];
+    expect(created.instanceStatus).toBeUndefined();
   });
 
   it("should answer 400 when the title is missing", async () => {
@@ -350,6 +400,89 @@ describe("TaskTemplatesRoutes create and update", () => {
       payload: { automation: { scheduleCron: "99" } },
     });
     expect(res.statusCode).toBe(400);
+    expect(TaskTemplatesUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should update the instanceStatus to a valid project status", async () => {
+    const template = makeTemplate(allProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(allProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: { automation: { instanceStatus: "Done" } },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(template.instanceStatus).toBe("Done");
+  });
+
+  it("should clear the instanceStatus on update when null", async () => {
+    const template = makeTemplate(allProject);
+    template.instanceStatus = "Done";
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(allProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: { automation: { instanceStatus: null } },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(template.instanceStatus).toBeUndefined();
+  });
+
+  it("should answer 400 for an instanceStatus that is not a status of the project", async () => {
+    const template = makeTemplate(allProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(allProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: { automation: { instanceStatus: "Nonexistent" } },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("instanceStatus");
+    expect(TaskTemplatesUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should validate the instanceStatus against the new project when the project changes", async () => {
+    const template = makeTemplate(allProject);
+    const otherProject = makeProject("public", []);
+    otherProject.statuses = ["Doing", "Review", "Done"];
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === otherProject.id ? otherProject : allProject,
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: {
+        projectId: otherProject.id,
+        automation: { instanceStatus: "Doing" },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(template.projectId).toBe(otherProject.id);
+    expect(template.instanceStatus).toBe("Doing");
+  });
+
+  it("should answer 400 for an instanceStatus that is not a status of the new project", async () => {
+    const template = makeTemplate(allProject);
+    const otherProject = makeProject("public", []);
+    otherProject.statuses = ["Doing", "Review", "Done"];
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === otherProject.id ? otherProject : allProject,
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: {
+        projectId: otherProject.id,
+        automation: { instanceStatus: "To Do" },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("instanceStatus");
     expect(TaskTemplatesUpdate).not.toHaveBeenCalled();
   });
 });

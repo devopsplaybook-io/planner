@@ -38,14 +38,15 @@ import { parseProjectIds } from "../tasks/TasksRoutes";
 
 /**
  * Validates an automation payload: a valid 5-field cron string (or null =
- * no schedule) and the two boolean flags. Returns the normalized values or
- * an error message. Pure so routes can answer 400 without touching the
- * database.
+ * no schedule), the two boolean flags and an optional initial instance
+ * status. Returns the normalized values or an error message. Pure so routes
+ * can answer 400 without touching the database.
  */
 interface ParsedAutomation {
   scheduleCron?: string | null;
   skipIfPreviousNotDone?: boolean;
   addDateToTitle?: boolean;
+  instanceStatus?: string | null;
   error?: string;
 }
 
@@ -84,10 +85,24 @@ export function parseAutomation(value: unknown): ParsedAutomation {
   if (raw.addDateToTitle !== undefined && typeof raw.addDateToTitle !== "boolean") {
     return { error: "Invalid: automation.addDateToTitle (must be a boolean)" };
   }
+  let instanceStatus: string | null | undefined;
+  if (raw.instanceStatus !== undefined) {
+    if (raw.instanceStatus === null || raw.instanceStatus === "") {
+      instanceStatus = null;
+    } else if (typeof raw.instanceStatus === "string") {
+      instanceStatus = raw.instanceStatus;
+    } else {
+      return {
+        error:
+          "Invalid: automation.instanceStatus (must be a status of the project)",
+      };
+    }
+  }
   return {
     scheduleCron,
     skipIfPreviousNotDone: raw.skipIfPreviousNotDone as boolean | undefined,
     addDateToTitle: raw.addDateToTitle as boolean | undefined,
+    instanceStatus,
   };
 }
 
@@ -157,6 +172,7 @@ export class TaskTemplatesRoutes {
           scheduleCron?: string | null;
           skipIfPreviousNotDone?: boolean;
           addDateToTitle?: boolean;
+          instanceStatus?: string | null;
         };
         assignees?: string[];
         labels?: string[];
@@ -191,6 +207,15 @@ export class TaskTemplatesRoutes {
         if (parsed.error) {
           return res.status(400).send({ error: parsed.error });
         }
+        if (
+          parsed.instanceStatus &&
+          !project.statuses.includes(parsed.instanceStatus)
+        ) {
+          return res.status(400).send({
+            error:
+              "Invalid: automation.instanceStatus (must be a status of the project)",
+          });
+        }
         automation = parsed;
       }
       const template = new TaskTemplate();
@@ -205,6 +230,8 @@ export class TaskTemplatesRoutes {
         template.skipIfPreviousNotDone = automation.skipIfPreviousNotDone;
       if (automation.addDateToTitle !== undefined)
         template.addDateToTitle = automation.addDateToTitle;
+      if (automation.instanceStatus !== undefined)
+        template.instanceStatus = automation.instanceStatus || undefined;
       if (req.body.assignees)
         template.assignees = req.body.assignees.map((u) => ({ userId: u }));
       if (req.body.labels) template.labels = req.body.labels;
@@ -226,6 +253,7 @@ export class TaskTemplatesRoutes {
           scheduleCron?: string | null;
           skipIfPreviousNotDone?: boolean;
           addDateToTitle?: boolean;
+          instanceStatus?: string | null;
         };
         assignees?: string[];
         labels?: string[];
@@ -273,12 +301,24 @@ export class TaskTemplatesRoutes {
         if (parsed.error) {
           return res.status(400).send({ error: parsed.error });
         }
+        if (parsed.instanceStatus) {
+          // template.projectId was already switched to the new project above
+          const effectiveProject = await ProjectsDataGet(template.projectId);
+          if (!effectiveProject?.statuses.includes(parsed.instanceStatus)) {
+            return res.status(400).send({
+              error:
+                "Invalid: automation.instanceStatus (must be a status of the project)",
+            });
+          }
+        }
         if (parsed.scheduleCron !== undefined)
           template.scheduleCron = parsed.scheduleCron || undefined;
         if (parsed.skipIfPreviousNotDone !== undefined)
           template.skipIfPreviousNotDone = parsed.skipIfPreviousNotDone;
         if (parsed.addDateToTitle !== undefined)
           template.addDateToTitle = parsed.addDateToTitle;
+        if (parsed.instanceStatus !== undefined)
+          template.instanceStatus = parsed.instanceStatus || undefined;
       }
       await TaskTemplatesUpdate(template);
       if (Array.isArray(req.body.assignees)) {

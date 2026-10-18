@@ -98,6 +98,7 @@ export async function TaskTemplatesAdd(template: TaskTemplate): Promise<void> {
       template.scheduleCron || null,
       template.skipIfPreviousNotDone ? 1 : 0,
       template.addDateToTitle ? 1 : 0,
+      template.instanceStatus || null,
       template.dateCreated,
       template.dateUpdated,
     ]);
@@ -122,6 +123,7 @@ export async function TaskTemplatesUpdate(
     template.scheduleCron || null,
     template.skipIfPreviousNotDone ? 1 : 0,
     template.addDateToTitle ? 1 : 0,
+    template.instanceStatus || null,
     template.projectId,
     template.dateUpdated,
     template.id,
@@ -490,15 +492,15 @@ const SQL_QUERIES = {
   },
   INSERT_TEMPLATE: {
     postgres:
-      'INSERT INTO task_templates ("id", "projectId", "title", "description", "priority", "checklist", "scheduleCron", "skipIfPreviousNotDone", "addDateToTitle", "dateCreated", "dateUpdated") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+      'INSERT INTO task_templates ("id", "projectId", "title", "description", "priority", "checklist", "scheduleCron", "skipIfPreviousNotDone", "addDateToTitle", "instanceStatus", "dateCreated", "dateUpdated") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
     sqlite:
-      "INSERT INTO task_templates (id, projectId, title, description, priority, checklist, scheduleCron, skipIfPreviousNotDone, addDateToTitle, dateCreated, dateUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO task_templates (id, projectId, title, description, priority, checklist, scheduleCron, skipIfPreviousNotDone, addDateToTitle, instanceStatus, dateCreated, dateUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   },
   UPDATE_TEMPLATE: {
     postgres:
-      'UPDATE task_templates SET "title" = $1, "description" = $2, "priority" = $3, "checklist" = $4, "scheduleCron" = $5, "skipIfPreviousNotDone" = $6, "addDateToTitle" = $7, "projectId" = $8, "dateUpdated" = $9 WHERE "id" = $10',
+      'UPDATE task_templates SET "title" = $1, "description" = $2, "priority" = $3, "checklist" = $4, "scheduleCron" = $5, "skipIfPreviousNotDone" = $6, "addDateToTitle" = $7, "instanceStatus" = $8, "projectId" = $9, "dateUpdated" = $10 WHERE "id" = $11',
     sqlite:
-      "UPDATE task_templates SET title = ?, description = ?, priority = ?, checklist = ?, scheduleCron = ?, skipIfPreviousNotDone = ?, addDateToTitle = ?, projectId = ?, dateUpdated = ? WHERE id = ?",
+      "UPDATE task_templates SET title = ?, description = ?, priority = ?, checklist = ?, scheduleCron = ?, skipIfPreviousNotDone = ?, addDateToTitle = ?, instanceStatus = ?, projectId = ?, dateUpdated = ? WHERE id = ?",
   },
   DELETE_TEMPLATE: {
     postgres: 'DELETE FROM task_templates WHERE "id" = $1',

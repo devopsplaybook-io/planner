@@ -87,6 +87,31 @@ describe("buildTaskFromTemplate", () => {
     expect(task.status).toBe("To Do");
   });
 
+  it("should start in the template's instanceStatus when it is a project status", () => {
+    const template = makeTemplate();
+    template.instanceStatus = "To Do";
+    const task = buildTaskFromTemplate(template, makeProject(), {
+      addDateSuffix: false,
+    });
+    expect(task.status).toBe("To Do");
+  });
+
+  it("should fall back to the project's first status when instanceStatus is unset", () => {
+    const task = buildTaskFromTemplate(makeTemplate(), makeProject(), {
+      addDateSuffix: false,
+    });
+    expect(task.status).toBe("Backlog");
+  });
+
+  it("should fall back to the project's first status when instanceStatus is no longer a project status", () => {
+    const template = makeTemplate();
+    template.instanceStatus = "Removed Status";
+    const task = buildTaskFromTemplate(template, makeProject(), {
+      addDateSuffix: false,
+    });
+    expect(task.status).toBe("Backlog");
+  });
+
   it("should not share the checklist and label arrays with the template", () => {
     const template = makeTemplate();
     const task = buildTaskFromTemplate(template, makeProject(), {

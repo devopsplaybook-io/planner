@@ -25,7 +25,8 @@ export function buildDatedTitle(title: string, date: Date): string {
  * (starting done states as defined on the template), labels and assignees
  * are carried over; comments stay on the template (discussion, not content)
  * and attachment files are copied by the caller. The instance starts in the
- * project's first status with no due date.
+ * template's configured initial status when valid, else the project's first
+ * status (or "To Do" when the catalog has no statuses), with no due date.
  */
 export function buildTaskFromTemplate(
   template: TaskTemplate,
@@ -38,7 +39,10 @@ export function buildTaskFromTemplate(
     ? buildDatedTitle(template.title, new Date())
     : template.title;
   task.description = template.description;
-  task.status = project.statuses[0] || "To Do";
+  task.status =
+    template.instanceStatus && project.statuses.includes(template.instanceStatus)
+      ? template.instanceStatus
+      : project.statuses[0] || "To Do";
   task.priority = template.priority;
   task.labels = [...(template.labels || [])];
   task.assignees = (template.assignees || []).map((a) => ({ userId: a.userId }));

@@ -19,13 +19,15 @@ export interface TaskTemplateAttachment {
 
 /**
  * Automation settings of a task template (template-only, never on tasks):
- * `scheduleCron` is a 5-field cron expression (null = no schedule), and the
- * two flags shape the instance creation.
+ * `scheduleCron` is a 5-field cron expression (null = no schedule), the two
+ * flags shape the instance creation and `instanceStatus` optionally forces
+ * the initial status of created instances (null = project's first status).
  */
 export interface TaskTemplateAutomation {
   scheduleCron?: string | null;
   skipIfPreviousNotDone: boolean;
   addDateToTitle: boolean;
+  instanceStatus?: string | null;
 }
 
 export class TaskTemplate {
@@ -52,6 +54,9 @@ export class TaskTemplate {
       json.addDateToTitle === true ||
       json.addDateToTitle === 1 ||
       json.addDateToTitle === "1";
+    if (json.instanceStatus) {
+      template.instanceStatus = json.instanceStatus as string;
+    }
     if (json.dateCreated) {
       template.dateCreated = json.dateCreated as string;
     }
@@ -92,6 +97,7 @@ export class TaskTemplate {
   public scheduleCron?: string;
   public skipIfPreviousNotDone: boolean;
   public addDateToTitle: boolean;
+  public instanceStatus?: string;
   public assignees: { userId: string; userName?: string }[];
   public comments: TaskTemplateComment[];
   public attachments: TaskTemplateAttachment[];
@@ -126,6 +132,7 @@ export class TaskTemplate {
         scheduleCron: this.scheduleCron || null,
         skipIfPreviousNotDone: this.skipIfPreviousNotDone,
         addDateToTitle: this.addDateToTitle,
+        instanceStatus: this.instanceStatus || null,
       },
       assignees: this.assignees,
       comments: this.comments,
