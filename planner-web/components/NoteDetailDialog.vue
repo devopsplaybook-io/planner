@@ -51,6 +51,17 @@
         </div>
       </header>
 
+      <div v-if="dialogError" class="dialog-error" role="alert">
+        <span>{{ dialogError }}</span>
+        <button
+          class="dialog-error-dismiss"
+          aria-label="Dismiss error"
+          @click="dismissDialogError"
+        >
+          ×
+        </button>
+      </div>
+
       <section v-if="loading" class="loading-indicator" />
 
       <template v-else-if="note">
@@ -314,6 +325,33 @@
           </footer>
         </article>
       </dialog>
+
+      <!-- Delete Comment Confirmation -->
+      <dialog
+        ref="deleteCommentDialogEl"
+        class="inner-dialog"
+        @close="showDeleteCommentConfirm = false"
+      >
+        <article>
+          <header><h3>Delete Comment</h3></header>
+          <p>Are you sure you want to delete this comment?</p>
+          <footer class="dialog-footer">
+            <button
+              class="secondary"
+              @click="showDeleteCommentConfirm = false"
+            >
+              Cancel
+            </button>
+            <button
+              class="contrast"
+              :aria-busy="!!deletingCommentId"
+              @click="deleteComment"
+            >
+              Delete
+            </button>
+          </footer>
+        </article>
+      </dialog>
     </article>
   </dialog>
 </template>
@@ -380,6 +418,21 @@ const deletingCommentId = ref("");
 const editingCommentId = ref("");
 const editingCommentText = ref("");
 const savingComment = ref(false);
+// Inline dismissible error banner state (replaces browser alert())
+const dialogError = ref("");
+const showDeleteCommentConfirm = ref(false);
+const deleteCommentDialogEl = useModalDialog(
+  () => showDeleteCommentConfirm.value,
+);
+const pendingDeleteCommentId = ref("");
+
+function setDialogError(e, fallback) {
+  dialogError.value = e?.response?.data?.error || fallback;
+}
+
+function dismissDialogError() {
+  dialogError.value = "";
+}
 
 // Remembered collapse state of the Attachments/Comments sections
 const { isSectionOpen, onSectionToggle } = useSectionState(
@@ -412,6 +465,7 @@ watch(
   async (newId) => {
     editingCommentId.value = "";
     editingCommentText.value = "";
+    dialogError.value = "";
     if (newId) {
       loading.value = true;
       editing.value = false;
@@ -509,6 +563,7 @@ function cancelEdit() {
 
 async function saveEdit() {
   if (!note.value) return;
+  dialogError.value = "";
   saving.value = true;
   try {
     await notesStore.update(props.noteId, {
@@ -530,7 +585,7 @@ async function saveEdit() {
     editing.value = false;
     emit("updated");
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to update note");
+    setDialogError(e, "Failed to update note");
   } finally {
     saving.value = false;
   }
@@ -538,13 +593,14 @@ async function saveEdit() {
 
 async function addComment() {
   if (!newComment.value.trim()) return;
+  dialogError.value = "";
   submitting.value = true;
   try {
     await notesStore.addComment(props.noteId, newComment.value);
     clearCommentDraft(addCommentDraftKey.value);
     newComment.value = "";
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to add comment");
+    setDialogError(e, "Failed to add comment");
   } finally {
     submitting.value = false;
   }
@@ -560,13 +616,22 @@ function canModifyComment(comment) {
   return authStore.currentUser?.id === comment.userId;
 }
 
-async function handleDeleteComment(commentId) {
-  if (!confirm("Delete this comment?")) return;
+function handleDeleteComment(commentId) {
+  dialogError.value = "";
+  pendingDeleteCommentId.value = commentId;
+  showDeleteCommentConfirm.value = true;
+}
+
+async function deleteComment() {
+  const commentId = pendingDeleteCommentId.value;
+  if (!commentId || deletingCommentId.value) return;
   deletingCommentId.value = commentId;
   try {
     await notesStore.deleteComment(props.noteId, commentId);
+    showDeleteCommentConfirm.value = false;
+    pendingDeleteCommentId.value = "";
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to delete comment");
+    setDialogError(e, "Failed to delete comment");
   } finally {
     deletingCommentId.value = "";
   }
@@ -587,6 +652,7 @@ function cancelEditComment() {
 
 async function saveEditComment(commentId) {
   if (!editingCommentText.value.trim()) return;
+  dialogError.value = "";
   savingComment.value = true;
   try {
     await notesStore.updateComment(props.noteId, commentId, editingCommentText.value);
@@ -594,7 +660,7 @@ async function saveEditComment(commentId) {
     editingCommentId.value = "";
     editingCommentText.value = "";
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to update comment");
+    setDialogError(e, "Failed to update comment");
   } finally {
     savingComment.value = false;
   }
@@ -610,13 +676,14 @@ function openDeleteConfirm() {
 }
 
 async function deleteNote() {
+  dialogError.value = "";
   deleting.value = true;
   try {
     await notesStore.remove(props.noteId);
     showDeleteConfirm.value = false;
     emit("close");
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to delete note");
+    setDialogError(e, "Failed to delete note");
   } finally {
     deleting.value = false;
   }
@@ -625,23 +692,25 @@ async function deleteNote() {
 async function uploadAttachment() {
   const input = fileInput.value;
   if (!input || !input.files || !input.files[0]) return;
+  dialogError.value = "";
   uploading.value = true;
   try {
     await notesStore.uploadAttachment(props.noteId, input.files[0]);
     input.value = "";
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to upload file");
+    setDialogError(e, "Failed to upload file");
   } finally {
     uploading.value = false;
   }
 }
 
 async function deleteAttachment(attachmentId) {
+  dialogError.value = "";
   deletingAttachmentId.value = attachmentId;
   try {
     await notesStore.deleteAttachment(props.noteId, attachmentId);
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to delete attachment");
+    setDialogError(e, "Failed to delete attachment");
   } finally {
     deletingAttachmentId.value = "";
   }
@@ -654,7 +723,7 @@ async function downloadAttachment(att) {
       att.fileName,
     );
   } catch {
-    alert("Failed to download attachment");
+    setDialogError(null, "Failed to download attachment");
   }
 }
 </script>

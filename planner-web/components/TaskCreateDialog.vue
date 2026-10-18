@@ -1,10 +1,43 @@
 <template>
   <dialog ref="dialogEl" @close="emit('close')">
     <article>
-      <header>
+      <header class="dialog-header">
         <h3>Create Task</h3>
-        <button class="close-btn" aria-label="Close" @click="emit('close')" />
+        <div class="dialog-actions">
+          <button
+            type="button"
+            class="icon-btn"
+            :aria-busy="creating"
+            aria-label="Create task"
+            @click="createTask"
+          >
+            <i class="bi bi-check" />
+          </button>
+          <button
+            type="button"
+            class="secondary icon-btn"
+            aria-label="Cancel"
+            @click="emit('close')"
+          >
+            <i class="bi bi-arrow-counterclockwise" />
+          </button>
+          <button class="close-btn" aria-label="Close" @click="emit('close')">
+            ×
+          </button>
+        </div>
       </header>
+
+      <div v-if="dialogError" class="dialog-error" role="alert">
+        <span>{{ dialogError }}</span>
+        <button
+          class="dialog-error-dismiss"
+          aria-label="Dismiss error"
+          @click="dismissDialogError"
+        >
+          ×
+        </button>
+      </div>
+
       <form @submit.prevent="createTask">
         <label>
           Project
@@ -77,12 +110,6 @@
             <i class="bi bi-plus" /> Add item
           </button>
         </fieldset>
-        <footer class="dialog-footer">
-          <button type="submit" :aria-busy="creating">Create</button>
-          <button class="secondary" type="button" @click="emit('close')">
-            Cancel
-          </button>
-        </footer>
       </form>
     </article>
   </dialog>
@@ -106,6 +133,15 @@ const labelsStore = useLabelsStore();
 
 const users = ref([]);
 const creating = ref(false);
+const dialogError = ref("");
+
+function setDialogError(e, fallback) {
+  dialogError.value = e?.response?.data?.error || fallback;
+}
+
+function dismissDialogError() {
+  dialogError.value = "";
+}
 
 function defaultProjectId() {
   // Archived projects cannot receive tasks: a stored filter pointing at one
@@ -137,6 +173,7 @@ watch(
   () => props.open,
   async (isOpen) => {
     if (isOpen) {
+      dialogError.value = "";
       form.value = {
         projectId: defaultProjectId(),
         title: "",
@@ -161,6 +198,7 @@ watch(
 );
 
 async function createTask() {
+  dialogError.value = "";
   creating.value = true;
   try {
     const data = {
@@ -177,7 +215,7 @@ async function createTask() {
     emit("close");
     emit("created", created.id);
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to create task");
+    setDialogError(e, "Failed to create task");
   } finally {
     creating.value = false;
   }

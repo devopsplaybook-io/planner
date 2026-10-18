@@ -1711,34 +1711,6 @@ async function downloadAttachment(att) {
   display: inline-block;
 }
 
-/* Inline dismissible error banner (replaces browser alert()) */
-.dialog-error {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  padding: var(--space-xs) var(--space-sm);
-  margin-bottom: var(--space-md);
-  border: 1px solid var(--color-danger);
-  border-radius: var(--radius-sm);
-  color: var(--color-danger);
-  background: var(--color-surface);
-}
-
-.dialog-error-dismiss {
-  background: none;
-  border: none;
-  color: var(--color-danger);
-  font-size: var(--text-lg);
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 var(--space-2xs);
-}
-
-.dialog-error-dismiss:hover {
-  color: var(--color-danger-hover);
-}
-
 .edit-section {
   margin-bottom: var(--space-sm);
 }
