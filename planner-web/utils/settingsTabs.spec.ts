@@ -27,6 +27,7 @@ describe("getSettingsTabs", () => {
       "users",
       "projects",
       "statuses",
+      "cleanup",
     ]);
   });
 });
@@ -40,6 +41,7 @@ describe("normalizeSettingsTab", () => {
     expect(normalizeSettingsTab("users", true)).toBe("users");
     expect(normalizeSettingsTab("projects", true)).toBe("projects");
     expect(normalizeSettingsTab("statuses", true)).toBe("statuses");
+    expect(normalizeSettingsTab("cleanup", true)).toBe("cleanup");
   });
 
   it("should fall back to profile for unknown tabs", () => {
@@ -51,5 +53,6 @@ describe("normalizeSettingsTab", () => {
     expect(normalizeSettingsTab("users", false)).toBe("profile");
     expect(normalizeSettingsTab("projects", false)).toBe("profile");
     expect(normalizeSettingsTab("statuses", false)).toBe("profile");
+    expect(normalizeSettingsTab("cleanup", false)).toBe("profile");
   });
 });

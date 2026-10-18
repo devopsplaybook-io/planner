@@ -25,6 +25,8 @@ import {
 } from "../tasks/TaskActivityData";
 import { UsersDataDelete } from "../users/UsersData";
 import { ViewsDataGetDashboard } from "../views/ViewsData";
+import { SettingsDataGet, SettingsDataSave } from "../settings/SettingsData";
+import { CleanupRunOnce } from "../cleanup/CleanupScheduler";
 
 /**
  * Integration tests against a real SQLite database (no mocks): delete
@@ -892,5 +894,190 @@ describe("task dependencies (integration)", () => {
     expect(
       await count("SELECT COUNT(*) AS c FROM task_dependencies"),
     ).toBe(0);
+  });
+});
+
+describe("cleanup rules (integration)", () => {
+  beforeAll(async () => {
+    await fs.remove(dir);
+    await fs.ensureDir(dir);
+    const config = new Config();
+    config.DATA_DIR = dir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+
+    await insertProject("p-cleanup");
+    // Old Done task (eligible) with a label, a comment and an assignee:
+    // the deletion must clean all of them
+    await insertUser("u-cleanup");
+    await insertTask("t-cleanup-old", "p-cleanup", "Done", isoDaysAgo(45));
+    await DbUtilsExecSQL(
+      "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+      ["l-cleanup", "t-cleanup-old", "bug"],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_comments (id, taskId, userId, text, dateCreated) VALUES (?,?,?,?,?)",
+      ["c-cleanup", "t-cleanup-old", "u-cleanup", "hi", now],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_assignees (taskId, userId) VALUES (?,?)",
+      ["t-cleanup-old", "u-cleanup"],
+    );
+    // Recent Done and old non-Done tasks must survive
+    await insertTask("t-cleanup-recent", "p-cleanup", "Done", isoDaysAgo(5));
+    await insertTask("t-cleanup-open", "p-cleanup", "To Do", isoDaysAgo(400));
+    // Old attachments (one audio = voice message) live on a task that
+    // survives, so the attachment rule is exercised on its own
+    const oldPdf = path.join(dir, "attachments", "tasks", "old.pdf");
+    const oldVoice = path.join(dir, "attachments", "tasks", "old.webm");
+    const recentPdf = path.join(dir, "attachments", "tasks", "recent.pdf");
+    await fs.outputFile(oldPdf, "pdf");
+    await fs.outputFile(oldVoice, "audio");
+    await fs.outputFile(recentPdf, "pdf");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_attachments (id, taskId, fileName, filePath, dateCreated) VALUES (?,?,?,?,?)",
+      ["a-cleanup-old-pdf", "t-cleanup-recent", "old.pdf", oldPdf, isoDaysAgo(90)],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_attachments (id, taskId, fileName, filePath, dateCreated) VALUES (?,?,?,?,?)",
+      [
+        "a-cleanup-old-voice",
+        "t-cleanup-recent",
+        "old.webm",
+        oldVoice,
+        isoDaysAgo(90),
+      ],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_attachments (id, taskId, fileName, filePath, dateCreated) VALUES (?,?,?,?,?)",
+      [
+        "a-cleanup-recent-pdf",
+        "t-cleanup-recent",
+        "recent.pdf",
+        recentPdf,
+        isoMinutesAgo(5),
+      ],
+    );
+
+    await SettingsDataSave(
+      "cleanup",
+      JSON.stringify({
+        rules: [
+          {
+            projectId: "p-cleanup",
+            deleteDoneTasksOlderThanDays: 30,
+            deleteAttachmentsOlderThanDays: 60,
+            deleteVoiceMessagesOlderThanDays: 60,
+            enabled: true,
+          },
+        ],
+      }),
+    );
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(dir);
+  });
+
+  it("should round-trip the rules through the settings store", async () => {
+    const raw = await SettingsDataGet("cleanup");
+    expect(JSON.parse(raw as string)).toEqual({
+      rules: [
+        {
+          projectId: "p-cleanup",
+          deleteDoneTasksOlderThanDays: 30,
+          deleteAttachmentsOlderThanDays: 60,
+          deleteVoiceMessagesOlderThanDays: 60,
+          enabled: true,
+        },
+      ],
+    });
+  });
+
+  it("should delete only the old Done task and the old attachments with their files", async () => {
+    const summary = await CleanupRunOnce();
+
+    expect(summary).toMatchObject({
+      projects: 1,
+      tasksDeleted: 1,
+      attachmentsDeleted: 1,
+      voiceMessagesDeleted: 1,
+      failures: 0,
+    });
+    // The eligible Done task and its children are gone
+    expect(
+      await count("SELECT COUNT(*) AS c FROM tasks WHERE id = ?", [
+        "t-cleanup-old",
+      ]),
+    ).toBe(0);
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_labels WHERE taskId = ?", [
+        "t-cleanup-old",
+      ]),
+    ).toBe(0);
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_comments WHERE taskId = ?", [
+        "t-cleanup-old",
+      ]),
+    ).toBe(0);
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_assignees WHERE taskId = ?", [
+        "t-cleanup-old",
+      ]),
+    ).toBe(0);
+    // Recent Done and non-Done tasks survive
+    expect(
+      await count("SELECT COUNT(*) AS c FROM tasks WHERE id IN (?,?)", [
+        "t-cleanup-recent",
+        "t-cleanup-open",
+      ]),
+    ).toBe(2);
+    // Old attachments are gone with their files, the recent one stays
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_attachments WHERE id IN (?,?)", [
+        "a-cleanup-old-pdf",
+        "a-cleanup-old-voice",
+      ]),
+    ).toBe(0);
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_attachments WHERE id = ?", [
+        "a-cleanup-recent-pdf",
+      ]),
+    ).toBe(1);
+    expect(
+      await fs.pathExists(path.join(dir, "attachments", "tasks", "old.pdf")),
+    ).toBe(false);
+    expect(
+      await fs.pathExists(path.join(dir, "attachments", "tasks", "old.webm")),
+    ).toBe(false);
+    expect(
+      await fs.pathExists(path.join(dir, "attachments", "tasks", "recent.pdf")),
+    ).toBe(true);
+  });
+
+  it("should not delete anything when the rule is disabled", async () => {
+    await SettingsDataSave(
+      "cleanup",
+      JSON.stringify({
+        rules: [
+          {
+            projectId: "p-cleanup",
+            deleteDoneTasksOlderThanDays: 1,
+            deleteAttachmentsOlderThanDays: 1,
+            enabled: false,
+          },
+        ],
+      }),
+    );
+    const summary = await CleanupRunOnce();
+    expect(summary.projects).toBe(0);
+    expect(summary.tasksDeleted).toBe(0);
+    expect(summary.attachmentsDeleted).toBe(0);
+    expect(
+      await count("SELECT COUNT(*) AS c FROM tasks WHERE projectId = ?", [
+        "p-cleanup",
+      ]),
+    ).toBe(2);
   });
 });

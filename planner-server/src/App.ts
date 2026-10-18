@@ -28,6 +28,8 @@ import { DictationRoutes } from "./dictation/DictationRoutes";
 import { TaskVoiceCommentsInit } from "./tasks/TaskVoiceComments";
 import { NotificationsInit } from "./notifications/Notifications";
 import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
+import { CleanupInit } from "./cleanup/CleanupScheduler";
+import { CleanupRoutes } from "./cleanup/CleanupRoutes";
 import { TaskTemplatesRoutes } from "./tasktemplates/TaskTemplatesRoutes";
 import { TaskTemplatesSchedulerInit } from "./tasktemplates/TaskTemplatesScheduler";
 import { TaskTemplatesBackfillFromRecurrence } from "./tasktemplates/TaskTemplatesBackfill";
@@ -76,6 +78,7 @@ Promise.resolve()
     await DictationInit(config);
     await TaskVoiceCommentsInit(config);
     await NotificationsInit(config);
+    CleanupInit();
     await TaskTemplatesSchedulerInit();
 
     // Ensure a default project exists
@@ -240,6 +243,13 @@ Promise.resolve()
         await new NotificationsRoutes().getRoutes(instance);
       },
       { prefix: "/api/notifications" },
+    );
+
+    await fastify.register(
+      async (instance) => {
+        await new CleanupRoutes().getRoutes(instance);
+      },
+      { prefix: "/api/cleanup" },
     );
 
     await fastify.register(

@@ -10,7 +10,7 @@ The admin tabs live in the Settings page (see [USER_INTERFACE.md](USER_INTERFACE
 Projects are created and managed by admins in the Settings admin tabs (see [PROJECTS.md](PROJECTS.md)).
 
 - [x] Settings has a "Projects" admin tab where projects are created and managed.
-- [x] The tab order is: Users, Projects, Statuses.
+- [x] The tab order is: Users, Projects, Statuses, Cleanup.
 - [x] The selected tab is reflected in the URL (query parameter) and is kept when the page is refreshed or reached again through browser navigation.
 - [x] Project management covers: create, edit (name and description, visibility and user access, status selection, Active/Archived switch &mdash; all edited in the project dialog's Edit mode and saved with one Save), delete.
 - [x] Projects are listed with active projects first and archived projects at the end of the list.
@@ -41,4 +41,20 @@ Statuses are defined, managed and ordered globally in the Settings admin tabs. P
 - [x] The admin chooses a status color from a simplified preset-swatch picker (main colors, a few shades per color).
 - [x] The exact hex color code of each status is stored server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-05_
+## Cleanup tab
+
+Cleanup rules let admins automatically delete old data per project: Done tasks, task attachments and voice messages (audio attachments). Rules are defined by admins in the Settings admin tabs and enforced by a daily background job on the server.
+
+- [x] Settings has a "Cleanup" admin tab (the last tab, after Statuses) where per-project cleanup rules are managed; the tab and its APIs are admin-only.
+- [x] Each rule is attached to one project and holds three optional day thresholds — delete Done tasks older than N days, delete attachments older than N days, delete voice messages older than N days (empty = aspect off) — plus an enable toggle.
+- [x] A project with no rule, or with a disabled rule, never has anything deleted.
+- [x] Only **Done** tasks are eligible for task deletion (a rule can never delete a task that is not Done) and the age of a Done task is its last update.
+- [x] Voice messages are the audio attachments; they are recognized by file extension and can be cleaned up independently of the other attachments.
+- [x] Deleting a task goes through the normal deletion path so its comments, labels, assignees, dependencies, attachments and files are removed consistently; attachments are removed together with their files on disk.
+- [x] The rules are enforced once a day by a background job that logs a single count-only summary line (never task content).
+- [x] Deletions are permanent.
+- [x] The tab offers a dry-run preview of what the rules would delete right now (per-project counts and samples) before the rules are saved or enabled.
+- [x] Saving the rules asks for confirmation with a dialog that spells out what will be enabled per project.
+- [x] A failure to remove an attachment file keeps the attachment row so the next run retries it; failures never crash the background job.
+
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_
