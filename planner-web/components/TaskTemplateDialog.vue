@@ -3,9 +3,29 @@
     <article class="task-template-dialog">
       <header class="dialog-header">
         <h3>{{ isCreate ? "New Task Template" : "Edit Task Template" }}</h3>
-        <button class="close-btn" aria-label="Close" @click="handleClose">
-          ×
-        </button>
+        <div class="dialog-actions">
+          <button
+            type="button"
+            class="icon-btn"
+            :disabled="!canEditSelected"
+            :aria-busy="saving"
+            :aria-label="isCreate ? 'Create template' : 'Save changes'"
+            @click="save"
+          >
+            <i class="bi bi-check" />
+          </button>
+          <button
+            type="button"
+            class="secondary icon-btn"
+            aria-label="Cancel"
+            @click="handleClose"
+          >
+            <i class="bi bi-arrow-counterclockwise" />
+          </button>
+          <button class="close-btn" aria-label="Close" @click="handleClose">
+            ×
+          </button>
+        </div>
       </header>
 
       <div v-if="loadError" class="dialog-error" role="alert">
@@ -266,15 +286,6 @@
             </button>
           </fieldset>
         </template>
-
-        <footer class="dialog-footer">
-          <button type="submit" :disabled="!canEditSelected" :aria-busy="saving">
-            {{ isCreate ? "Create template" : "Save changes" }}
-          </button>
-          <button class="secondary" type="button" @click="handleClose">
-            Cancel
-          </button>
-        </footer>
       </form>
     </article>
   </dialog>

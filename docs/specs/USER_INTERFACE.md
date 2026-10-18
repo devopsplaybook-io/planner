@@ -14,6 +14,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On mobile, the menu auto-collapses to save screen space
 - [x] The menu provides access to: Tasks, Notes, Calendar, Kanban, Update Feed, and Settings (projects are managed by admins in the Settings admin tabs, see [ADMIN.md](ADMIN.md))
 - [x] A global dictation button opens the shared dictation dialog when the dictation feature is enabled (see [DICTATION.md](DICTATION.md))
+- [x] On mobile, the menu's buttons (dictation and the command-palette search) get the same comfortable touch-target padding as the menu links, so taps near the icon always land on the button
 - [x] The Settings entry in the menu uses a gear icon, consistent with the other navigation icons
 - [x] Offline support (PWA configured with service worker, cache strategies)
 
@@ -32,6 +33,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] The selected tab is reflected in the URL (`?tab=`) and restored on refresh and browser navigation; a deep link to an unknown or unauthorized tab (e.g. a non-admin opening `/settings?tab=users`) falls back to the Profile tab
 - [x] The former standalone `/admin` page redirects to `/settings` preserving the query parameters, so existing bookmarks and PWA-cached deep links keep working
 - [x] All settings tabs share a single full-width page layout: the header, tab bar and content are aligned identically for every tab (the legacy centered profile-only layout was removed)
+- [x] On narrow screens the tab bar scrolls horizontally (tabs never wrap to two lines) while the page content itself never scrolls sideways
 
 ### Project Selection
 
@@ -53,6 +55,7 @@ It is installable on mobile and desktop devices and works offline.
     - [x] Projects are managed by admins in the Settings admin tabs; the settings URL reflects the selected tab and the displayed project (e.g. /settings?tab=projects&projectId=...)
     - [x] Task comment permalinks extend the task URL with a comment id (e.g. /?taskId=…&commentId=…): opening it shows the task dialog with the Comments section expanded, scrolled to and briefly highlighting that comment; the parameter is stripped when the dialog closes and unknown comment ids are ignored
   - [x] The detail dialogs share a standardized header: icon-only Edit (pencil), Save (check) and Cancel (undo arrow) buttons that appear/disappear together when switching between display and Edit mode, an advanced (…) menu for destructive/rare actions, and a close button
+  - [x] Form dialogs follow the same button placement: the primary Save/Create and Cancel actions sit in the dialog header next to the close button (e.g. the task template dialog), not in a footer below the form
 - [x] All markdown rendered in the app (task/note/project descriptions, comments, dashboard AI recommendations) goes through the shared sanitized rendering composable: output is filtered through a DOMPurify allow-list (safe tags and attributes, http/https/mailto URLs only, no event handlers); rendered markdown links open in a new tab with `rel="noopener noreferrer"`
 - [x] The task and note dialog comment forms offer a Write/Preview toggle (Preview renders through the same sanitized pipeline), an auto-growing textarea and Ctrl/Cmd+Enter submit; unsent drafts persist per task/note (and per edited comment) in localStorage under the shared "planner." key prefix and degrade gracefully when storage is unavailable
 - [x] Collapsible detail-dialog sections (task: Checklist/Attachments/Comments; note: Attachments/Comments) remember their collapsed/expanded state per dialog type in localStorage, with graceful degrade to content-based defaults

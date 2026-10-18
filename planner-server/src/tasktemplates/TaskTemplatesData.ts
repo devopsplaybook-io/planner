@@ -18,7 +18,8 @@ export async function TaskTemplatesGet(id: string): Promise<TaskTemplate> {
   if (rows.length === 0) {
     return null;
   }
-  return enrichTemplates(rows)[0];
+  const enriched = await enrichTemplates(rows);
+  return enriched[0];
 }
 
 export interface TaskTemplateListFilters {
