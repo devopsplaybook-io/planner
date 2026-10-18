@@ -27,6 +27,12 @@ const CANCELLED_SUFFIX = " [cancelled]";
  * recorded; a failing drop is logged and skipped (the column stays, empty).
  */
 export async function TaskTemplatesBackfillFromRecurrence(): Promise<void> {
+  // The backfill drops the tasks.recurrence column once it finishes, so
+  // after a completed backfill the SELECT below would crash every later
+  // startup with "no such column" — the flag is checked first
+  if (await isBackfillDone()) {
+    return;
+  }
   const rows = await DbUtilsQuerySQL(
     "SELECT * FROM tasks WHERE recurrence IS NOT NULL",
   );

@@ -79,6 +79,21 @@ describe("TaskTemplatesBackfillFromRecurrence", () => {
       expect(mockedExec).not.toHaveBeenCalledWith(ALTER_DROP, []);
       expect(insertCalls(METADATA_FLAG_SQL_PREFIX)).toHaveLength(0);
     });
+
+    it("should not touch the dropped recurrence column on a later startup", async () => {
+      // After the backfill completes the column is gone: re-running the
+      // SELECT would crash the startup with "no such column: recurrence"
+      mockedQuery.mockImplementation(async (sql: string) => {
+        if (sql.startsWith("SELECT value FROM metadata"))
+          return [{ value: "done" }];
+        if (sql === SELECT_RECURRING) {
+          throw new Error("no such column: recurrence");
+        }
+        return [];
+      });
+      await TaskTemplatesBackfillFromRecurrence();
+      expect(mockedQuery).not.toHaveBeenCalledWith(SELECT_RECURRING);
+    });
   });
 
   describe("converting recurring tasks", () => {
