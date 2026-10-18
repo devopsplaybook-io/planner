@@ -84,6 +84,20 @@ export async function fetchAttachmentObjectUrl(
 }
 
 /**
+ * Triggers a browser download of an already-fetched object URL; the caller
+ * owns the URL's lifetime.
+ */
+export function downloadObjectUrl(objectUrl: string, fileName: string): void {
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+/**
  * Downloads an attachment by fetching it as a blob and clicking a temporary
  * `<a download>` element (with rel=noopener) pointing at the object URL.
  */
@@ -92,15 +106,9 @@ export async function downloadAttachment(
   fileName: string,
 ): Promise<void> {
   const objectUrl = await fetchAttachmentObjectUrl(url);
-  try {
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = fileName;
-    anchor.rel = "noopener";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
+  downloadObjectUrl(objectUrl, fileName);
+  // The revoke must be delayed: revoking right after click() can abort the
+  // download before the browser has resolved the blob URL, which shows up
+  // as a dead download button (notably on mobile)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
 }

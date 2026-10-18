@@ -244,6 +244,12 @@ const dictationTooltip = computed(() => {
   .menu-links li {
     font-size: calc(var(--text-md) * 1.5);
   }
+
+  /* Touch targets for the nav buttons, matching the padded nav links */
+  .dictation-entry .dictation-button,
+  .palette-entry .palette-button {
+    padding: var(--space-sm) var(--space-xs);
+  }
 }
 
 :root[data-theme="light"] .menu-links .inactive {

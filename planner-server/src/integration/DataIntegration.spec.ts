@@ -27,6 +27,15 @@ import { UsersDataDelete } from "../users/UsersData";
 import { ViewsDataGetDashboard } from "../views/ViewsData";
 import { SettingsDataGet, SettingsDataSave } from "../settings/SettingsData";
 import { CleanupRunOnce } from "../cleanup/CleanupScheduler";
+import {
+  TaskTemplatesAdd,
+  TaskTemplatesDelete,
+  TaskTemplatesGet,
+  addTemplateAttachment,
+  addTemplateComment,
+  TaskTemplateRunsAdd,
+} from "../tasktemplates/TaskTemplatesData";
+import { TaskTemplate } from "../model/TaskTemplate";
 
 /**
  * Integration tests against a real SQLite database (no mocks): delete
@@ -350,6 +359,88 @@ describe("delete cascades (integration)", () => {
         "c-c4",
       ]),
     ).toBe(1);
+  });
+});
+
+describe("task template get and delete (integration)", () => {
+  beforeAll(async () => {
+    await fs.remove(dir);
+    await fs.ensureDir(dir);
+    const config = new Config();
+    config.DATA_DIR = dir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(dir);
+  });
+
+  it("should get a template with its children and delete it with all child rows and files", async () => {
+    await insertUser("u-tpl-1");
+    await insertProject("p-tpl-1");
+
+    const template = new TaskTemplate();
+    template.id = "tt-get-1";
+    template.projectId = "p-tpl-1";
+    template.title = "Weekly report";
+    template.description = "Report description";
+    template.priority = "medium";
+    template.checklist = [{ text: "Collect data", done: false }];
+    template.scheduleCron = "0 9 * * 1";
+    template.assignees = [{ userId: "u-tpl-1" }];
+    template.labels = ["ops"];
+    await TaskTemplatesAdd(template);
+    await addTemplateComment("tt-get-1", {
+      id: "ttc-get-1",
+      userId: "u-tpl-1",
+      text: "hi",
+      dateCreated: now,
+    });
+    const filePath = path.join(dir, "attachments", "tt-get-1.txt");
+    await fs.outputFile(filePath, "content");
+    await addTemplateAttachment("tt-get-1", "file.txt", filePath, "tta-get-1");
+    await TaskTemplateRunsAdd("tt-get-1", "t-tpl-1");
+
+    // TaskTemplatesGet must resolve the enriched template (an await on the
+    // enrich step was missing, making every /:id route answer 404)
+    const fetched = await TaskTemplatesGet("tt-get-1");
+    expect(fetched).toBeTruthy();
+    expect(fetched).toMatchObject({
+      id: "tt-get-1",
+      projectId: "p-tpl-1",
+      title: "Weekly report",
+      scheduleCron: "0 9 * * 1",
+    });
+    expect(fetched.checklist).toEqual([{ text: "Collect data", done: false }]);
+    expect(fetched.assignees.map((a) => a.userId)).toEqual(["u-tpl-1"]);
+    expect(fetched.labels).toEqual(["ops"]);
+    expect(fetched.comments).toHaveLength(1);
+    expect(fetched.attachments).toHaveLength(1);
+
+    await TaskTemplatesDelete("tt-get-1");
+
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_templates WHERE id = ?", [
+        "tt-get-1",
+      ]),
+    ).toBe(0);
+    for (const table of [
+      "task_template_labels",
+      "task_template_assignees",
+      "task_template_comments",
+      "task_template_attachments",
+      "task_template_runs",
+    ]) {
+      expect(
+        await count(`SELECT COUNT(*) AS c FROM ${table} WHERE templateId = ?`, [
+          "tt-get-1",
+        ]),
+      ).toBe(0);
+    }
+    expect(await fs.pathExists(filePath)).toBe(false);
+    expect(await TaskTemplatesGet("tt-get-1")).toBeNull();
   });
 });
 

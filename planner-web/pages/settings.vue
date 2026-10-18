@@ -463,11 +463,15 @@ function formatDate(dateStr) {
   gap: var(--space-xs);
 }
 
+/* Only the tab strip scrolls horizontally on narrow screens; the page
+   content itself never scrolls sideways */
 .settings-tabs {
   display: flex;
+  flex-wrap: nowrap;
   gap: var(--space-2xs);
   border-bottom: 1px solid var(--color-border);
   margin-bottom: var(--space-lg);
+  overflow-x: auto;
 }
 
 .settings-tab {
@@ -479,6 +483,8 @@ function formatDate(dateStr) {
   color: var(--color-text-muted);
   font-weight: var(--weight-medium);
   margin-bottom: -1px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .settings-tab:hover {

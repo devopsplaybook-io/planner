@@ -134,25 +134,34 @@ describe("downloadAttachment", () => {
     mockedGet.mockReset();
   });
 
-  it("clicks a temporary download anchor and revokes the object URL", async () => {
-    const blob = new Blob(["file-bytes"]);
-    mockedGet.mockResolvedValue({ data: blob });
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:planner/download");
-    const revokeObjectUrl = vi
-      .spyOn(URL, "revokeObjectURL")
-      .mockImplementation(() => {});
-    const clickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => {});
+  it("clicks a temporary download anchor and revokes the object URL later", async () => {
+    vi.useFakeTimers();
+    try {
+      const blob = new Blob(["file-bytes"]);
+      mockedGet.mockResolvedValue({ data: blob });
+      vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:planner/download");
+      const revokeObjectUrl = vi
+        .spyOn(URL, "revokeObjectURL")
+        .mockImplementation(() => {});
+      const clickSpy = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(() => {});
 
-    await downloadAttachment(
-      "/tasks/task-1/attachments/att-1",
-      "quarterly report.pdf",
-    );
+      await downloadAttachment(
+        "/tasks/task-1/attachments/att-1",
+        "quarterly report.pdf",
+      );
 
-    expect(clickSpy).toHaveBeenCalledTimes(1);
-    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:planner/download");
-    // No anchor left behind in the DOM
-    expect(document.querySelectorAll("a")).toHaveLength(0);
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      // The revoke is delayed: revoking immediately after the click can
+      // abort the download before the browser resolves the blob URL
+      expect(revokeObjectUrl).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:planner/download");
+      // No anchor left behind in the DOM
+      expect(document.querySelectorAll("a")).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
