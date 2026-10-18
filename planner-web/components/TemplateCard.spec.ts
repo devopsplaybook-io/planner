@@ -80,6 +80,26 @@ describe("TemplateCard", () => {
     expect(wrapper.find(".skip-flag").exists()).toBe(false);
   });
 
+  it("should render the initial-status chip when an instanceStatus is set", () => {
+    const wrapper = mountCard({
+      automation: {
+        scheduleCron: null,
+        skipIfPreviousNotDone: false,
+        addDateToTitle: false,
+        instanceStatus: "Doing",
+      },
+    });
+    const chip = wrapper.find(".initial-status-chip");
+    expect(chip.exists()).toBe(true);
+    expect(chip.text()).toContain("Doing");
+    expect(chip.attributes("title")).toBe("Instances start in Doing");
+  });
+
+  it("should not render the initial-status chip without an instanceStatus", () => {
+    const wrapper = mountCard();
+    expect(wrapper.find(".initial-status-chip").exists()).toBe(false);
+  });
+
   it("should render the meta counts and the skips-open flag", () => {
     const wrapper = mountCard();
     expect(wrapper.find(".checklist-progress").text().trim()).toBe("1/2");

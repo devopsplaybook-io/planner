@@ -815,6 +815,19 @@ watch(
   },
 );
 
+// Reset the initial status when the selected project does not have it
+// (switching project keeps the stale value otherwise and the server
+// rejects the save with a confusing 400)
+watch(
+  () => form.value.projectId,
+  () => {
+    const statuses = selectedProject.value?.statuses || [];
+    if (!statuses.includes(form.value.instanceStatus)) {
+      form.value.instanceStatus = "";
+    }
+  },
+);
+
 // Fetch image previews, PDF viewers and audio players as blobs whenever the
 // attachment list changes (dialog open, upload, delete) and drop object URLs
 // for gone attachments

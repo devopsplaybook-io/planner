@@ -17,6 +17,12 @@
             :title="template.automation?.scheduleCron || ''"
             >{{ automationLabel }}</span
           >
+          <span
+            v-if="template.automation?.instanceStatus"
+            class="initial-status-chip"
+            :title="'Instances start in ' + template.automation.instanceStatus"
+            ><i class="bi bi-flag" /> {{ template.automation.instanceStatus }}</span
+          >
           <span v-if="projectName" class="project-name" :title="projectName">{{
             projectName
           }}</span>
@@ -111,7 +117,7 @@ const projectName = computed(() => {
 /* Automation chip in place of the task status badge: a muted uppercase pill */
 .automation-chip {
   flex-shrink: 0;
-  max-width: 70%;
+  max-width: 50%;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--text-xs);
@@ -123,6 +129,28 @@ const projectName = computed(() => {
   background: var(--color-text-muted);
   color: #fff;
   white-space: nowrap;
+}
+
+/* Initial status chip: same pill shape as the automation chip but an
+   outlined treatment so the row keeps its hierarchy (automation first) */
+.initial-status-chip {
+  flex-shrink: 0;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  padding: 0.1em 0.5em;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-text-muted);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.initial-status-chip i {
+  font-size: 0.85em;
 }
 
 .project-name {
