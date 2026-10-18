@@ -25,8 +25,12 @@ import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
 import { TaskImproveInit } from "./tasks/TaskImprove";
 import { DictationInit } from "./dictation/Dictation";
 import { DictationRoutes } from "./dictation/DictationRoutes";
+import { TaskVoiceCommentsInit } from "./tasks/TaskVoiceComments";
 import { NotificationsInit } from "./notifications/Notifications";
 import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
+import { TaskTemplatesRoutes } from "./tasktemplates/TaskTemplatesRoutes";
+import { TaskTemplatesSchedulerInit } from "./tasktemplates/TaskTemplatesScheduler";
+import { TaskTemplatesBackfillFromRecurrence } from "./tasktemplates/TaskTemplatesBackfill";
 import { StandardLogger, StandardTracer } from "@devopsplaybook.io/otel-utils";
 import { StandardTracerFastifyRegisterHooks } from "@devopsplaybook.io/otel-utils-fastify";
 
@@ -61,13 +65,18 @@ Promise.resolve()
     await DbUtilsInit(config);
     await AuthInit(config);
     await RunMigrations();
+    // Convert recurring tasks into task templates (one-time, idempotent),
+    // then start the cron scheduler over the resulting templates
+    await TaskTemplatesBackfillFromRecurrence();
     // Hash any plaintext API keys left by older versions (idempotent)
     await ApiKeysDataBackfillHashes();
     await StatusesCatalogSeedIfEmpty();
     await RecommendationInit(config);
     await TaskImproveInit(config);
     await DictationInit(config);
+    await TaskVoiceCommentsInit(config);
     await NotificationsInit(config);
+    await TaskTemplatesSchedulerInit();
 
     // Ensure a default project exists
     const existingProjects = await ProjectsDataList();
@@ -147,10 +156,7 @@ Promise.resolve()
           config.LLM_RECOMMENDATION_ENABLED && !!config.LLM_API_KEY,
         llmImproveEnabled: !!config.LLM_API_KEY,
         dictationEnabled: config.DICTATION_ENABLED,
-        dictationSttConfigured:
-          config.STT_MODE === "embedded"
-            ? !!config.STT_EMBEDDED_MODEL
-            : !!config.STT_API_URL && !!config.STT_API_KEY && !!config.STT_MODEL,
+        dictationSttConfigured: config.IsDictationSttConfigured(),
       });
     });
 
@@ -234,6 +240,13 @@ Promise.resolve()
         await new NotificationsRoutes().getRoutes(instance);
       },
       { prefix: "/api/notifications" },
+    );
+
+    await fastify.register(
+      async (instance) => {
+        await new TaskTemplatesRoutes().getRoutes(instance);
+      },
+      { prefix: "/api/task-templates" },
     );
 
     fastify.register(fastifyStatic, {

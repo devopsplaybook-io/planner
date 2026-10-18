@@ -44,6 +44,17 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 - [x] A dictation language setting is available in the settings page when the feature is enabled.
 - [x] Microphone permission denial is reported with a clear message; recording stops cleanly on Escape.
 
+### Voice comments on tasks
+
+- [x] The task comment composer offers a record-voice button when dictation is enabled and STT is configured (shared availability logic with the dictation dialog); recording state with elapsed time, stop and cancel, auto-stop at the maximum duration, and microphone errors surfaced inline.
+- [x] A finished recording uploads through the authenticated task attachment API with the user's dictation language; the audio file itself is kept as a regular task attachment (the voice message the user keeps).
+- [x] When an audio attachment is uploaded to a task and dictation is enabled with STT configured, the server transcribes it in the background reusing the dictation STT and polish stages (no action proposals); the transcript is posted as a task comment attributed to the uploading user and referencing the voice message file name.
+- [x] Voice transcriptions run one at a time per user (later uploads queue) and share the dictation hourly rate limit; the in-memory job state is never persisted (a restart mid-transcription loses only the transcript, never the audio).
+- [x] Transcription failures never fail the upload and are surfaced silently (generic log line only); transcript and audio content are never logged, and the audio attachment is never deleted by the transcription.
+- [x] Audio attachments play through an inline audio player in the task dialog and the server serves audio files inline with proper audio content types.
+- [x] Without dictation enabled or STT configured, nothing changes: no record button in the composer and no background transcription.
+- [x] Voice comments apply to tasks only; notes keep their existing comment and attachment behavior.
+
 ## Implementation Status
 
-`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-10-06
+`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-10-17

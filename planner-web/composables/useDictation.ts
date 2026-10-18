@@ -13,6 +13,19 @@ interface UseDictationOptions {
 }
 
 /**
+ * True when the current browser can record audio (MediaRecorder with a
+ * microphone). Exported so components can hide recording affordances
+ * without instantiating the composable.
+ */
+export function isVoiceRecordingSupported(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    typeof MediaRecorder !== "undefined"
+  );
+}
+
+/**
  * MediaRecorder lifecycle for the dictation dialog: microphone permission,
  * mimeType selection, elapsed timer, a light RMS level for the pulse
  * indicator and auto-stop at the maximum duration. Recording state and
@@ -38,11 +51,7 @@ export function useDictation(options: UseDictationOptions = {}) {
   let stopPromise: Promise<RecordingResult> | null = null;
 
   function isSupported(): boolean {
-    return (
-      typeof navigator !== "undefined" &&
-      !!navigator.mediaDevices?.getUserMedia &&
-      typeof MediaRecorder !== "undefined"
-    );
+    return isVoiceRecordingSupported();
   }
 
   function releaseStream(): void {

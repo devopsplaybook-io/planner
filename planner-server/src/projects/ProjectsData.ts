@@ -1,4 +1,9 @@
-import { Project } from "../model/Project";
+import {
+  Project,
+  ProjectPermission,
+  ProjectUserAccess,
+  normalizePermission,
+} from "../model/Project";
 import {
   DbUtilsExecSQL,
   DbUtilsQuerySQL,
@@ -53,8 +58,8 @@ export async function ProjectsDataAdd(project: Project): Promise<void> {
     JSON.stringify(project.statuses),
     project.dateCreated,
   ]);
-  for (const userId of project.userAccess) {
-    await addProjectUser(project.id, userId);
+  for (const entry of project.userAccess) {
+    await addProjectUser(project.id, entry.userId, entry.permission);
   }
 }
 
@@ -87,18 +92,23 @@ export async function ProjectsDataCountOpenTasks(
 
 // ==================== PROJECT USERS ====================
 
-export async function getProjectUsers(projectId: string): Promise<string[]> {
+export async function getProjectUsers(
+  projectId: string,
+): Promise<ProjectUserAccess[]> {
   const rows = await DbUtilsQuerySQL(
     SQL_QUERIES.GET_PROJECT_USERS[DbUtilsGetType()],
     [projectId],
   );
-  return rows.map((r) => r.userId as string);
+  return rows.map((r) => ({
+    userId: r.userId as string,
+    permission: normalizePermission(r.permission),
+  }));
 }
 
 async function getProjectUsersForProjects(
   projectIds: string[],
-): Promise<Map<string, string[]>> {
-  const usersByProject = new Map<string, string[]>();
+): Promise<Map<string, ProjectUserAccess[]>> {
+  const usersByProject = new Map<string, ProjectUserAccess[]>();
   if (projectIds.length === 0) {
     return usersByProject;
   }
@@ -111,7 +121,10 @@ async function getProjectUsersForProjects(
   );
   for (const row of rows) {
     const list = usersByProject.get(row.projectId as string) || [];
-    list.push(row.userId as string);
+    list.push({
+      userId: row.userId as string,
+      permission: normalizePermission(row.permission),
+    });
     usersByProject.set(row.projectId as string, list);
   }
   return usersByProject;
@@ -120,10 +133,12 @@ async function getProjectUsersForProjects(
 export async function addProjectUser(
   projectId: string,
   userId: string,
+  permission: ProjectPermission = "all",
 ): Promise<void> {
   await DbUtilsExecSQL(SQL_QUERIES.INSERT_PROJECT_USER[DbUtilsGetType()], [
     projectId,
     userId,
+    permission,
   ]);
 }
 
@@ -144,8 +159,9 @@ export async function clearProjectUsers(projectId: string): Promise<void> {
 }
 
 /**
- * Deletes the project, every child row (its tasks/notes with their children,
- * project users, in one transaction) and the attachment files on disk.
+ * Deletes the project, every child row (its tasks/notes/task templates with
+ * their children, project users, in one transaction) and the attachment
+ * files on disk.
  */
 export async function ProjectsDataDelete(id: string): Promise<void> {
   const attachmentPaths = await getProjectAttachmentPaths(id);
@@ -186,6 +202,30 @@ export async function ProjectsDataDelete(id: string): Promise<void> {
       SQL_QUERIES.DELETE_NOTES_BY_PROJECT[DbUtilsGetType()],
       [id],
     );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_LABELS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_ASSIGNEES_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_COMMENTS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_ATTACHMENTS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATE_RUNS_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_TEMPLATES_BY_PROJECT[DbUtilsGetType()],
+      [id],
+    );
     await DbUtilsExecSQL(SQL_QUERIES.DELETE_PROJECT_USERS[DbUtilsGetType()], [
       id,
     ]);
@@ -206,7 +246,13 @@ async function getProjectAttachmentPaths(
     SQL_QUERIES.GET_NOTE_ATTACHMENT_PATHS_BY_PROJECT[dbType],
     [projectId],
   );
-  return [...taskRows, ...noteRows].map((r) => r.filePath as string);
+  const templateRows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_TEMPLATE_ATTACHMENT_PATHS_BY_PROJECT[dbType],
+    [projectId],
+  );
+  return [...taskRows, ...noteRows, ...templateRows].map(
+    (r) => r.filePath as string,
+  );
 }
 
 const SQL_QUERIES = {
@@ -297,8 +343,9 @@ const SQL_QUERIES = {
   },
   INSERT_PROJECT_USER: {
     postgres:
-      'INSERT INTO project_users ("projectId", "userId") VALUES ($1, $2)',
-    sqlite: "INSERT INTO project_users (projectId, userId) VALUES (?, ?)",
+      'INSERT INTO project_users ("projectId", "userId", "permission") VALUES ($1, $2, $3)',
+    sqlite:
+      "INSERT INTO project_users (projectId, userId, permission) VALUES (?, ?, ?)",
   },
   DELETE_PROJECT_USER: {
     postgres:
@@ -310,13 +357,15 @@ const SQL_QUERIES = {
     sqlite: "DELETE FROM project_users WHERE projectId = ?",
   },
   GET_PROJECT_USERS: {
-    postgres: 'SELECT "userId" FROM project_users WHERE "projectId" = $1',
-    sqlite: "SELECT userId FROM project_users WHERE projectId = ?",
+    postgres:
+      'SELECT "userId", "permission" FROM project_users WHERE "projectId" = $1',
+    sqlite: "SELECT userId, permission FROM project_users WHERE projectId = ?",
   },
   GET_PROJECT_USERS_BY_PROJECT_IDS: {
     postgres:
-      'SELECT "projectId", "userId" FROM project_users WHERE "projectId" IN (:ids)',
-    sqlite: "SELECT projectId, userId FROM project_users WHERE projectId IN (:ids)",
+      'SELECT "projectId", "userId", "permission" FROM project_users WHERE "projectId" IN (:ids)',
+    sqlite:
+      "SELECT projectId, userId, permission FROM project_users WHERE projectId IN (:ids)",
   },
   GET_TASK_ATTACHMENT_PATHS_BY_PROJECT: {
     postgres:
@@ -329,5 +378,45 @@ const SQL_QUERIES = {
       'SELECT "filePath" FROM note_attachments WHERE "noteId" IN (SELECT "id" FROM notes WHERE "projectId" = $1)',
     sqlite:
       "SELECT filePath FROM note_attachments WHERE noteId IN (SELECT id FROM notes WHERE projectId = ?)",
+  },
+  GET_TEMPLATE_ATTACHMENT_PATHS_BY_PROJECT: {
+    postgres:
+      'SELECT "filePath" FROM task_template_attachments WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "SELECT filePath FROM task_template_attachments WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATES_BY_PROJECT: {
+    postgres: 'DELETE FROM task_templates WHERE "projectId" = $1',
+    sqlite: "DELETE FROM task_templates WHERE projectId = ?",
+  },
+  DELETE_TEMPLATE_LABELS_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_labels WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_labels WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATE_ASSIGNEES_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_assignees WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_assignees WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATE_COMMENTS_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_comments WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_comments WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATE_ATTACHMENTS_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_attachments WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_attachments WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
+  },
+  DELETE_TEMPLATE_RUNS_BY_PROJECT: {
+    postgres:
+      'DELETE FROM task_template_runs WHERE "templateId" IN (SELECT "id" FROM task_templates WHERE "projectId" = $1)',
+    sqlite:
+      "DELETE FROM task_template_runs WHERE templateId IN (SELECT id FROM task_templates WHERE projectId = ?)",
   },
 };

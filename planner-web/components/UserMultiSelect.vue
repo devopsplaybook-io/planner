@@ -4,6 +4,19 @@
       <span v-for="u in selectedUsers" :key="u.id" class="tag ums-chip">
         <i class="bi bi-person" />
         {{ u.name }}
+        <select
+          v-if="withPermissions"
+          class="ums-permission"
+          :value="permissions[u.id] || 'all'"
+          :disabled="disabled"
+          :aria-label="`Permission for ${u.name}`"
+          @change="setPermission(u.id, $event.target.value)"
+        >
+          <option value="all">All</option>
+          <option value="update">Update tasks</option>
+          <option value="comment">Comment</option>
+          <option value="view">View</option>
+        </select>
         <button
           type="button"
           class="ums-remove"
@@ -48,13 +61,32 @@
 </template>
 
 <script setup>
+// Explicit imports so the component also mounts under plain vitest
+// (without Nuxt's auto-imports) — see UserMultiSelect.spec.ts
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
+
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   users: { type: Array, default: () => [] },
   placeholder: { type: String, default: "Add users…" },
   disabled: { type: Boolean, default: false },
+  // Opt-in: renders a compact permission select per chip (project user
+  // access); assignee usages keep the plain chips
+  withPermissions: { type: Boolean, default: false },
+  permissions: { type: Object, default: () => ({}) },
 });
-const emit = defineEmits(["update:modelValue"]);
+const emit = defineEmits(["update:modelValue", "update:permissions"]);
+
+function setPermission(id, permission) {
+  emit("update:permissions", { ...props.permissions, [id]: permission });
+}
 
 const rootEl = ref(null);
 const inputEl = ref(null);
@@ -195,6 +227,21 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2xs);
+}
+
+.ums-permission {
+  width: auto;
+  min-width: 0;
+  max-width: 9em;
+  height: auto;
+  padding: 0.1em var(--space-2xs);
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: none;
 }
 
 .ums-remove {

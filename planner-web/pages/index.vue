@@ -6,16 +6,6 @@
         <p>Tasks that need your attention</p>
       </hgroup>
       <div class="header-controls">
-        <div class="search-box">
-          <i class="bi bi-search" />
-          <input
-            v-model="searchQuery"
-            type="search"
-            class="search-input"
-            placeholder="Search tasks…"
-            aria-label="Search tasks"
-          />
-        </div>
         <ProjectSelect
           :model-value="projectsStore.selectedProjectFilter"
           all-label="All projects"
@@ -103,99 +93,78 @@
         </div>
       </section>
 
-      <section v-if="isSearchActive">
-        <h2><i class="bi bi-search" /> Search results</h2>
-        <div v-if="searching" class="loading-indicator" />
-        <template v-else>
-          <div class="task-list">
-            <TaskCard
-              v-for="task in searchResults"
-              :key="task.id"
-              :task="task"
-              @click="openTask(task)"
-            />
-          </div>
-          <div v-if="searchResults.length === 0" class="empty-state">
-            <i class="bi bi-search" />
-            <p>No tasks found</p>
-          </div>
-        </template>
+      <section v-if="dashboardData.overdue.length > 0">
+        <h2><i class="bi bi-exclamation-triangle" /> Overdue</h2>
+        <div class="task-list">
+          <TaskCard
+            v-for="task in dashboardData.overdue"
+            :key="task.id"
+            :task="task"
+            @click="openTask(task)"
+          />
+        </div>
       </section>
 
-      <template v-else>
-        <section v-if="dashboardData.overdue.length > 0">
-          <h2><i class="bi bi-exclamation-triangle" /> Overdue</h2>
-          <div class="task-list">
-            <TaskCard
-              v-for="task in dashboardData.overdue"
-              :key="task.id"
-              :task="task"
-              @click="openTask(task)"
-            />
-          </div>
-        </section>
-
-        <section v-if="dashboardData.upcoming.length > 0">
-          <h2><i class="bi bi-clock" /> Upcoming</h2>
-          <div class="task-list">
-            <TaskCard
-              v-for="task in dashboardData.upcoming"
-              :key="task.id"
-              :task="task"
-              @click="openTask(task)"
-            />
-          </div>
-        </section>
-
-        <section v-if="dashboardData.noDate.length > 0">
-          <h2><i class="bi bi-inbox" /> No Due Date</h2>
-          <div class="task-list">
-            <TaskCard
-              v-for="task in dashboardData.noDate"
-              :key="task.id"
-              :task="task"
-              @click="openTask(task)"
-            />
-          </div>
-        </section>
-
-        <section v-if="recentlyDone.length > 0">
-          <h2>
-            <i class="bi bi-check-circle" /> Recently Done
-            <span class="section-hint">last {{ DONE_WINDOW_DAYS }} days</span>
-          </h2>
-          <div class="task-list">
-            <TaskCard
-              v-for="task in recentlyDone"
-              :key="task.id"
-              :task="task"
-              @click="openTask(task)"
-            />
-          </div>
-        </section>
-
-        <div
-          v-if="
-            dashboardData.overdue.length === 0 &&
-            dashboardData.upcoming.length === 0 &&
-            dashboardData.noDate.length === 0 &&
-            recentlyDone.length === 0
-          "
-          class="empty-state"
-        >
-          <i class="bi bi-check-circle" />
-          <p>All caught up! No tasks need immediate attention.</p>
+      <section v-if="dashboardData.upcoming.length > 0">
+        <h2><i class="bi bi-clock" /> Upcoming</h2>
+        <div class="task-list">
+          <TaskCard
+            v-for="task in dashboardData.upcoming"
+            :key="task.id"
+            :task="task"
+            @click="openTask(task)"
+          />
         </div>
+      </section>
 
-        <nav class="page-links" aria-label="Dashboard views">
-          <NuxtLink to="/history">
-            <i class="bi bi-clock-history" /> History
-          </NuxtLink>
-          <NuxtLink to="/update-feed">
-            <i class="bi bi-activity" /> Update Feed
-          </NuxtLink>
-        </nav>
-      </template>
+      <section v-if="dashboardData.noDate.length > 0">
+        <h2><i class="bi bi-inbox" /> No Due Date</h2>
+        <div class="task-list">
+          <TaskCard
+            v-for="task in dashboardData.noDate"
+            :key="task.id"
+            :task="task"
+            @click="openTask(task)"
+          />
+        </div>
+      </section>
+
+      <section v-if="recentlyDone.length > 0">
+        <h2>
+          <i class="bi bi-check-circle" /> Recently Done
+          <span class="section-hint">last {{ DONE_WINDOW_DAYS }} days</span>
+        </h2>
+        <div class="task-list">
+          <TaskCard
+            v-for="task in recentlyDone"
+            :key="task.id"
+            :task="task"
+            @click="openTask(task)"
+          />
+        </div>
+      </section>
+
+      <div
+        v-if="
+          dashboardData.overdue.length === 0 &&
+          dashboardData.upcoming.length === 0 &&
+          dashboardData.noDate.length === 0 &&
+          recentlyDone.length === 0
+        "
+        class="empty-state"
+      >
+        <i class="bi bi-check-circle" />
+        <p>All caught up! No tasks need immediate attention.</p>
+      </div>
+
+      <nav class="page-links" aria-label="Dashboard views">
+        <NuxtLink to="/history">
+          <i class="bi bi-clock-history" /> History
+        </NuxtLink>
+        <NuxtLink to="/update-feed">
+          <i class="bi bi-activity" /> Update Feed
+        </NuxtLink>
+      </nav>
     </template>
   </div>
 
@@ -207,7 +176,6 @@
 </template>
 
 <script setup>
-import { watchDebounced } from "@vueuse/core";
 import { renderMarkdown } from "../composables/useMarkdown";
 
 const DONE_WINDOW_DAYS = 30;
@@ -222,8 +190,8 @@ const route = useRoute();
 
 const loading = ref(true);
 const showCreateDialog = ref(false);
-// Label filter: applies to every dashboard section, the Recently Done list
-// and the search results; empty selection = no filter
+// Label filter: applies to every dashboard section, including the Recently
+// Done list; empty selection = no filter
 const selectedLabels = ref([]);
 const dashboardData = ref({
   overdue: [],
@@ -243,39 +211,6 @@ const recentlyDone = computed(() =>
         new Date(a.dateUpdated || a.dateCreated),
     ),
 );
-
-const searchQuery = ref("");
-const searchResults = ref([]);
-const searching = ref(false);
-
-const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
-
-async function runSearch() {
-  const q = searchQuery.value.trim();
-  if (!q) {
-    searchResults.value = [];
-    searching.value = false;
-    return;
-  }
-  searching.value = true;
-  try {
-    const params = { q };
-    const filterId = projectsStore.selectedProjectFilter;
-    if (filterId) {
-      params.projectIds = projectsStore.subtreeProjectIds(filterId);
-    }
-    if (selectedLabels.value.length) {
-      params.labels = selectedLabels.value;
-    }
-    searchResults.value = await tasksStore.searchTasks(params);
-  } catch {
-    // Keep the previous results on failure
-  } finally {
-    searching.value = false;
-  }
-}
-
-watchDebounced(searchQuery, runSearch, { debounce: 300 });
 
 function renderRecommendationMarkdown(text) {
   if (!text) return "";
@@ -319,14 +254,12 @@ async function regenerate() {
 function onFilterChange(projectId) {
   projectsStore.setProjectFilter(projectId);
   fetchDashboard();
-  runSearch();
 }
 
-// The chips are the visible hint; re-slice every section and the search
-// results when the label selection changes
+// The chips are the visible hint; re-slice every section when the label
+// selection changes
 watch(selectedLabels, () => {
   fetchDashboard({ silent: true });
-  runSearch();
 });
 
 // silent: refresh in place (no loading indicator) so the view stays mounted
@@ -419,8 +352,8 @@ onMounted(async () => {
   align-items: center;
 }
 
-/* Compact chip editor: the filter stays one row with the search box and
-   project select; the dropdown still overflows the box by design */
+/* Compact chip editor: the filter stays one row with the project select;
+   the dropdown still overflows the box by design */
 .label-filter {
   width: 12rem;
   max-width: 40vw;
@@ -430,40 +363,6 @@ onMounted(async () => {
   min-width: 6em;
 }
 
-.search-box {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: 0 0.6em;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-}
-
-.search-box:focus-within {
-  border-color: var(--color-primary);
-}
-
-.search-box > i {
-  opacity: 0.55;
-}
-
-.search-input {
-  width: 13rem;
-  max-width: 40vw;
-  padding: 0.45em 0;
-  border: none;
-  background: transparent;
-  font-size: var(--text-md);
-  color: var(--color-text);
-}
-
-.search-input:focus {
-  outline: none;
-  /* Pico paints its focus ring with a box-shadow, which reads as a border
-     inset from the outer search box; keep the highlight on .search-box */
-  box-shadow: none;
-}
 
 section {
   margin-bottom: var(--space-lg);

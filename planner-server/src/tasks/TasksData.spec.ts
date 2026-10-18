@@ -413,3 +413,42 @@ describe("buildListTasksQuery visibility", () => {
     ]);
   });
 });
+
+describe("buildListTasksQuery hasDueDate", () => {
+  it("should restrict to tasks with a due date (sqlite)", () => {
+    const { sql, params } = buildListTasksQuery({ hasDueDate: true }, "sqlite");
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE dueDate IS NOT NULL ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual([]);
+  });
+
+  it("should restrict to tasks with a due date (postgres)", () => {
+    const { sql } = buildListTasksQuery({ hasDueDate: true }, "postgres");
+    expect(sql).toBe(
+      'SELECT * FROM tasks WHERE "dueDate" IS NOT NULL ORDER BY "dateCreated" DESC',
+    );
+  });
+
+  it("should combine hasDueDate with doneSince and visibility", () => {
+    const { sql, params } = buildListTasksQuery(
+      {
+        hasDueDate: true,
+        doneSince: "2026-08-14T00:00:00.000Z",
+        visibleTo: { userId: "user-1" },
+      },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE (status != ? OR dateUpdated >= ?) AND dueDate IS NOT NULL " +
+        "AND (projectId IN (SELECT id FROM projects WHERE visibility = 'public') " +
+        "OR projectId IN (SELECT projectId FROM project_users WHERE userId = ?)) " +
+        "ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual([
+      "Done",
+      "2026-08-14T00:00:00.000Z",
+      "user-1",
+    ]);
+  });
+});

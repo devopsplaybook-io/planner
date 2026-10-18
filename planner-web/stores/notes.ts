@@ -40,6 +40,25 @@ export const useNotesStore = defineStore("notes", {
       this.notes = res.data;
     },
 
+    async searchNotes(params?: {
+      projectId?: string;
+      projectIds?: string[];
+      q?: string;
+    }) {
+      const query: Record<string, string> = {};
+      if (params?.projectId) {
+        query.projectId = params.projectId;
+      }
+      if (params?.projectIds && params.projectIds.length > 0) {
+        query.projectIds = params.projectIds.join(",");
+      }
+      if (params?.q) {
+        query.q = params.q;
+      }
+      const res = await api.get("/notes", { params: query });
+      return res.data as Note[];
+    },
+
     async fetchById(id: string) {
       const res = await api.get(`/notes/${id}`);
       this.currentNote = res.data;

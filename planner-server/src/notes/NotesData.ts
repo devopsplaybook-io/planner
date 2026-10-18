@@ -24,6 +24,8 @@ export interface NoteListFilters {
   projectId?: string;
   /** Subtree filter: matches notes in any of these projects (IN). */
   projectIds?: string[];
+  /** Case-insensitive substring matched against title or description. */
+  q?: string;
   /** When set, restricts results to projects visible to this user (non-admin viewers). */
   visibleTo?: { userId: string };
 }
@@ -54,6 +56,18 @@ export function buildListNotesQuery(
     const visibility = visibleProjectsCondition(filters.visibleTo.userId, dbType);
     conditions.push(visibility.sql);
     params.push(...visibility.params);
+  }
+  const term = filters.q?.trim();
+  if (term) {
+    // LIKE is case-insensitive for ASCII in sqlite; postgres needs ILIKE.
+    // User-supplied wildcards and the escape character are neutralized so
+    // they match literally.
+    const like = dbType === "postgres" ? "ILIKE" : "LIKE";
+    const pattern = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+    conditions.push(
+      `(${quote("title")} ${like} ? ESCAPE '\\' OR ${quote("description")} ${like} ? ESCAPE '\\')`,
+    );
+    params.push(pattern, pattern);
   }
   const whereClause =
     conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";

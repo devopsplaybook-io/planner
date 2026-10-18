@@ -6,11 +6,13 @@
 
 - **Project Management** - Admins create and manage multiple projects from the admin section and select which statuses they use
 - **Centralized Status Management** - Admins define and order the global status catalog from the admin section, with a color per status chosen from a preset palette; the order is reflected across the Tasks board
-- **Task Tracking** - Tasks with title, description, checklists, comments, attachments, due dates, priorities, and labels
+- **Task Tracking** - Tasks with title, description, checklists, comments, attachments, due dates, priorities, labels, and recurring tasks that automatically create their next occurrence on completion
 - **Task Assignment** - Assign tasks to one or more users
 - **Smart Refresh** - Lists refresh when a dialog closes and open tasks are polled for changes; assignees receive a push notification when their task is updated by another user
-- **Note Taking** - Notes with title, description, comments, attachments, and labels
+- **Note Taking** - Notes with title, description, comments, attachments, and labels, with a debounced search over titles and descriptions
+- **Global Search & Command Palette** - Jump to any task or note from every page with Ctrl/Cmd+K (fuzzy search across tasks and notes) plus quick actions for new task, new note and go to view
 - **Multiple Views** - Next (overdue/upcoming), Calendar view, and Kanban board
+- **Calendar Feed** - Subscribable ICS feed of task due dates, works with Google, Apple and Outlook calendars
 - **Markdown Support** - Task, note, and project descriptions support markdown syntax
 - **User Management** - First user automatically set as admin, additional users can be added
 - **PWA Support** - Installable progressive web application for mobile and desktop
@@ -139,6 +141,15 @@ VAPID keys are read from the environment when both `WEB_PUSH_VAPID_PUBLIC_KEY` a
 | `WEB_PUSH_VAPID_PUBLIC_KEY`  | VAPID public key (base64url), overrides the generated one           |                                |
 | `WEB_PUSH_VAPID_PRIVATE_KEY` | VAPID private key (base64url), overrides the generated one          |                                |
 
+## Calendar Feed
+
+Planner exposes a subscribable ICS calendar feed of your task due dates at `GET /api/users/calendar.ics`, so Planner due dates appear in Google Calendar, Apple Calendar or Outlook without manual entry. Subscribe from Settings → Profile (Calendar Feed section): copy the https or webcal URL right after generating or regenerating your API key, then add it as a calendar subscription ("From URL" in Google Calendar).
+
+- **Authentication**: the feed uses your per-user API key, sent either via the `x-api-key` header or via the `?apiKey=` query parameter (calendar clients cannot send custom headers).
+- **The feed URL contains your API key — treat it like a password.** Regenerating the key (Settings → Profile) revokes every calendar subscribed with the previous URL.
+- **Visibility**: you only get tasks from projects you can see (admins see everything); Done tasks stay in the feed for 30 days after their last update, matching the dashboard.
+- **Events**: all-day events covering the due date, with a stable identity so clients update existing events in place; the title carries `Project path / Task title`.
+
 ## Development
 
 To start development on Planner:
@@ -177,6 +188,7 @@ Planner exposes a RESTful API under the `/api/` prefix:
 | PUT /api/statuses    | Replace the global status catalog (admin only)          |
 | POST /api/dictation  | Upload a dictation audio clip and start a job           |
 | GET /api/dictation/:jobId | Poll the state/stage/result of a dictation job     |
+| GET /api/users/calendar.ics | ICS calendar feed of the authenticated user's visible task due dates (API key required) |
 
 Additional API endpoints for projects, tasks, notes, and users will be available as the implementation progresses.
 

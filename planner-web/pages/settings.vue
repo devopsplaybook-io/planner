@@ -178,6 +178,90 @@
           </label>
         </div>
       </section>
+
+      <section v-if="authStore.isAuthenticated">
+        <h2>Calendar Feed</h2>
+        <p class="api-key-info">
+          Subscribe to your task due dates from Google Calendar, Apple
+          Calendar or Outlook. Only tasks you can see are included, and tasks
+          completed more than 30 days ago drop out of the feed.
+        </p>
+        <div v-if="newlyGeneratedKey" class="calendar-feed-urls">
+          <label>
+            <strong>Subscribe URL (https)</strong> — copy it now, it won't be
+            shown again:
+            <div class="api-key-input-row">
+              <input
+                :value="calendarFeedUrls.https"
+                type="text"
+                readonly
+                class="api-key-input"
+              />
+              <button
+                class="btn-copy"
+                @click="copyCalendarUrl(calendarFeedUrls.https)"
+              >
+                <i class="bi bi-clipboard" /> Copy
+              </button>
+            </div>
+          </label>
+          <label>
+            <strong>Subscribe URL (webcal)</strong>
+            <div class="api-key-input-row">
+              <input
+                :value="calendarFeedUrls.webcal"
+                type="text"
+                readonly
+                class="api-key-input"
+              />
+              <button
+                class="btn-copy"
+                @click="copyCalendarUrl(calendarFeedUrls.webcal)"
+              >
+                <i class="bi bi-clipboard" /> Copy
+              </button>
+            </div>
+          </label>
+          <p class="setting-hint">
+            <i class="bi bi-info-circle" />
+            The feed URL contains your API key — treat it like a password.
+            Regenerating the key invalidates calendars subscribed with the
+            previous URL.
+          </p>
+        </div>
+        <div v-else-if="apiKey" class="api-key-display">
+          <label>
+            Subscription URL (key masked)
+            <div class="api-key-input-row">
+              <input
+                :value="calendarFeedMaskedUrl"
+                type="text"
+                readonly
+                class="api-key-input"
+              />
+            </div>
+          </label>
+          <p class="setting-hint">
+            <i class="bi bi-info-circle" />
+            Regenerate your API key to get a copyable subscription URL.
+          </p>
+          <div class="api-key-actions">
+            <button
+              class="secondary"
+              :aria-busy="regenerating"
+              @click="regenerateApiKey"
+            >
+              <i class="bi bi-arrow-clockwise" /> Regenerate
+            </button>
+          </div>
+        </div>
+        <div v-else class="api-key-generate">
+          <p>No API key yet — generate one to get a calendar feed URL.</p>
+          <button :aria-busy="generating" @click="generateApiKey">
+            <i class="bi bi-key" /> Generate API Key
+          </button>
+        </div>
+      </section>
     </div>
     <AdminUsersTab v-else-if="activeTab === 'users' && authStore.isAdmin" />
     <AdminProjectsTab
@@ -186,11 +270,13 @@
     <AdminStatusesTab
       v-else-if="activeTab === 'statuses' && authStore.isAdmin"
     />
+    <TaskTemplatesTab v-else-if="activeTab === 'task-templates'" />
   </div>
 </template>
 
 <script setup>
 import api from "../utils/api";
+import { buildCalendarFeedUrls } from "../utils/calendarFeed";
 import { getSettingsTabs, normalizeSettingsTab } from "../utils/settingsTabs";
 
 const authStore = useAuthStore();
@@ -343,6 +429,20 @@ async function deleteApiKey() {
 
 function copyNewKey() {
   navigator.clipboard.writeText(newlyGeneratedKey.value);
+}
+
+// Calendar feed
+const calendarFeedUrls = computed(() =>
+  buildCalendarFeedUrls(window.location.origin, newlyGeneratedKey.value),
+);
+
+const calendarFeedMaskedUrl = computed(
+  () =>
+    `${window.location.origin}/api/users/calendar.ics?apiKey=${apiKey.value?.key || ""}`,
+);
+
+function copyCalendarUrl(url) {
+  navigator.clipboard.writeText(url);
 }
 
 function formatDate(dateStr) {
@@ -559,6 +659,20 @@ function formatDate(dateStr) {
 }
 
 .api-key-new label strong {
+  color: var(--color-primary-dark);
+}
+
+.calendar-feed-urls {
+  display: grid;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  padding: var(--space-sm);
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+}
+
+.calendar-feed-urls label strong {
   color: var(--color-primary-dark);
 }
 </style>

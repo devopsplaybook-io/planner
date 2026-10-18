@@ -58,6 +58,12 @@ describe("RunMigrations (fresh database)", () => {
       "task_comments",
       "task_dependencies",
       "task_labels",
+      "task_template_assignees",
+      "task_template_attachments",
+      "task_template_comments",
+      "task_template_labels",
+      "task_template_runs",
+      "task_templates",
       "tasks",
       "users",
     ]) {
@@ -96,6 +102,23 @@ describe("RunMigrations (fresh database)", () => {
     expect(dependencyFks).toHaveLength(2);
     expect(dependencyFks.every((fk) => fk.table === "tasks")).toBe(true);
     expect(dependencyFks.every((fk) => fk.on_delete === "CASCADE")).toBe(true);
+
+    const templateFks = await DbUtilsQuerySQL(
+      "PRAGMA foreign_key_list(task_templates)",
+    );
+    expect(
+      templateFks.some(
+        (fk) => fk.table === "projects" && fk.on_delete === "CASCADE",
+      ),
+    ).toBe(true);
+    const templateRunFks = await DbUtilsQuerySQL(
+      "PRAGMA foreign_key_list(task_template_runs)",
+    );
+    expect(
+      templateRunFks.some(
+        (fk) => fk.table === "task_templates" && fk.on_delete === "CASCADE",
+      ),
+    ).toBe(true);
   });
 
   it("should create the query indexes", async () => {
@@ -110,6 +133,8 @@ describe("RunMigrations (fresh database)", () => {
     expect(indexes).toContain("idx_api_keys_userId");
     expect(indexes).toContain("idx_task_dependencies_taskId");
     expect(indexes).toContain("idx_task_dependencies_dependsOnTaskId");
+    expect(indexes).toContain("idx_task_templates_projectId");
+    expect(indexes).toContain("idx_task_template_runs_templateId");
   });
 
   it("should enable foreign key enforcement and WAL mode", async () => {
@@ -147,6 +172,33 @@ describe("RunMigrations (fresh database)", () => {
     );
     expect(applied).toContain("init-0015.sql");
     expect(applied.filter((f: string) => f === "init-0015.sql")).toHaveLength(1);
+    expect(applied).toContain("init-0020.sql");
+    expect(applied.filter((f: string) => f === "init-0020.sql")).toHaveLength(1);
+  });
+
+  it("should add the permission column with an all default", async () => {
+    const columns = (
+      await DbUtilsQuerySQL("PRAGMA table_info(project_users)")
+    ).map((c) => c.name as string);
+    expect(columns).toContain("permission");
+    const now = new Date().toISOString();
+    await DbUtilsExecSQL(
+      "INSERT INTO projects (id, name, description, isDefault, statuses, dateCreated, visibility) VALUES (?,?,?,?,?,?,?)",
+      ["p-perm", "P", "", 0, '["To Do"]', now, "restricted"],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO users (id, name, passwordEncrypted, role, dateCreated) VALUES (?,?,?,?,?)",
+      ["u-perm", "User", "x", "user", now],
+    );
+    // A membership written without the permission column (pre-migration)
+    await DbUtilsExecSQL(
+      "INSERT INTO project_users (projectId, userId) VALUES (?,?)",
+      ["p-perm", "u-perm"],
+    );
+    const rows = await DbUtilsQuerySQL(
+      "SELECT permission FROM project_users WHERE projectId = 'p-perm'",
+    );
+    expect(rows[0].permission).toBe("all");
   });
 });
 
@@ -246,7 +298,12 @@ describe("RunMigrations (legacy database upgrade)", () => {
         )
       )[0].value,
     );
-    for (const file of ["init-0013.sql", "init-0014.sql", "init-0015.sql"]) {
+    for (const file of [
+      "init-0013.sql",
+      "init-0014.sql",
+      "init-0015.sql",
+      "init-0020.sql",
+    ]) {
       expect(applied).toContain(file);
     }
   });
@@ -273,6 +330,13 @@ describe("RunMigrations (legacy database upgrade)", () => {
     expect(keys[0]).toHaveProperty("keyHash");
     expect(keys[0]).toHaveProperty("keyPrefix");
     expect(keys[0]).toHaveProperty("expiresAt");
+  });
+
+  it("should default seeded memberships to the all permission", async () => {
+    const rows = await DbUtilsQuerySQL(
+      "SELECT permission FROM project_users WHERE projectId = 'p1'",
+    );
+    expect(rows[0].permission).toBe("all");
   });
 
   it("should preserve the task columns through the table rebuild", async () => {

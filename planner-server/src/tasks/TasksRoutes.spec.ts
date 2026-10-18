@@ -1,7 +1,9 @@
 import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
-import { Readable } from "stream";
+import fastifyMultipart from "@fastify/multipart";
+import { Readable, Writable } from "stream";
 import {
+  isCancelTaskRequest,
   parseAssigneeUserId,
   parseDoneSince,
   parseFields,
@@ -29,14 +31,16 @@ import {
   replaceLabels,
   replaceDependencies,
   TasksDataTouch,
+  updateComment,
 } from "./TasksData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { UsersDataGet } from "../users/UsersData";
 import { ProjectsDataGet } from "../projects/ProjectsData";
 import { TaskImproveText } from "./TaskImprove";
+import { TaskVoiceCommentsEnqueue } from "./TaskVoiceComments";
 import { TaskActivityDataAdd, TaskActivityDataList } from "./TaskActivityData";
 import { Task } from "../model/Task";
-import { Project } from "../model/Project";
+import { Project, ProjectUserAccess } from "../model/Project";
 
 jest.mock("fs-extra");
 
@@ -55,6 +59,7 @@ jest.mock("./TasksData", () => ({
   updateComment: jest.fn(),
   replaceLabels: jest.fn(),
   replaceDependencies: jest.fn(),
+  addDependency: jest.fn(),
   addTaskAttachment: jest.fn(),
   deleteTaskAttachment: jest.fn(),
   getTaskAttachment: jest.fn(),
@@ -62,6 +67,10 @@ jest.mock("./TasksData", () => ({
 
 jest.mock("./TaskImprove", () => ({
   TaskImproveText: jest.fn(),
+}));
+
+jest.mock("./TaskVoiceComments", () => ({
+  TaskVoiceCommentsEnqueue: jest.fn(),
 }));
 
 jest.mock("./TaskActivityData", () => ({
@@ -384,7 +393,10 @@ describe("TasksRoutes project visibility", () => {
     role: "admin" as const,
   };
 
-  function makeProject(visibility: string, userAccess: string[]): Project {
+  function makeProject(
+    visibility: string,
+    userAccess: ProjectUserAccess[],
+  ): Project {
     const project = new Project();
     project.name = "P";
     project.visibility = visibility;
@@ -393,8 +405,12 @@ describe("TasksRoutes project visibility", () => {
   }
 
   const publicProject = makeProject("public", []);
-  const memberProject = makeProject("restricted", ["user-1"]);
-  const hiddenProject = makeProject("restricted", ["user-2"]);
+  const memberProject = makeProject("restricted", [
+    { userId: "user-1", permission: "all" },
+  ]);
+  const hiddenProject = makeProject("restricted", [
+    { userId: "user-2", permission: "all" },
+  ]);
 
   function makeTask(project: Project): Task {
     const task = new Task();
@@ -405,6 +421,9 @@ describe("TasksRoutes project visibility", () => {
 
   beforeAll(async () => {
     app = Fastify();
+    // The attachment upload route reads multipart parts; register the
+    // plugin so POST /:id/attachments can be exercised end-to-end
+    await app.register(fastifyMultipart);
     await new TasksRoutes().getRoutes(app);
     await app.ready();
   });
@@ -1354,6 +1373,118 @@ describe("TasksRoutes project visibility", () => {
     expect(res.headers["content-disposition"]).toContain("attachment");
   });
 
+  it("should serve audio attachments inline with audio content types", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["audio-bytes"]));
+
+    for (const [fileName, mimeType] of [
+      ["voice-message.webm", "audio/webm"],
+      ["voice-message.m4a", "audio/mp4"],
+    ]) {
+      const task = makeTask(publicProject);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+      (getTaskAttachment as jest.Mock).mockResolvedValue({
+        id: "att-audio",
+        taskId: task.id,
+        fileName,
+        filePath: `/data/attachments/tasks/att-audio.${fileName.split(".").pop()}`,
+        dateCreated: "2026-10-17T00:00:00.000Z",
+      });
+
+      const res = await app.inject({
+        method: "GET",
+        url: `/${task.id}/attachments/att-audio?inline=true`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-type"]).toContain(mimeType);
+      expect(res.headers["content-disposition"]).toContain("inline");
+      expect(res.headers["content-security-policy"]).toBe("sandbox");
+    }
+  });
+
+  it("should enqueue a voice comment job when an audio attachment is uploaded", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const boundary = "----jestformboundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="voice-message.webm"',
+      "Content-Type: audio/webm",
+      "",
+      "fake-audio-bytes",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/attachments?language=fr`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({
+      fileName: "voice-message.webm",
+    });
+    expect(addTaskAttachment).toHaveBeenCalledTimes(1);
+    expect(TaskVoiceCommentsEnqueue).toHaveBeenCalledTimes(1);
+    expect(TaskVoiceCommentsEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        userId: "user-1",
+        userName: "User",
+        fileName: "voice-message.webm",
+        mimeType: "audio/webm",
+        requestedLanguage: "fr",
+      }),
+    );
+  });
+
+  it("should not enqueue a voice comment job for non-audio attachments", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const boundary = "----jestformboundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="notes.pdf"',
+      "Content-Type: application/pdf",
+      "",
+      "fake-pdf-bytes",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/attachments`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().fileName).toBe("notes.pdf");
+    expect(TaskVoiceCommentsEnqueue).not.toHaveBeenCalled();
+  });
+
   it("should reject assignee removal on a task the user cannot see", async () => {
     const task = makeTask(hiddenProject);
     (TasksDataGet as jest.Mock).mockResolvedValue(task);
@@ -1691,7 +1822,10 @@ describe("TasksRoutes update feed (activity)", () => {
     return task;
   }
 
-  function makeProject(visibility: string, userAccess: string[]): Project {
+  function makeProject(
+    visibility: string,
+    userAccess: ProjectUserAccess[],
+  ): Project {
     const project = new Project();
     project.name = "P";
     project.visibility = visibility;
@@ -1996,5 +2130,532 @@ describe("TasksRoutes update feed (activity)", () => {
       "user-1",
       "Dependencies updated",
     );
+  });
+});
+
+describe("TasksRoutes with recurrence removed", () => {
+  let app: FastifyInstance;
+
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const publicProject = new Project();
+  publicProject.name = "P";
+  publicProject.visibility = "public";
+  publicProject.userAccess = [];
+  publicProject.statuses = ["To Do", "In Progress", "Done"];
+
+  function makeTask(fields: Partial<Task> = {}): Task {
+    const task = new Task();
+    task.projectId = publicProject.id;
+    task.title = "Task";
+    Object.assign(task, fields);
+    return task;
+  }
+
+  beforeAll(async () => {
+    app = Fastify();
+    await new TasksRoutes().getRoutes(app);
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (AuthMustBeAuthenticated as jest.Mock).mockResolvedValue(undefined);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("should ignore a recurrence field in the create payload", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "Weekly chore",
+        dueDate: "2026-10-19",
+        recurrence: { frequency: "weekly", interval: 1, weekdays: [1] },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().recurrence).toBeUndefined();
+    const created = (TasksDataAdd as jest.Mock).mock.calls[0][0] as Task;
+    expect(created).not.toHaveProperty("recurrence");
+  });
+
+  it("should ignore a recurrence field in the update payload", async () => {
+    const task = makeTask({ dueDate: "2026-10-19" });
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { recurrence: { frequency: "daily", interval: 1 } },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().recurrence).toBeUndefined();
+  });
+});
+
+describe("isCancelTaskRequest", () => {
+  it("should detect the cancel signature (status Done + new cancelled suffix)", () => {
+    expect(
+      isCancelTaskRequest({ status: "Done", title: "Task [cancelled]" }, "Task"),
+    ).toBe(true);
+  });
+
+  it("should not detect a plain status move or a plain rename", () => {
+    expect(isCancelTaskRequest({ status: "Done" }, "Task")).toBe(false);
+    expect(isCancelTaskRequest({ title: "Task [cancelled]" }, "Task")).toBe(
+      false,
+    );
+    expect(isCancelTaskRequest({ status: "Done", title: "Task" }, "Task")).toBe(
+      false,
+    );
+    expect(isCancelTaskRequest({}, "Task")).toBe(false);
+  });
+
+  it("should not detect a re-cancel where the title already had the suffix", () => {
+    expect(
+      isCancelTaskRequest(
+        { status: "Done", title: "Task [cancelled]" },
+        "Task [cancelled]",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("TasksRoutes project permission levels", () => {
+  let app: FastifyInstance;
+
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const adminSession = {
+    isAuthenticated: true,
+    userId: "admin-1",
+    userName: "Admin",
+    role: "admin" as const,
+  };
+
+  function projectWithLevel(permission: string): Project {
+    const project = new Project();
+    project.name = "P";
+    project.visibility = "restricted";
+    if (permission) {
+      project.userAccess = [
+        { userId: "user-1", permission: permission as never },
+      ];
+    } else {
+      // No membership: the user cannot see the project at all
+      project.userAccess = [] as never;
+    }
+    return project;
+  }
+
+  function makeTask(project: Project): Task {
+    const task = new Task();
+    task.projectId = project.id;
+    task.title = "Task";
+    return task;
+  }
+
+  beforeAll(async () => {
+    app = Fastify();
+    await app.register(fastifyMultipart);
+    await new TasksRoutes().getRoutes(app);
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (AuthMustBeAuthenticated as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("should let every level read a restricted project's task", async () => {
+    for (const permission of ["view", "comment", "update", "all"]) {
+      jest.clearAllMocks();
+      const project = projectWithLevel(permission);
+      const task = makeTask(project);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      const res = await app.inject({ method: "GET", url: `/${task.id}` });
+      expect(res.statusCode).toBe(200);
+    }
+  });
+
+  it("should answer 404 (not 403) for writes on an invisible project", async () => {
+    const project = projectWithLevel(null);
+    const task = makeTask(project);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const responses = [
+      await app.inject({
+        method: "POST",
+        url: "/",
+        payload: { projectId: project.id, title: "New" },
+      }),
+      await app.inject({
+        method: "PUT",
+        url: `/${task.id}`,
+        payload: { title: "Renamed" },
+      }),
+      await app.inject({ method: "DELETE", url: `/${task.id}` }),
+      await app.inject({ method: "POST", url: `/${task.id}/clone` }),
+      await app.inject({
+        method: "POST",
+        url: `/${task.id}/comments`,
+        payload: { text: "hi" },
+      }),
+    ];
+    for (const res of responses) {
+      expect(res.statusCode).toBe(404);
+    }
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+    expect(TasksDataUpdate).not.toHaveBeenCalled();
+    expect(TasksDataDelete).not.toHaveBeenCalled();
+  });
+
+  // ==================== CREATE (update) ====================
+  it("should require the update level to create a task", async () => {
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 403],
+      ["update", 201],
+      ["all", 201],
+    ] as const) {
+      jest.clearAllMocks();
+      (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+      const project = projectWithLevel(permission);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: { projectId: project.id, title: "New" },
+      });
+      expect(res.statusCode).toBe(expected);
+      if (expected === 403) {
+        expect(res.json().error).toBe(
+          "Access Denied: this action requires the update permission on the project",
+        );
+        expect(TasksDataAdd).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it("should let an admin create a task on a view-level project", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(adminSession);
+    const project = projectWithLevel("view");
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { projectId: project.id, title: "New" },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  // ==================== UPDATE (update, cancel = all) ====================
+  it("should require the update level to update a task", async () => {
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 403],
+      ["update", 201],
+      ["all", 201],
+    ] as const) {
+      jest.clearAllMocks();
+      (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+      const project = projectWithLevel(permission);
+      const task = makeTask(project);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      const res = await app.inject({
+        method: "PUT",
+        url: `/${task.id}`,
+        payload: { title: "Renamed" },
+      });
+      expect(res.statusCode).toBe(expected);
+    }
+  });
+
+  it("should require the all level for the Cancel flow", async () => {
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 403],
+      ["update", 403],
+      ["all", 201],
+    ] as const) {
+      jest.clearAllMocks();
+      (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+      const project = projectWithLevel(permission);
+      const task = makeTask(project);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      const res = await app.inject({
+        method: "PUT",
+        url: `/${task.id}`,
+        payload: { status: "Done", title: "Task [cancelled]" },
+      });
+      expect(res.statusCode).toBe(expected);
+      if (expected === 403) {
+        expect(res.json().error).toBe(
+          "Access Denied: this action requires the all permission on the project",
+        );
+      }
+    }
+  });
+
+  it("should let an admin run the Cancel flow on an update-level project", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(adminSession);
+    const project = projectWithLevel("update");
+    const task = makeTask(project);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}`,
+      payload: { status: "Done", title: "Task [cancelled]" },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  // ==================== DELETE (all) ====================
+  it("should require the all level to delete a task", async () => {
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 403],
+      ["update", 403],
+      ["all", 201],
+    ] as const) {
+      jest.clearAllMocks();
+      (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+      const project = projectWithLevel(permission);
+      const task = makeTask(project);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      const res = await app.inject({ method: "DELETE", url: `/${task.id}` });
+      expect(res.statusCode).toBe(expected);
+      if (expected === 403) {
+        expect(TasksDataDelete).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  // ==================== CLONE (all) ====================
+  it("should require the all level to clone a task", async () => {
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 403],
+      ["update", 403],
+      ["all", 201],
+    ] as const) {
+      jest.clearAllMocks();
+      (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+      const project = projectWithLevel(permission);
+      const task = makeTask(project);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      const res = await app.inject({
+        method: "POST",
+        url: `/${task.id}/clone`,
+      });
+      expect(res.statusCode).toBe(expected);
+    }
+  });
+
+  // ==================== COMMENTS (comment) ====================
+  it("should require the comment level to add a comment", async () => {
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 201],
+      ["update", 201],
+      ["all", 201],
+    ] as const) {
+      jest.clearAllMocks();
+      (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+      const project = projectWithLevel(permission);
+      const task = makeTask(project);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      const res = await app.inject({
+        method: "POST",
+        url: `/${task.id}/comments`,
+        payload: { text: "hi" },
+      });
+      expect(res.statusCode).toBe(expected);
+      if (expected === 403) {
+        expect(addComment).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it("should let a comment user edit and delete their own comment", async () => {
+    const project = projectWithLevel("comment");
+    const task = makeTask(project);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (getComment as jest.Mock).mockResolvedValue({
+      id: "comment-1",
+      userId: "user-1",
+      text: "hi",
+    });
+
+    const put = await app.inject({
+      method: "PUT",
+      url: `/${task.id}/comments/comment-1`,
+      payload: { text: "edited" },
+    });
+    expect(put.statusCode).toBe(200);
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/${task.id}/comments/comment-1`,
+    });
+    expect(del.statusCode).toBe(201);
+  });
+
+  it("should reject a view user editing their own comment with 403", async () => {
+    const project = projectWithLevel("view");
+    const task = makeTask(project);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (getComment as jest.Mock).mockResolvedValue({
+      id: "comment-1",
+      userId: "user-1",
+      text: "hi",
+    });
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${task.id}/comments/comment-1`,
+      payload: { text: "edited" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(updateComment).not.toHaveBeenCalled();
+  });
+
+  // ==================== SUB-RESOURCES (update) ====================
+  it("should require the update level for assignees, labels, dependencies and attachments", async () => {
+    const cases: Array<[string, string, Record<string, unknown>]> = [
+      ["POST", "assignees", { userId: "user-2" }],
+      ["POST", "labels", { labels: ["bug"] }],
+      ["POST", "dependencies", { dependencies: [] }],
+    ];
+    for (const [method, path, payload] of cases) {
+      for (const [permission, expected] of [
+        ["view", 403],
+        ["comment", 403],
+        ["update", 201],
+        ["all", 201],
+      ] as const) {
+        jest.clearAllMocks();
+        (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+        const project = projectWithLevel(permission);
+        const task = makeTask(project);
+        (TasksDataGet as jest.Mock).mockResolvedValue(task);
+        (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+        const res = await app.inject({
+          method: method as "POST",
+          url: `/${task.id}/${path}`,
+          payload,
+        });
+        expect(res.statusCode).toBe(expected);
+      }
+    }
+
+    // Attachment upload: the guard runs before the multipart handling
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 403],
+      ["update", 201],
+      ["all", 201],
+    ] as const) {
+      jest.clearAllMocks();
+      (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+      const project = projectWithLevel(permission);
+      const task = makeTask(project);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+      const mockFs = require("fs-extra") as any;
+      mockFs.ensureDir.mockResolvedValue(undefined);
+      mockFs.createWriteStream.mockReturnValue(
+        new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+      );
+      const boundary = "----jestformboundary";
+      const body = [
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="file"; filename="notes.pdf"',
+        "Content-Type: application/pdf",
+        "",
+        "fake-pdf-bytes",
+        `--${boundary}--`,
+        "",
+      ].join("\r\n");
+      const res = await app.inject({
+        method: "POST",
+        url: `/${task.id}/attachments`,
+        headers: {
+          "content-type": `multipart/form-data; boundary=${boundary}`,
+        },
+        payload: body,
+      });
+      expect(res.statusCode).toBe(expected);
+    }
+  });
+
+  it("should require the update level to delete an attachment", async () => {
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 403],
+      ["update", 201],
+      ["all", 201],
+    ] as const) {
+      jest.clearAllMocks();
+      (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+      const project = projectWithLevel(permission);
+      const task = makeTask(project);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      (getTaskAttachment as jest.Mock).mockResolvedValue({
+        id: "att-1",
+        taskId: task.id,
+        fileName: "notes.pdf",
+        filePath: "/data/attachments/tasks/att-1.pdf",
+      });
+      const res = await app.inject({
+        method: "DELETE",
+        url: `/${task.id}/attachments/att-1`,
+      });
+      expect(res.statusCode).toBe(expected);
+    }
+  });
+
+  it("should reject assignee removal below the update level", async () => {
+    const project = projectWithLevel("comment");
+    const task = makeTask(project);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/${task.id}/assignees/user-2`,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(removeAssignee).not.toHaveBeenCalled();
   });
 });

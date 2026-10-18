@@ -124,3 +124,59 @@ describe("buildListNotesQuery projectIds (subtree)", () => {
     );
   });
 });
+
+describe("buildListNotesQuery search (q)", () => {
+  it("should match title or description case-insensitively (sqlite)", () => {
+    const { sql, params } = buildListNotesQuery({ q: "meeting" }, "sqlite");
+    expect(sql).toBe(
+      "SELECT * FROM notes WHERE (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\') ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["%meeting%", "%meeting%"]);
+  });
+
+  it("should use ILIKE for postgres", () => {
+    const { sql, params } = buildListNotesQuery({ q: "meeting" }, "postgres");
+    expect(sql).toBe(
+      'SELECT * FROM notes WHERE ("title" ILIKE ? ESCAPE \'\\\' OR "description" ILIKE ? ESCAPE \'\\\') ORDER BY "dateCreated" DESC',
+    );
+    expect(params).toEqual(["%meeting%", "%meeting%"]);
+  });
+
+  it("should trim the search term", () => {
+    const { params } = buildListNotesQuery({ q: "  meeting  " }, "sqlite");
+    expect(params).toEqual(["%meeting%", "%meeting%"]);
+  });
+
+  it("should escape LIKE wildcards and the escape character in q", () => {
+    const { params } = buildListNotesQuery({ q: "50%_off\\" }, "sqlite");
+    expect(params).toEqual(["%50\\%\\_off\\\\%", "%50\\%\\_off\\\\%"]);
+  });
+
+  it("should combine q with projectId and visibility in order", () => {
+    const { sql, params } = buildListNotesQuery(
+      {
+        projectId: "proj-1",
+        visibleTo: { userId: "user-1" },
+        q: "meeting",
+      },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM notes WHERE projectId = ? " +
+        "AND (projectId IN (SELECT id FROM projects WHERE visibility = 'public') " +
+        "OR projectId IN (SELECT projectId FROM project_users WHERE userId = ?)) " +
+        "AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\') ORDER BY dateCreated DESC",
+    );
+    expect(params).toEqual(["proj-1", "user-1", "%meeting%", "%meeting%"]);
+  });
+
+  it("should ignore an empty or whitespace-only q", () => {
+    expect(buildListNotesQuery({ q: "" }, "sqlite").sql).toBe(
+      "SELECT * FROM notes ORDER BY dateCreated DESC",
+    );
+    expect(buildListNotesQuery({ q: "   " }, "sqlite").sql).toBe(
+      "SELECT * FROM notes ORDER BY dateCreated DESC",
+    );
+    expect(buildListNotesQuery({ q: "" }, "sqlite").params).toEqual([]);
+  });
+});

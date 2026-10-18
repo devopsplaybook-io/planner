@@ -301,10 +301,13 @@
               </div>
             </template>
             <template v-else>
-              <div
+              <button
                 v-for="dep in task.dependencies"
                 :key="dep.taskId"
-                class="dependency-item"
+                type="button"
+                class="dependency-item dependency-link"
+                :aria-label="`Open dependency: ${dep.title || dep.taskId}`"
+                @click="openDependency(dep)"
               >
                 <span
                   class="status-dot"
@@ -315,7 +318,7 @@
                   {{ dep.title || dep.taskId }}
                 </span>
                 <small class="text-muted">{{ dep.status }}</small>
-              </div>
+              </button>
             </template>
           </div>
           <p v-else class="text-muted dependencies-empty">
@@ -412,6 +415,13 @@
                     @click="fullscreenImage = attachmentUrls[att.id]"
                   />
                 </template>
+                <audio
+                  v-else-if="isAudioFile(att.fileName) && attachmentUrls[att.id]"
+                  controls
+                  preload="none"
+                  :src="attachmentUrls[att.id]"
+                  class="attachment-audio"
+                />
                 <a
                   href="#"
                   rel="noopener"
@@ -573,8 +583,10 @@
             <CommentComposer
               v-model="newComment"
               :draft-key="addCommentDraftKey"
-              :busy="submitting"
+              :busy="submitting || uploadingVoice"
+              :allow-voice="voiceCommentsAvailable"
               @submit="addComment"
+              @voice="onVoiceRecorded"
             />
             <div class="add-comment-actions">
               <button
@@ -688,8 +700,11 @@ import api from "../utils/api";
 import {
   downloadAttachment as downloadAttachmentFile,
   fetchAttachmentObjectUrl,
+  isAudioFile,
 } from "../utils/attachments";
+import { fileExtensionForMimeType } from "../utils/dictationMime";
 import { displayName } from "../utils/projectHierarchy";
+import { projectPermissionFor } from "../stores/projects";
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -709,9 +724,15 @@ const statusesStore = useStatusesStore();
 const labelsStore = useLabelsStore();
 const authStore = useAuthStore();
 const recommendationStore = useRecommendationStore();
+const dictationStore = useDictationStore();
 
 const task = computed(() => tasksStore.currentTask);
 const isImproveEnabled = computed(() => recommendationStore.isImproveEnabled);
+// Voice comments: the add-comment composer offers a record button when the
+// server has dictation enabled with a configured STT engine
+const voiceCommentsAvailable = computed(
+  () => recommendationStore.isDictationEnabled && recommendationStore.isDictationSttConfigured,
+);
 const loading = ref(false);
 const notFound = ref(false);
 const newComment = ref("");
@@ -723,6 +744,7 @@ const showCancelConfirm = ref(false);
 const cancelDialogEl = useModalDialog(() => showCancelConfirm.value);
 const cancelling = ref(false);
 const uploading = ref(false);
+const uploadingVoice = ref(false);
 const deletingAttachmentId = ref("");
 const fileInput = ref(null);
 const newChecklistText = ref("");
@@ -836,6 +858,14 @@ let dependencySearchTimer = null;
 
 function dependencyStatusColor(dep) {
   return statusesStore.colorFor(dep.status);
+}
+
+// Open a dependency task in the same URL-driven dialog; drop the comment
+// permalink so it does not leak onto the next task
+function openDependency(dep) {
+  const query = { ...route.query, taskId: dep.taskId };
+  delete query.commentId;
+  router.replace({ path: route.path, query });
 }
 
 function startDependencyDraft() {
@@ -961,14 +991,19 @@ const projectName = computed(() => {
 
 // Cancelling moves the task to Done and renames it, so hide the action for
 // tasks already in Done and for tasks in archived projects, where the
-// server rejects any task update ("Project is archived").
+// server rejects any task update ("Project is archived"). Cancelling is a
+// lifecycle action: it also requires the "all" permission on the project.
 const canCancelTask = computed(() => {
   if (!task.value) return false;
   if (task.value.status === "Done") return false;
   const project = projectsStore.projects.find(
     (p) => p.id === task.value.projectId,
   );
-  return !project?.archived;
+  if (project?.archived) return false;
+  return (
+    projectPermissionFor(project, authStore.currentUser?.id, authStore.isAdmin) ===
+    "all"
+  );
 });
 
 // While the dialog is open, poll the task so changes made by other users
@@ -1124,8 +1159,9 @@ watch(
   },
 );
 
-// Fetch image previews as blobs whenever the attachment list changes
-// (dialog open, upload, delete) and drop object URLs for gone attachments
+// Fetch image previews and audio players as blobs whenever the attachment
+// list changes (dialog open, upload, delete) and drop object URLs for gone
+// attachments
 watch(
   () => task.value?.attachments,
   async (attachments) => {
@@ -1140,7 +1176,9 @@ watch(
     }
     attachmentUrls.value = nextUrls;
     for (const att of attachments || []) {
-      if (!isImageFile(att.fileName) || attachmentUrls.value[att.id]) continue;
+      const needsUrl =
+        isImageFile(att.fileName) || isAudioFile(att.fileName);
+      if (!needsUrl || attachmentUrls.value[att.id]) continue;
       try {
         attachmentUrls.value[att.id] = await fetchAttachmentObjectUrl(
           `/tasks/${task.value.id}/attachments/${att.id}?inline=true`,
@@ -1569,6 +1607,34 @@ async function uploadAttachment() {
   }
 }
 
+// Voice comment recorded in the add-comment composer: upload it as a
+// regular audio attachment (the server transcribes it in the background
+// when STT is configured). A failed upload surfaces in the banner; the
+// background transcription itself is silent.
+async function onVoiceRecorded({ blob, mimeType }) {
+  if (!props.taskId) return;
+  dialogError.value = "";
+  uploadingVoice.value = true;
+  try {
+    const file = new File([blob], `${voiceMessageBaseName()}${fileExtensionForMimeType(mimeType)}`, {
+      type: mimeType,
+    });
+    await tasksStore.uploadAttachment(props.taskId, file, {
+      language: dictationStore.language,
+    });
+  } catch (e) {
+    setDialogError(e, "Failed to upload voice message");
+  } finally {
+    uploadingVoice.value = false;
+  }
+}
+
+function voiceMessageBaseName() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `voice-message-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
 function isImageFile(fileName) {
   const ext = fileName.split(".").pop()?.toLowerCase();
   return [
@@ -1858,6 +1924,22 @@ section h4 {
   background: var(--color-surface);
   border-radius: var(--radius-sm);
   min-width: 0;
+}
+
+/* Display-mode dependency rows are <button>s opening the dependency task: the
+   global button style would otherwise paint their text with
+   --color-on-primary (invisible on the surface background). */
+.dependency-link {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid transparent;
+}
+
+.dependency-link:hover {
+  border-color: var(--color-primary);
 }
 
 /* Reveal the dependency remove button on hover/keyboard focus, mirroring the
@@ -2156,6 +2238,12 @@ section h4 {
   object-fit: cover;
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
+
+/* Inline audio player for audio attachments (voice messages) */
+.attachment-audio {
+  height: 2rem;
+  max-width: min(100%, 280px);
 }
 
 .small-btn {

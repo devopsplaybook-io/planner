@@ -1,5 +1,26 @@
 import api from "./api";
 
+const AUDIO_EXTENSIONS = [
+  "webm",
+  "m4a",
+  "mp3",
+  "wav",
+  "ogg",
+  "oga",
+  "opus",
+  "flac",
+  "aac",
+];
+
+/**
+ * True when a file name has an audio extension (voice message recordings
+ * and other audio attachments); `.mp4` is deliberately not audio.
+ */
+export function isAudioFile(fileName: string): boolean {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  return AUDIO_EXTENSIONS.includes(ext);
+}
+
 /**
  * Fetches an attachment through the authenticated axios instance (Bearer
  * header) and returns a blob object URL. The JWT is never placed in the

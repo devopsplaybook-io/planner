@@ -29,6 +29,8 @@ export interface TaskListFilters {
   /** Subtree filter: matches tasks in any of these projects (IN). */
   projectIds?: string[];
   doneSince?: string;
+  /** When true, restricts results to tasks that have a due date. */
+  hasDueDate?: boolean;
   /** Case-insensitive substring matched against title and description. */
   q?: string;
   /** Matches tasks assigned to this user, in all statuses (EXISTS). */
@@ -71,6 +73,9 @@ export function buildListTasksQuery(
       `(${quote("status")} != ? OR ${quote("dateUpdated")} >= ?)`,
     );
     params.push("Done", filters.doneSince);
+  }
+  if (filters.hasDueDate) {
+    conditions.push(`${quote("dueDate")} IS NOT NULL`);
   }
   const term = filters.q?.trim();
   if (term) {

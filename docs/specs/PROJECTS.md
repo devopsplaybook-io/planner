@@ -17,6 +17,15 @@ Projects are the top-level organizational unit.
 - [x] A restricted project the user cannot see answers 404 on the project details API, like a missing project.
 - [x] The visibility rule is enforced on every API that serves project content (tasks, notes, views/dashboard, recommendations) &mdash; see the specs of those features.
 
+### User permissions
+
+- [x] For each user given access to a restricted project, the admin picks one permission level in the project dialog's Edit mode: **All** (default), **Update tasks**, **Comment** or **View** &mdash; one level per user per project, no granular flags.
+- [x] Levels are cumulative: View = read-only (the visibility rules decide what is readable; every write is rejected with 403); Comment = View + creating comments on tasks and notes, and editing/deleting only their own comments; Update = Comment + creating and updating tasks and notes, including status moves, checklist, labels, assignees, dependencies, attachments and moving an item to a project the user can see; All = Update + delete, clone and the Cancel flow.
+- [x] Existing memberships keep full access: the migration defaults every stored membership to All, and newly granted users default to All.
+- [x] Admins bypass the levels and keep full rights; public projects are unaffected (every authenticated user keeps full rights on them).
+- [x] Project management itself (visibility, user access list, statuses, archive, delete) stays admin-only.
+- [x] The project dialog Edit mode offers a compact permission select per granted user chip (default All); the display mode shows the level per granted user; the edit stays save-once, and permission changes count as visibility changes for the "Apply to all sub-projects?" propagation.
+
 ## Statuses
 
 Statuses are defined and ordered globally by admins in the Settings admin tabs (see [ADMIN.md](ADMIN.md)). The default catalog is:
@@ -43,7 +52,7 @@ Projects are active or archived. The status is switched by the admin in the proj
 - [x] Archived projects disappear from the project selection boxes (dashboard, tasks, calendar, notes, task/note create and project change); the selection boxes come from a shared component.
 - [x] Archived projects still appear at the end of the list in the Settings projects admin tab (and the API orders them last).
 - [x] The History page still allows selecting archived projects, marked as "(archived)".
-- [x] The task list, dashboard and search still show tasks that belong to archived projects when they match the filter (30-day Done window or search).
+- [x] The task list and dashboard still show tasks that belong to archived projects when they match the filter (30-day Done window).
 
 ## Hierarchy (sub-projects)
 
@@ -51,7 +60,7 @@ Projects form a hierarchy through their names: a name containing `/` nests the p
 
 - [x] The hierarchy is derived from the project names, using `/` as the separator; there is no parent reference stored on a project.
 - [x] The subtree of a project is the project itself plus every project whose name starts with the project's name followed by `/` (true path-prefix match: `Homework` is not under `Home`).
-- [x] Selecting a project in any list filter (dashboard and its search, tasks/kanban, calendar, notes, history) shows that project's tasks and notes plus those of its whole subtree; "All projects" keeps showing everything; single-project filtering (e.g. opening a project's own list) keeps working.
+- [x] Selecting a project in any list filter (dashboard, tasks/kanban, calendar, notes, history) shows that project's tasks and notes plus those of its whole subtree; "All projects" keeps showing everything; single-project filtering (e.g. opening a project's own list) keeps working.
 - [x] The persisted project filter (localStorage) keeps referencing the project by id, so renames &mdash; including cascading renames of sub-projects &mdash; cannot break saved filters; task and note rows also reference projects by id.
 - [x] Per-project visibility stays independent of the hierarchy: a restricted sub-project under a public parent stays restricted, and the server-side visibility enforcement (on tasks, notes, dashboard, recommendations) is unchanged; subtree filtering only ever narrows, never widens, what the user can see.
 - [x] A project whose parent path does not exist as a project (e.g. after the parent was deleted or renamed without a cascade) still renders &mdash; at the root of the tree &mdash; with an orphan warning in the project selection and in the projects admin list in Settings.
@@ -65,4 +74,4 @@ Projects form a hierarchy through their names: a name containing `/` nests the p
 - [x] Whether the default project should be barred from being renamed into a sub-project path (e.g. `X/Default`) is not decided.
   - [NEEDS CLARIFICATION: the current assumption is no special-casing &mdash; the default project can live anywhere in the tree.]
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-05_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_

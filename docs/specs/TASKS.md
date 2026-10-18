@@ -17,6 +17,8 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 | [x] Dependencies| Zero, one, or multiple other tasks this task depends on                                                                     |
 | [x] Project     | The project the task belongs to (exactly one)                                                                               |
 
+Tasks that used to repeat are now created from task templates (see [TASK_TEMPLATES.md](TASK_TEMPLATES.md)); the per-task recurrence mechanism was removed in 0.70.0.
+
 ## Management of Tasks
 
 [x] Create: after creating a task, the task dialog opens on the new object; when no status is provided, the task starts in the project's first status (covers projects whose catalog does not include "To Do").
@@ -59,11 +61,20 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 
 [x] Dependency removal: in edit mode each dependency row offers a remove button consistent with the checklist delete affordance (revealed on hover and keyboard focus on desktop, always visible on touch, no confirmation); removal applies on save through the same dependency-list replace call.
 
+[x] Dependency links: in display mode each dependency row is a clickable control that opens the dependency task in the same dialog (URL ?taskId= switch, comment permalink param dropped); edit-mode rows stay non-clickable so the unsaved edit form is never discarded; a dependency the user cannot see shows the existing not-available state.
+
+
+[x] Voice comments: when dictation is enabled and STT is configured (see [DICTATION.md](DICTATION.md)), the add-comment composer offers a record-voice button with a visible recording state (elapsed time, stop/cancel, auto-stop at the maximum duration, inline microphone errors); the finished recording uploads through the regular authenticated attachment API (named `voice-message-…` with the recording's extension) and the audio stays as the attachment; a background transcription posts the polished transcript as a comment without user action. Voice recording is offered on the add-comment composer only — the edit composer, notes and deployments without the feature are unchanged.
+
+[x] Audio attachments: audio files (voice message recordings and other audio attachments) play through an inline player in the task dialog attachments section next to the regular download link; the authenticated blob mechanism keeps the JWT out of attachment URLs.
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.
 - [x] A task the user cannot see answers 404 on the task API, like a missing task.
 - [x] Creating a task requires the target project to be visible to the user; updating, deleting and interacting with a task (comments, assignees, labels, attachments) requires the task to be visible to the user; changing the project requires the target project to be visible to the user.
+- [x] Writes beyond reading also require the user's project permission level (see [PROJECTS.md](PROJECTS.md)): View users get 403 on every write; Comment users can create comments and edit/delete only their own; Update users can create and update tasks including comments, assignees, labels, dependencies, attachments, checklist, status moves and project changes (the target project still must be visible); All users can additionally delete, clone and cancel tasks; admins are unaffected.
+- [x] A write below the user's permission level answers 403 with an error naming the required level; invisible projects still answer 404 and archived projects still reject edits with 400 &mdash; reading and visibility behavior are unchanged.
 
 ## Task List API
 
@@ -76,4 +87,4 @@ Tasks are the core unit of work. Each task belongs to exactly one project and ha
 - `limit` / `offset` — pagination (default limit 1000).
 - [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dependencies`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees, dependencies) are not queried server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-16_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-18_

@@ -7,6 +7,18 @@
           <strong class="brand-name">Planner</strong></NuxtLink
         >
       </li>
+      <li v-if="authStore.isAuthenticated" class="palette-entry">
+        <button
+          class="palette-button"
+          aria-label="Open command palette"
+          title="Search (Ctrl+K)"
+          @click="commandPaletteStore.openPalette()"
+        >
+          <i class="bi bi-search"></i>
+          <span class="nav-label">Search</span>
+          <kbd class="palette-hint">{{ paletteHint }}</kbd>
+        </button>
+      </li>
       <li v-if="dictationAvailable" class="dictation-entry">
         <button
           class="dictation-button"
@@ -75,7 +87,15 @@
 const authStore = useAuthStore();
 const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
+const commandPaletteStore = useCommandPaletteStore();
 const route = useRoute();
+
+const paletteHint = computed(() => {
+  const isApple = /Mac|iPhone|iPad/.test(
+    typeof navigator === "undefined" ? "" : navigator.userAgent,
+  );
+  return isApple ? "⌘K" : "Ctrl K";
+});
 
 const activeRoute = computed(() => {
   const segments = route.fullPath.split("?")[0].split("/");
@@ -182,6 +202,28 @@ const dictationTooltip = computed(() => {
   cursor: not-allowed;
 }
 
+.palette-entry .palette-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  font-weight: var(--weight-bold);
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.palette-hint {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  padding: 0.05em 0.4em;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
 /* Hide brand name on mobile and intermediate screens */
 @media (max-width: 999px) {
   .brand-name {
@@ -192,6 +234,10 @@ const dictationTooltip = computed(() => {
 /* Hide nav labels on narrow screens */
 @media (max-width: 767px) {
   .nav-label {
+    display: none;
+  }
+
+  .palette-hint {
     display: none;
   }
 

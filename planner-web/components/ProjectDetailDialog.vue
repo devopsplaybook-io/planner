@@ -153,6 +153,24 @@
               {{ project.archived ? "Archived" : "Active" }}
             </span>
           </div>
+          <div
+            v-if="
+              authStore.isAdmin &&
+              (project.visibility || 'public') === 'restricted' &&
+              (project.userAccess || []).length
+            "
+            class="meta-field meta-access-field"
+          >
+            <strong>User access</strong>
+            <ul class="user-access-summary">
+              <li v-for="entry in project.userAccess" :key="entry.userId">
+                {{ accessUserName(entry.userId) }}
+                <span class="access-level">
+                  {{ permissionLabel(entry.permission) }}</span
+                >
+              </li>
+            </ul>
+          </div>
         </section>
 
         <!-- Visibility (admin, edit mode) -->
@@ -185,6 +203,8 @@
             v-model="editUserAccess"
             :users="availableUsers"
             :disabled="isFrozen"
+            with-permissions
+            v-model:permissions="editUserPermissions"
           />
         </section>
 
@@ -284,6 +304,7 @@
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
 import api from "../utils/api";
+import { permissionLabel } from "../stores/projects";
 import {
   cascadeRenameName,
   displayName,
@@ -325,7 +346,19 @@ const {
 // --- Visibility management (admin) ---
 const editVisibility = ref("public");
 const editUserAccess = ref([]);
+const editUserPermissions = ref({});
 const availableUsers = ref([]);
+
+// Newly added users get the "All" level; existing entries keep theirs
+watch(editUserAccess, (ids) => {
+  const next = { ...editUserPermissions.value };
+  for (const id of ids) {
+    if (!next[id]) {
+      next[id] = "all";
+    }
+  }
+  editUserPermissions.value = next;
+});
 
 // --- Archive switch (admin) ---
 const editArchived = ref(false);
@@ -351,6 +384,26 @@ const displayPath = computed(() =>
 );
 
 const sameList = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// Compares user access lists ({userId, permission} entries) so a permission
+// change counts as a visibility change for the sub-project propagation
+const accessKey = (entries) =>
+  JSON.stringify(
+    (entries || [])
+      .map((e) => [e.userId, e.permission || "all"])
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
+  );
+
+const buildAccessPayload = () =>
+  editUserAccess.value.map((id) => ({
+    userId: id,
+    permission: editUserPermissions.value[id] || "all",
+  }));
+
+function accessUserName(userId) {
+  const user = availableUsers.value.find((u) => u.id === userId);
+  return user?.name || userId;
+}
 
 watch(
   () => props.projectId,
@@ -397,7 +450,15 @@ function seedEditState() {
     description: project.value.description || "",
   };
   editVisibility.value = project.value.visibility || "public";
-  editUserAccess.value = [...(project.value.userAccess || [])];
+  editUserAccess.value = (project.value.userAccess || []).map(
+    (entry) => entry.userId,
+  );
+  editUserPermissions.value = Object.fromEntries(
+    (project.value.userAccess || []).map((entry) => [
+      entry.userId,
+      entry.permission || "all",
+    ]),
+  );
   editArchived.value = !!project.value.archived;
   selectedStatuses.value = (project.value.statuses || []).filter((s) =>
     catalogStatuses.value.includes(s),
@@ -481,13 +542,12 @@ async function saveEdit() {
     }
     newStatuses = statuses;
 
+    const access = buildAccessPayload();
+
     // Propagation: only what actually changed is offered to the children
     visibilityChanged =
       editVisibility.value !== (project.value.visibility || "public") ||
-      !sameList(
-        [...editUserAccess.value].sort(),
-        [...(project.value.userAccess || [])].sort(),
-      );
+      accessKey(access) !== accessKey(project.value.userAccess);
     statusesChanged = !sameList(statuses, project.value.statuses || []);
     if (descendants.length > 0 && (visibilityChanged || statusesChanged)) {
       const what = [
@@ -507,7 +567,7 @@ async function saveEdit() {
       name: newName,
       description: editForm.value.description,
       visibility: editVisibility.value,
-      userAccess: editUserAccess.value,
+      userAccess: access,
       archived: editArchived.value,
       statuses,
     };
@@ -536,7 +596,7 @@ async function saveEdit() {
       const childPayload = {};
       if (visibilityChanged) {
         childPayload.visibility = editVisibility.value;
-        childPayload.userAccess = editUserAccess.value;
+        childPayload.userAccess = access;
       }
       if (statusesChanged) {
         childPayload.statuses = newStatuses;
@@ -655,6 +715,34 @@ async function deleteProject() {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
+}
+
+.meta-access-field {
+  grid-column: 1 / -1;
+}
+
+.user-access-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs) var(--space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.user-access-summary li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  font-size: var(--text-sm);
+}
+
+.access-level {
+  font-size: var(--text-xs);
+  padding: 0.1em 0.5em;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
 }
 
 .badge {

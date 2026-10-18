@@ -233,6 +233,60 @@ describe("delete cascades (integration)", () => {
     expect(await fs.pathExists(noteFile)).toBe(false);
   });
 
+  it("should delete a project with its task templates, children and attachment files", async () => {
+    await insertUser("u-cascade-5");
+    await insertProject("p-cascade-5");
+    await insertTask("t-cascade-5", "p-cascade-5");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_templates (id, projectId, title, description, priority, checklist, scheduleCron, skipIfPreviousNotDone, addDateToTitle, dateCreated, dateUpdated) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      ["tt-cascade-5", "p-cascade-5", "Weekly report", "", "medium", "[]", null, 0, 0, now, now],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_template_labels (id, templateId, name) VALUES (?,?,?)",
+      ["ttl-c5", "tt-cascade-5", "bug"],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_template_assignees (templateId, userId) VALUES (?,?)",
+      ["tt-cascade-5", "u-cascade-5"],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_template_comments (id, templateId, userId, text, dateCreated) VALUES (?,?,?,?,?)",
+      ["ttc-c5", "tt-cascade-5", "u-cascade-5", "hi", now],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_template_runs (id, templateId, taskId, dateCreated) VALUES (?,?,?,?)",
+      ["ttr-c5", "tt-cascade-5", "t-cascade-5", now],
+    );
+    const templateFile = path.join(dir, "attachments", "tt-cascade-5.txt");
+    await fs.outputFile(templateFile, "content");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_template_attachments (id, templateId, fileName, filePath, dateCreated) VALUES (?,?,?,?,?)",
+      ["tta-c5", "tt-cascade-5", "file.txt", templateFile, now],
+    );
+
+    await ProjectsDataDelete("p-cascade-5");
+
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_templates WHERE projectId = ?", [
+        "p-cascade-5",
+      ]),
+    ).toBe(0);
+    for (const [table, column] of [
+      ["task_template_labels", "templateId"],
+      ["task_template_assignees", "templateId"],
+      ["task_template_comments", "templateId"],
+      ["task_template_attachments", "templateId"],
+      ["task_template_runs", "templateId"],
+    ] as const) {
+      expect(
+        await count(`SELECT COUNT(*) AS c FROM ${table} WHERE ${column} = ?`, [
+          "tt-cascade-5",
+        ]),
+      ).toBe(0);
+    }
+    expect(await fs.pathExists(templateFile)).toBe(false);
+  });
+
   it("should delete a user with assignments, project access, api key and push subscriptions, keeping comments", async () => {
     await insertUser("u-cascade-4");
     await insertProject("p-cascade-4");

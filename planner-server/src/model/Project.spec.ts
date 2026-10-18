@@ -1,4 +1,9 @@
-import { Project, DEFAULT_STATUSES } from "../model/Project";
+import {
+  Project,
+  DEFAULT_STATUSES,
+  normalizePermission,
+  normalizeUserAccess,
+} from "../model/Project";
 
 describe("Project model", () => {
   describe("DEFAULT_STATUSES", () => {
@@ -113,6 +118,100 @@ describe("Project model", () => {
       expect(project.toTransportJson().archived).toBe(false);
       project.archived = true;
       expect(project.toTransportJson().archived).toBe(true);
+    });
+
+    it("should expose userAccess as {userId, permission} entries", () => {
+      const project = new Project();
+      project.userAccess = [
+        { userId: "user-1", permission: "view" },
+        { userId: "user-2", permission: "all" },
+      ];
+      expect(project.toTransportJson().userAccess).toEqual([
+        { userId: "user-1", permission: "view" },
+        { userId: "user-2", permission: "all" },
+      ]);
+    });
+  });
+
+  describe("normalizePermission", () => {
+    it("should accept the four levels", () => {
+      expect(normalizePermission("all")).toBe("all");
+      expect(normalizePermission("update")).toBe("update");
+      expect(normalizePermission("comment")).toBe("comment");
+      expect(normalizePermission("view")).toBe("view");
+    });
+
+    it("should fall back to all for missing or unknown values", () => {
+      expect(normalizePermission(undefined)).toBe("all");
+      expect(normalizePermission(null)).toBe("all");
+      expect(normalizePermission("")).toBe("all");
+      expect(normalizePermission("bogus")).toBe("all");
+      expect(normalizePermission(42)).toBe("all");
+    });
+  });
+
+  describe("normalizeUserAccess", () => {
+    it("should map the legacy string-array form to all entries", () => {
+      expect(normalizeUserAccess(["user-1", "user-2"])).toEqual([
+        { userId: "user-1", permission: "all" },
+        { userId: "user-2", permission: "all" },
+      ]);
+    });
+
+    it("should keep object entries and normalize their permission", () => {
+      expect(
+        normalizeUserAccess([
+          { userId: "user-1", permission: "view" },
+          { userId: "user-2" },
+          { userId: "user-3", permission: "bogus" },
+        ]),
+      ).toEqual([
+        { userId: "user-1", permission: "view" },
+        { userId: "user-2", permission: "all" },
+        { userId: "user-3", permission: "all" },
+      ]);
+    });
+
+    it("should drop entries without a string userId", () => {
+      expect(
+        normalizeUserAccess([null, {}, { userId: 42 }, { permission: "all" }]),
+      ).toEqual([]);
+    });
+
+    it("should drop empty-string user ids", () => {
+      expect(normalizeUserAccess(["", "user-1"])).toEqual([
+        { userId: "user-1", permission: "all" },
+      ]);
+    });
+
+    it("should yield an empty list for non-arrays", () => {
+      expect(normalizeUserAccess(undefined)).toEqual([]);
+      expect(normalizeUserAccess(null)).toEqual([]);
+      expect(normalizeUserAccess("user-1")).toEqual([]);
+      expect(normalizeUserAccess({ userId: "user-1" })).toEqual([]);
+    });
+  });
+
+  describe("fromJson userAccess", () => {
+    it("should normalize both input shapes", () => {
+      const legacy = Project.fromJson({
+        name: "n",
+        userAccess: ["user-1"],
+      });
+      expect(legacy.userAccess).toEqual([
+        { userId: "user-1", permission: "all" },
+      ]);
+      const entries = Project.fromJson({
+        name: "n",
+        userAccess: [{ userId: "user-2", permission: "comment" }],
+      });
+      expect(entries.userAccess).toEqual([
+        { userId: "user-2", permission: "comment" },
+      ]);
+    });
+
+    it("should keep the default empty list when userAccess is absent", () => {
+      expect(Project.fromJson({ name: "n" }).userAccess).toEqual([]);
     });
   });
 });

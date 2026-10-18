@@ -31,6 +31,22 @@
       :open="dictationStore.dialogOpen"
       @close="dictationStore.closeDialog()"
     />
+    <!-- Global command palette, opened with Ctrl/Cmd+K or the nav search button -->
+    <CommandPalette
+      @new-task="showTaskCreate = true"
+      @new-note="showNoteCreate = true"
+    />
+    <!-- Global create dialogs, opened from the command palette -->
+    <TaskCreateDialog
+      :open="showTaskCreate"
+      @close="showTaskCreate = false"
+      @created="onTaskCreated"
+    />
+    <NoteCreateDialog
+      :open="showNoteCreate"
+      @close="showNoteCreate = false"
+      @created="onNoteCreated"
+    />
   </div>
 </template>
 
@@ -38,6 +54,25 @@
 const route = useRoute();
 const router = useRouter();
 const dictationStore = useDictationStore();
+
+const showTaskCreate = ref(false);
+const showNoteCreate = ref(false);
+
+/**
+ * Point the open task dialog at the freshly created task.
+ */
+async function onTaskCreated(taskId) {
+  showTaskCreate.value = false;
+  router.replace({ path: route.path, query: { ...route.query, taskId } });
+}
+
+/**
+ * Point the open note dialog at the freshly created note.
+ */
+async function onNoteCreated(noteId) {
+  showNoteCreate.value = false;
+  router.replace({ path: route.path, query: { ...route.query, noteId } });
+}
 
 /**
  * Close a detail dialog by removing its query params from the URL.
