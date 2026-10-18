@@ -71,6 +71,10 @@ describe("AttachmentFullscreenViewer", () => {
     const canvases = wrapper.findAll("canvas.pdf-page");
     expect(canvases).toHaveLength(2);
     expect(canvases[0]?.attributes("aria-label")).toBe("Page 1 of 2");
+    // The fit sizing is set inline: scoped CSS never matches the
+    // imperatively created canvases
+    expect(canvases[0]?.attributes("style")).toContain("width: 100%");
+    expect(canvases[0]?.attributes("style")).toContain("height: auto");
     expect(getDocumentMock).toHaveBeenCalledWith({ url: "blob:planner/spec" });
     expect(wrapper.find(".pdf-loading").exists()).toBe(false);
   });
