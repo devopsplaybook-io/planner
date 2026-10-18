@@ -68,7 +68,7 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 
 [x] Audio attachments: audio files (voice message recordings and other audio attachments) play through an inline player in the task dialog attachments section next to the regular download link; the authenticated blob mechanism keeps the JWT out of attachment URLs.
 
-[x] PDF attachments: PDF files open in a fullscreen inline PDF viewer from the task dialog attachments section (click to open; click-outside or the close button to dismiss) through the same generic viewer mechanism as images and audio; the authenticated blob mechanism keeps the JWT out of attachment URLs. The pages render on canvas through the bundled pdf.js renderer and scroll vertically (the browser's built-in viewer cannot render PDFs inside iframes on mobile Chromium); a download button in the viewer downloads the file under its original name.
+[x] PDF attachments: PDF files open in a fullscreen inline PDF viewer from the task dialog attachments section (click to open; click-outside or the close button to dismiss) through the same generic viewer mechanism as images and audio; the authenticated blob mechanism keeps the JWT out of attachment URLs. The pages render fit to the viewer width on canvas through the bundled pdf.js renderer and scroll vertically (the browser's built-in viewer cannot render PDFs inside iframes on mobile Chromium); a download button in the viewer downloads the file under its original name.
 
 ## Visibility
 
