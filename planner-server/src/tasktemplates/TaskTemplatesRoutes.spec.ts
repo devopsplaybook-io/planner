@@ -485,6 +485,45 @@ describe("TaskTemplatesRoutes create and update", () => {
     expect(res.json().error).toContain("instanceStatus");
     expect(TaskTemplatesUpdate).not.toHaveBeenCalled();
   });
+
+  it("should clear a stored instanceStatus that the new project does not have when the project changes", async () => {
+    const template = makeTemplate(allProject);
+    template.instanceStatus = "To Do";
+    const otherProject = makeProject("public", []);
+    otherProject.statuses = ["Doing", "Review"];
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === otherProject.id ? otherProject : allProject,
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: { projectId: otherProject.id, title: "Moved" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().automation.instanceStatus).toBeNull();
+    expect(template.instanceStatus).toBeUndefined();
+    expect(TaskTemplatesUpdate).toHaveBeenCalled();
+  });
+
+  it("should keep the stored instanceStatus when the new project has it", async () => {
+    const template = makeTemplate(allProject);
+    template.instanceStatus = "Done";
+    const otherProject = makeProject("public", []);
+    otherProject.statuses = ["Doing", "Done"];
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === otherProject.id ? otherProject : allProject,
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: { projectId: otherProject.id, title: "Moved" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().automation.instanceStatus).toBe("Done");
+    expect(template.instanceStatus).toBe("Done");
+  });
 });
 
 describe("TaskTemplatesRoutes delete and create-instance", () => {

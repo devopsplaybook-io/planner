@@ -320,6 +320,15 @@ export class TaskTemplatesRoutes {
         if (parsed.instanceStatus !== undefined)
           template.instanceStatus = parsed.instanceStatus || undefined;
       }
+      // Clear an initial status the (possibly new) project does not have:
+      // instance creation would silently fall back to the project's first
+      // status, so the stored value must not outlive its project
+      if (template.instanceStatus) {
+        const effectiveProject = await ProjectsDataGet(template.projectId);
+        if (!effectiveProject?.statuses.includes(template.instanceStatus)) {
+          template.instanceStatus = undefined;
+        }
+      }
       await TaskTemplatesUpdate(template);
       if (Array.isArray(req.body.assignees)) {
         await replaceTemplateAssignees(
