@@ -31,17 +31,17 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 ## Management of Templates
 
-[x] Templates are managed in the Settings **Task Templates** tab, available to every user (see [USER_INTERFACE.md](USER_INTERFACE.md)); the tab lists the templates of the projects the user can see, newest first. The create/edit dialog places its Save/Cancel actions in the dialog header, following the application's standard dialog button placement.
+[x] Templates are managed in the Settings **Task Templates** tab, available to every user (see [USER_INTERFACE.md](USER_INTERFACE.md)); the tab lists the templates of the projects the user can see, newest first, as cards following the application's shared item-card design language (like the task, note and project cards: priority accent stripe, icon and truncated title, automation chip with the schedule label or "Manual", project name, meta counts and label tags; the card has no action buttons). Clicking a card opens the template dialog in view mode; the dialog follows the standardized detail-dialog header (icon-only Edit, Save and Cancel buttons, an advanced (…) menu, a close button).
 
 [x] The list offers a project filter (applying to the project's whole subtree, like the other views) and a case-insensitive search over title and description.
 
-[x] Create: the "New template" dialog offers the project selector (restricted to projects the user may update), title, description, priority, assignees, labels, checklist and the Automation section; the template card appears immediately after creation.
+[x] Create: the "New template" button opens the dialog in create mode — a form dialog without the advanced menu — offering the project selector (restricted to projects the user may update), title, description, priority, assignees, labels, checklist and the Automation section; the new card appears immediately after creation.
 
-[x] Update: editing a template replaces its content, assignees, labels, checklist and automation; the project can be changed to any project the user may update; changing the automation re-registers the cron job.
+[x] View & update: the template dialog shows the template read-only (markdown description, meta grid, automation block, read-only checklist and the task-style attachment and comment sections); the header pencil opens Edit mode with the same form fields as creation and saving returns to view mode. Editing a template replaces its content, assignees, labels, checklist and automation; the project can be changed to any project the user may update; changing the automation re-registers the cron job.
 
-[x] Create task: each template card offers a "Create task" action (also available while filtered) that creates one instance immediately and confirms with the created task's title; the instance opens like any task.
+[x] Create task: the template dialog's advanced (…) menu offers a "Create task instance" action (hidden below the Update permission on the template's project) that creates one instance immediately and confirms with the created task's title in an inline status message; the instance is a regular task.
 
-[x] Delete: deleting a template (with confirmation) removes it, its comments, attachments, labels, assignees, run history and stops its cron job; deleting a project deletes its templates the same way (see [PROJECTS.md](PROJECTS.md)).
+[x] Delete: the same advanced (…) menu offers "Delete template" when the user holds the All permission on the template's project; deleting (with confirmation) removes it, its comments, attachments, labels, assignees, run history and stops its cron job; deleting a project deletes its templates the same way (see [PROJECTS.md](PROJECTS.md)).
 
 [x] No browser dialogs in template flows: errors surface as an inline dismissible banner and the delete uses the custom confirmation dialog instead of `alert()`/`confirm()`.
 
