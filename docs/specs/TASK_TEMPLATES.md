@@ -30,7 +30,7 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 ## Management of Templates
 
-[x] Templates are managed in the Settings **Task Templates** tab, available to every user (see [USER_INTERFACE.md](USER_INTERFACE.md)); the tab lists the templates of the projects the user can see, newest first.
+[x] Templates are managed in the Settings **Task Templates** tab, available to every user (see [USER_INTERFACE.md](USER_INTERFACE.md)); the tab lists the templates of the projects the user can see, newest first. The create/edit dialog places its Save/Cancel actions in the dialog header, following the application's standard dialog button placement.
 
 [x] The list offers a project filter (applying to the project's whole subtree, like the other views) and a case-insensitive search over title and description.
 
