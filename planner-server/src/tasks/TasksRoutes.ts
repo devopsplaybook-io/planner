@@ -1,6 +1,6 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { v4 as uuidv4 } from "uuid";
-import { Task, TaskRecurrence, TASK_TRANSPORT_FIELDS } from "../model/Task";
+import { Task, TASK_TRANSPORT_FIELDS } from "../model/Task";
 import { Project, ProjectPermission } from "../model/Project";
 import { UserSession } from "../model/UserSession";
 import {
@@ -34,7 +34,6 @@ import {
   updateComment,
   replaceLabels,
   replaceDependencies,
-  addDependency,
   addTaskAttachment,
   deleteTaskAttachment,
   getTaskAttachment,
@@ -42,7 +41,6 @@ import {
 import * as fs from "fs-extra";
 import * as path from "path";
 import { buildAttachmentCopyPath, cloneTaskFrom } from "./TasksClone";
-import { buildNextOccurrence, parseRecurrence } from "./TaskRecurrence";
 import { TaskImproveText } from "./TaskImprove";
 import { TaskVoiceCommentsEnqueue } from "./TaskVoiceComments";
 import {
@@ -203,6 +201,26 @@ export function parseAssigneeUserId(value: unknown): string | undefined {
 }
 
 /**
+ * Validates the optional comma-separated labels query param. Returns
+ * undefined when absent/empty and otherwise the trimmed, non-empty,
+ * de-duplicated label names. Pure so it can be unit-tested without the
+ * route layer.
+ */
+export function parseLabels(value: unknown): string[] | undefined {
+  if (typeof value !== "string" || value.trim() === "") {
+    return undefined;
+  }
+  const labels: string[] = [];
+  for (const part of value.split(",")) {
+    const label = part.trim();
+    if (label && !labels.includes(label)) {
+      labels.push(label);
+    }
+  }
+  return labels.length > 0 ? labels : undefined;
+}
+
+/**
  * Resolves the effective status for a task in a project: the requested
  * status when the project uses it, otherwise the project's first status —
  * used when no status is given (creation default) or when a moved task's
@@ -324,6 +342,7 @@ export class TasksRoutes {
         q?: string;
         fields?: string;
         assigneeUserId?: string;
+        labels?: string;
         limit?: string;
         offset?: string;
       };
@@ -348,6 +367,7 @@ export class TasksRoutes {
         doneSince,
         q: req.query.q?.trim() || undefined,
         assigneeUserId: parseAssigneeUserId(req.query.assigneeUserId),
+        labels: parseLabels(req.query.labels),
         limit,
         offset,
       };
@@ -415,7 +435,6 @@ export class TasksRoutes {
         status?: string;
         priority?: string;
         dueDate?: string;
-        recurrence?: TaskRecurrence | null;
         assignees?: string[];
         labels?: string[];
         dependencies?: string[];
@@ -464,20 +483,6 @@ export class TasksRoutes {
         }
         dependencyIds = validation.ids;
       }
-      // A recurrence rule is only meaningful with a due date to shift
-      let recurrence: TaskRecurrence | undefined;
-      if (req.body.recurrence !== undefined && req.body.recurrence !== null) {
-        if (!req.body.dueDate) {
-          return res.status(400).send({
-            error: "Invalid: recurrence (a recurring task requires a due date)",
-          });
-        }
-        const parsed = parseRecurrence(req.body.recurrence);
-        if (parsed.error) {
-          return res.status(400).send({ error: parsed.error });
-        }
-        recurrence = parsed.recurrence;
-      }
 
       const task = new Task();
       task.projectId = req.body.projectId;
@@ -486,7 +491,6 @@ export class TasksRoutes {
       task.status = resolveTaskStatus(project, req.body.status);
       if (req.body.priority) task.priority = req.body.priority;
       if (req.body.dueDate) task.dueDate = req.body.dueDate;
-      if (recurrence) task.recurrence = recurrence;
       if (req.body.assignees)
         task.assignees = req.body.assignees.map((u) => ({ userId: u }));
       else if (userSession.userId)
@@ -603,7 +607,6 @@ export class TasksRoutes {
         status?: string;
         priority?: string;
         dueDate?: string;
-        recurrence?: TaskRecurrence | null;
         checklist?: { text: string; done: boolean }[];
         projectId?: string;
       };
@@ -649,25 +652,6 @@ export class TasksRoutes {
       if (req.body.priority) task.priority = req.body.priority;
       if (req.body.dueDate !== undefined) task.dueDate = req.body.dueDate;
       if (req.body.checklist) task.checklist = req.body.checklist;
-      // Recurrence: apply when set, clear on null; a rule needs a due date
-      // (the effective one, after this request's dueDate change)
-      if (req.body.recurrence !== undefined) {
-        if (req.body.recurrence === null) {
-          task.recurrence = undefined;
-        } else {
-          if (!task.dueDate) {
-            return res.status(400).send({
-              error:
-                "Invalid: recurrence (a recurring task requires a due date)",
-            });
-          }
-          const parsed = parseRecurrence(req.body.recurrence);
-          if (parsed.error) {
-            return res.status(400).send({ error: parsed.error });
-          }
-          task.recurrence = parsed.recurrence;
-        }
-      }
       let movedToProject: Project = null;
       if (req.body.projectId && req.body.projectId !== task.projectId) {
         const project = await ProjectsDataGet(req.body.projectId);
@@ -699,27 +683,6 @@ export class TasksRoutes {
         }
       }
       await TasksDataUpdate(task);
-      // Recurring tasks: any transition into "Done" (status dropdown, board
-      // drag-and-drop, the Cancel flow) spawns the next occurrence with the
-      // shifted due date, linked back to the completed task. A spawn failure
-      // is logged and never fails the completion response.
-      if (
-        before.status !== "Done" &&
-        task.status === "Done" &&
-        task.recurrence &&
-        task.dueDate
-      ) {
-        try {
-          const project = await ProjectsDataGet(task.projectId);
-          const next = buildNextOccurrence(task, project?.statuses?.[0]);
-          await TasksDataAdd(next);
-          await addDependency(next.id, task.id);
-        } catch (error) {
-          console.error(
-            `[Tasks] Failed to create the next occurrence: ${(error as Error).message}`,
-          );
-        }
-      }
       const changes: string[] = [];
       if (task.title !== before.title) changes.push("title");
       if (task.description !== before.description) changes.push("description");

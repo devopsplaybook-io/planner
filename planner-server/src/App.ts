@@ -18,6 +18,7 @@ import { TasksRoutes } from "./tasks/TasksRoutes";
 import { NotesRoutes } from "./notes/NotesRoutes";
 import { ViewsRoutes } from "./views/ViewsRoutes";
 import { StatusesRoutes } from "./statuses/StatusesRoutes";
+import { LabelsRoutes } from "./labels/LabelsRoutes";
 import { StatusesCatalogSeedIfEmpty } from "./statuses/StatusesData";
 import { RecommendationInit } from "./recommendation/Recommendation";
 import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
@@ -29,6 +30,9 @@ import { NotificationsInit } from "./notifications/Notifications";
 import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
 import { CleanupInit } from "./cleanup/CleanupScheduler";
 import { CleanupRoutes } from "./cleanup/CleanupRoutes";
+import { TaskTemplatesRoutes } from "./tasktemplates/TaskTemplatesRoutes";
+import { TaskTemplatesSchedulerInit } from "./tasktemplates/TaskTemplatesScheduler";
+import { TaskTemplatesBackfillFromRecurrence } from "./tasktemplates/TaskTemplatesBackfill";
 import { StandardLogger, StandardTracer } from "@devopsplaybook.io/otel-utils";
 import { StandardTracerFastifyRegisterHooks } from "@devopsplaybook.io/otel-utils-fastify";
 
@@ -63,6 +67,9 @@ Promise.resolve()
     await DbUtilsInit(config);
     await AuthInit(config);
     await RunMigrations();
+    // Convert recurring tasks into task templates (one-time, idempotent),
+    // then start the cron scheduler over the resulting templates
+    await TaskTemplatesBackfillFromRecurrence();
     // Hash any plaintext API keys left by older versions (idempotent)
     await ApiKeysDataBackfillHashes();
     await StatusesCatalogSeedIfEmpty();
@@ -72,6 +79,7 @@ Promise.resolve()
     await TaskVoiceCommentsInit(config);
     await NotificationsInit(config);
     CleanupInit();
+    await TaskTemplatesSchedulerInit();
 
     // Ensure a default project exists
     const existingProjects = await ProjectsDataList();
@@ -209,6 +217,13 @@ Promise.resolve()
 
     await fastify.register(
       async (instance) => {
+        await new LabelsRoutes().getRoutes(instance);
+      },
+      { prefix: "/api/labels" },
+    );
+
+    await fastify.register(
+      async (instance) => {
         await new RecommendationRoutes(
           config.RATE_LIMIT_LLM_REGENERATE_MAX,
         ).getRoutes(instance);
@@ -235,6 +250,13 @@ Promise.resolve()
         await new CleanupRoutes().getRoutes(instance);
       },
       { prefix: "/api/cleanup" },
+    );
+
+    await fastify.register(
+      async (instance) => {
+        await new TaskTemplatesRoutes().getRoutes(instance);
+      },
+      { prefix: "/api/task-templates" },
     );
 
     fastify.register(fastifyStatic, {

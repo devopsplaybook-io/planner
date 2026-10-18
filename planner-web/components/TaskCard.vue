@@ -37,13 +37,6 @@
             <i class="bi bi-calendar3" /> {{ task.dueDate }}
           </small>
           <small
-            v-if="task.recurrence"
-            class="repeats"
-            :title="'Repeats: ' + recurrenceLabel(task.recurrence)"
-          >
-            <i class="bi bi-arrow-repeat" />
-          </small>
-          <small
             v-if="task.assignees && task.assignees.length"
             class="assignee-count"
           >
@@ -70,7 +63,6 @@
 <script setup>
 import { readableTextColor } from "../utils/statusColor";
 import { displayName } from "../utils/projectHierarchy";
-import { recurrenceLabel } from "../utils/recurrence";
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -249,8 +241,7 @@ function onDragEnd(event) {
 
 .due-date,
 .assignee-count,
-.checklist-progress,
-.repeats {
+.checklist-progress {
   display: flex;
   align-items: center;
   gap: var(--space-2xs);

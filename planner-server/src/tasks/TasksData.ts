@@ -35,6 +35,8 @@ export interface TaskListFilters {
   q?: string;
   /** Matches tasks assigned to this user, in all statuses (EXISTS). */
   assigneeUserId?: string;
+  /** Matches tasks carrying every listed label (one EXISTS per label). */
+  labels?: string[];
   /** When set, restricts results to projects visible to this user (non-admin viewers). */
   visibleTo?: { userId: string };
   /** Maximum number of rows returned (pagination). */
@@ -93,6 +95,16 @@ export function buildListTasksQuery(
     );
     params.push(filters.assigneeUserId);
   }
+  if (filters.labels && filters.labels.length > 0) {
+    // One EXISTS per label so only tasks carrying every listed label match
+    // (AND semantics), regardless of duplicate rows in task_labels
+    for (const label of filters.labels) {
+      conditions.push(
+        `EXISTS (SELECT 1 FROM ${quote("task_labels")} tl WHERE tl.${quote("taskId")} = tasks.${quote("id")} AND tl.${quote("name")} = ?)`,
+      );
+      params.push(label);
+    }
+  }
   if (filters.visibleTo) {
     const visibility = visibleProjectsCondition(filters.visibleTo.userId, dbType);
     conditions.push(visibility.sql);
@@ -133,7 +145,6 @@ export async function TasksDataAdd(task: Task): Promise<void> {
     task.status,
     task.priority,
     task.dueDate || null,
-    task.recurrence ? JSON.stringify(task.recurrence) : null,
     JSON.stringify(task.checklist),
     task.dateCreated,
     task.dateUpdated,
@@ -157,7 +168,6 @@ export async function TasksDataUpdate(task: Task): Promise<void> {
     task.status,
     task.priority,
     task.dueDate || null,
-    task.recurrence ? JSON.stringify(task.recurrence) : null,
     JSON.stringify(task.checklist),
     task.dateUpdated,
     task.projectId,
@@ -556,15 +566,15 @@ const SQL_QUERIES = {
   },
   INSERT_TASK: {
     postgres:
-      'INSERT INTO tasks ("id", "projectId", "title", "description", "status", "priority", "dueDate", "recurrence", "checklist", "dateCreated", "dateUpdated") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+      'INSERT INTO tasks ("id", "projectId", "title", "description", "status", "priority", "dueDate", "checklist", "dateCreated", "dateUpdated") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
     sqlite:
-      "INSERT INTO tasks (id, projectId, title, description, status, priority, dueDate, recurrence, checklist, dateCreated, dateUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO tasks (id, projectId, title, description, status, priority, dueDate, checklist, dateCreated, dateUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   },
   UPDATE_TASK: {
     postgres:
-      'UPDATE tasks SET "title" = $1, "description" = $2, "status" = $3, "priority" = $4, "dueDate" = $5, "recurrence" = $6, "checklist" = $7, "dateUpdated" = $8, "projectId" = $9 WHERE "id" = $10',
+      'UPDATE tasks SET "title" = $1, "description" = $2, "status" = $3, "priority" = $4, "dueDate" = $5, "checklist" = $6, "dateUpdated" = $7, "projectId" = $8 WHERE "id" = $9',
     sqlite:
-      "UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, dueDate = ?, recurrence = ?, checklist = ?, dateUpdated = ?, projectId = ? WHERE id = ?",
+      "UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, dueDate = ?, checklist = ?, dateUpdated = ?, projectId = ? WHERE id = ?",
   },
   TOUCH_TASK: {
     postgres: 'UPDATE tasks SET "dateUpdated" = $1 WHERE "id" = $2',

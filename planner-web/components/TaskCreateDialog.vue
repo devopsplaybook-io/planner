@@ -35,31 +35,19 @@
           </select>
         </label>
         <label>
-          {{ form.recurrence ? "Due date (this occurrence)" : "Due date" }}
+          Due date
           <input v-model="form.dueDate" type="date" />
         </label>
-        <!-- Not a <label>: the weekday chips are <button>s, and a label
-             forwards clicks on them to the Repeats select. -->
-        <div class="recurrence-field">
-          <strong>Repeats</strong>
-          <TaskRecurrenceSelect
-            v-model="form.recurrence"
-            :due-date="form.dueDate"
-            @align="form.dueDate = $event"
-          />
-          <template v-if="form.recurrence && form.dueDate">
-            <small v-if="nextOccurrenceDate" class="text-muted">
-              Next occurrence: {{ nextOccurrenceDate }}
-            </small>
-            <small class="text-muted">
-              Completing this task creates the next occurrence with the due
-              date shifted.
-            </small>
-          </template>
-        </div>
         <fieldset>
           <legend>Assignees</legend>
           <UserMultiSelect v-model="form.assignees" :users="users" />
+        </fieldset>
+        <fieldset>
+          <legend>Labels</legend>
+          <LabelMultiSelect
+            v-model="form.labels"
+            :suggestions="labelsStore.labels"
+          />
         </fieldset>
         <fieldset>
           <legend>Checklist</legend>
@@ -102,7 +90,6 @@
 
 <script setup>
 import api from "../utils/api";
-import { computeNextDueDate } from "../utils/recurrence";
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -115,6 +102,7 @@ const dialogEl = useModalDialog(() => props.open);
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const authStore = useAuthStore();
+const labelsStore = useLabelsStore();
 
 const users = ref([]);
 const creating = ref(false);
@@ -140,14 +128,10 @@ const form = ref({
   description: "",
   priority: "medium",
   dueDate: "",
-  recurrence: null,
   assignees: [],
+  labels: [],
   checklist: [],
 });
-
-const nextOccurrenceDate = computed(() =>
-  computeNextDueDate(form.value.recurrence, form.value.dueDate),
-);
 
 watch(
   () => props.open,
@@ -159,8 +143,8 @@ watch(
         description: "",
         priority: "medium",
         dueDate: "",
-        recurrence: null,
         assignees: authStore.currentUser?.id ? [authStore.currentUser.id] : [],
+        labels: [],
         checklist: [],
       };
       // Fetch users for the assignee picker
@@ -170,6 +154,8 @@ watch(
       } catch {
         users.value = [];
       }
+      // Existing labels feed the autocomplete suggestions
+      labelsStore.fetchAll().catch(() => {});
     }
   },
 );
@@ -183,8 +169,8 @@ async function createTask() {
       description: form.value.description,
       priority: form.value.priority,
       dueDate: form.value.dueDate || undefined,
-      recurrence: form.value.recurrence || undefined,
       assignees: form.value.assignees,
+      labels: form.value.labels,
       checklist: form.value.checklist.filter((c) => c.text.trim()),
     };
     const created = await tasksStore.create(data);
@@ -199,13 +185,6 @@ async function createTask() {
 </script>
 
 <style scoped>
-.recurrence-field {
-  display: block;
-  margin-bottom: var(--space-sm);
-  font-size: var(--text-md);
-  font-weight: var(--weight-medium);
-}
-
 .checklist-input-row {
   display: grid;
   grid-template-columns: 1fr auto;

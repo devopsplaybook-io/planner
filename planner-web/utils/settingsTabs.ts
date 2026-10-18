@@ -1,7 +1,10 @@
 /**
  * Pure permission-aware helpers for the Settings page tabs: Profile first
- * for every user, the admin tabs (Users, Projects, Statuses, Cleanup) only
- * for admins. Server-side authorization is unchanged (AuthMustBeAdmin).
+ * for every user, then the Task Templates tab (any user can define
+ * templates in the projects they may update), then the admin tabs (Users,
+ * Projects, Statuses, Cleanup) only for admins. Server-side authorization
+ * is unchanged (AuthMustBeAdmin for the admin tabs, project permissions
+ * for the templates).
  */
 
 export interface SettingsTab {
@@ -10,7 +13,10 @@ export interface SettingsTab {
 }
 
 export function getSettingsTabs(isAdmin: boolean): SettingsTab[] {
-  const tabs: SettingsTab[] = [{ id: "profile", label: "Profile" }];
+  const tabs: SettingsTab[] = [
+    { id: "profile", label: "Profile" },
+    { id: "task-templates", label: "Task Templates" },
+  ];
   if (isAdmin) {
     tabs.push(
       { id: "users", label: "Users" },

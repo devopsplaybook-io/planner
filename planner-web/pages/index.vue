@@ -11,6 +11,14 @@
           all-label="All projects"
           @update:model-value="onFilterChange"
         />
+        <div class="label-filter">
+          <LabelMultiSelect
+            v-model="selectedLabels"
+            :suggestions="labelsStore.labels"
+            placeholder="Filter by label…"
+            aria-label="Filter by labels"
+          />
+        </div>
         <button class="fab-button" @click="showCreateDialog = true">
           <i class="bi bi-plus-lg" />
         </button>
@@ -175,12 +183,16 @@ const DONE_WINDOW_DAYS = 30;
 const tasksStore = useTasksStore();
 const projectsStore = useProjectsStore();
 const statusesStore = useStatusesStore();
+const labelsStore = useLabelsStore();
 const recommendationStore = useRecommendationStore();
 const router = useRouter();
 const route = useRoute();
 
 const loading = ref(true);
 const showCreateDialog = ref(false);
+// Label filter: applies to every dashboard section, including the Recently
+// Done list; empty selection = no filter
+const selectedLabels = ref([]);
 const dashboardData = ref({
   overdue: [],
   upcoming: [],
@@ -244,6 +256,12 @@ function onFilterChange(projectId) {
   fetchDashboard();
 }
 
+// The chips are the visible hint; re-slice every section when the label
+// selection changes
+watch(selectedLabels, () => {
+  fetchDashboard({ silent: true });
+});
+
 // silent: refresh in place (no loading indicator) so the view stays mounted
 // and the scroll position is preserved
 async function fetchDashboard({ silent = false } = {}) {
@@ -258,12 +276,19 @@ async function fetchDashboard({ silent = false } = {}) {
       ? projectsStore.subtreeProjectIds(filterId)
       : undefined;
     const params = projectIds ? { projectIds } : {};
+    if (selectedLabels.value.length) {
+      params.labels = selectedLabels.value.join(",");
+    }
     const doneSince = new Date(
       Date.now() - DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
     ).toISOString();
     const [dashboard] = await Promise.all([
       tasksStore.fetchDashboard(params),
-      tasksStore.fetchAll(undefined, { doneSince, projectIds }),
+      tasksStore.fetchAll(undefined, {
+        doneSince,
+        projectIds,
+        labels: selectedLabels.value,
+      }),
     ]);
     dashboardData.value = dashboard;
   } catch {
@@ -302,6 +327,7 @@ onMounted(async () => {
   await Promise.all([
     projectsStore.fetchAll(),
     statusesStore.fetchAll(),
+    labelsStore.fetchAll(),
   ]);
   await recommendationStore.fetchConfig();
   if (recommendationStore.isLlmEnabled) {
@@ -325,6 +351,18 @@ onMounted(async () => {
   gap: var(--space-sm);
   align-items: center;
 }
+
+/* Compact chip editor: the filter stays one row with the project select;
+   the dropdown still overflows the box by design */
+.label-filter {
+  width: 12rem;
+  max-width: 40vw;
+}
+
+.label-filter :deep(.lms-input) {
+  min-width: 6em;
+}
+
 
 section {
   margin-bottom: var(--space-lg);

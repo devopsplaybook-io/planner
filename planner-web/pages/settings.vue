@@ -270,6 +270,7 @@
     <AdminStatusesTab
       v-else-if="activeTab === 'statuses' && authStore.isAdmin"
     />
+    <TaskTemplatesTab v-else-if="activeTab === 'task-templates'" />
     <AdminCleanupTab
       v-else-if="activeTab === 'cleanup' && authStore.isAdmin"
     />

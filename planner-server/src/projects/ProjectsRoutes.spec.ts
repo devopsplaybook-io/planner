@@ -31,6 +31,14 @@ jest.mock("./ProjectsData", () => ({
   addProjectUser: jest.fn(),
 }));
 
+jest.mock("../tasktemplates/TaskTemplatesData", () => ({
+  TaskTemplatesListIdsByProject: jest.fn(async () => []),
+}));
+
+jest.mock("../tasktemplates/TaskTemplatesScheduler", () => ({
+  TaskTemplatesSchedulerRefresh: jest.fn(),
+}));
+
 jest.mock("../statuses/StatusesData", () => ({
   StatusesCatalogGet: jest.fn(async () => [
     { name: "To Do", color: "#3b82f6" },

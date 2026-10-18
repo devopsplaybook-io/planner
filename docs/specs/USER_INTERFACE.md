@@ -27,8 +27,8 @@ It is installable on mobile and desktop devices and works offline.
 
 ### Settings tabs
 
-- [x] Settings is a single page with permission-aware tabs: the **Profile** tab comes first and is the default for every user and holds all per-user settings (Appearance, Dictation, Notifications, Account, API Key); the **Users**, **Projects**, **Statuses** and **Cleanup** admin tabs are appended for admins only (see [ADMIN.md](ADMIN.md))
-- [x] Non-admin users only ever see the Profile tab (never the admin tabs); the server-side admin authorization on the admin APIs is unchanged
+- [x] Settings is a single page with permission-aware tabs: the **Profile** tab comes first and is the default for every user and holds all per-user settings (Appearance, Dictation, Notifications, Account, API Key); the **Task Templates** tab follows it for every user (see [TASK_TEMPLATES.md](TASK_TEMPLATES.md)); the **Users**, **Projects**, **Statuses** and **Cleanup** admin tabs are appended for admins only (see [ADMIN.md](ADMIN.md))
+- [x] Non-admin users never see the admin tabs; the server-side admin authorization on the admin APIs is unchanged
 - [x] The selected tab is reflected in the URL (`?tab=`) and restored on refresh and browser navigation; a deep link to an unknown or unauthorized tab (e.g. a non-admin opening `/settings?tab=users`) falls back to the Profile tab
 - [x] The former standalone `/admin` page redirects to `/settings` preserving the query parameters, so existing bookmarks and PWA-cached deep links keep working
 - [x] All settings tabs share a single full-width page layout: the header, tab bar and content are aligned identically for every tab (the legacy centered profile-only layout was removed)
@@ -58,6 +58,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] Collapsible detail-dialog sections (task: Checklist/Attachments/Comments; note: Attachments/Comments) remember their collapsed/expanded state per dialog type in localStorage, with graceful degrade to content-based defaults
 - [x] Task dialog flows use the custom confirmation dialogs and an inline dismissible error banner instead of browser `alert()`/`confirm()`
 - [x] A shared multi-user selection component (auto-complete box with removable chips) is used for task assignees and project user access, replacing per-user checkbox lists; for project user access it offers an optional compact permission select per chip (All / Update tasks / Comment / View, defaulting to All) next to the remove button
+- [x] A shared label chip editor (free-form label chips with remove buttons, autocomplete from existing labels with usage counts, keyboard navigation with ArrowUp/ArrowDown/Enter/Escape and Backspace to remove the last chip) is used for task create/edit, note edit and the dashboard/notes label filters
 - [x] When a Task, Note or Project detail dialog is closed, the view behind it refreshes its data in place: the list is not unmounted and the user's scroll position is preserved (the full loading indicator is only shown on initial load)
 - [x] Each main list page (Dashboard, Tasks board, Calendar, History, Update Feed and Notes) regularly refreshes the list it displays, once a minute and again when the tab becomes visible again after being hidden for at least that interval: the refresh is silent (no loading indicator, the list is not unmounted, the scroll position is preserved), always applies the current filters (the project filter is re-read at refresh time), skips ticks while the tab is hidden and while a refresh is still in flight, and never loses data on a failed refresh
 - [x] Long markdown descriptions in the Task, Note and Project detail dialogs collapse to a capped height with a fade at the cut and a "Show more/less" disclosure exposing `aria-expanded`: the full text is shown when expanded, the disclosure only appears when the content actually overflows the cap (a short description is never faded or truncated), and Edit mode always shows the complete description; the disclosure keeps its quiet text-button appearance on hover and focus (no filled background)
@@ -69,6 +70,5 @@ It is installable on mobile and desktop devices and works offline.
   - [x] A Task Detail: a dialog that displays the full task once the card is clicked
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
-- [x] The Tasks board header offers an All / Recurring only / Hide recurring filter applied client-side over the task recurrence rule; the choice persists in localStorage like the project filter and the column counts follow it
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-18_
