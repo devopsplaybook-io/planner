@@ -549,6 +549,7 @@ export class TaskTemplatesRoutes {
           ".bmp": "image/bmp",
           ".ico": "image/x-icon",
           ".avif": "image/avif",
+          ".pdf": "application/pdf",
           // Audio (voice message recordings and other audio attachments)
           ".mp3": "audio/mpeg",
           ".wav": "audio/wav",
@@ -565,8 +566,14 @@ export class TaskTemplatesRoutes {
           "Content-Disposition",
           `inline; filename="${attachment.fileName}"`,
         );
-        // Defense-in-depth: inert even if a listed type turns out active
-        res.header("Content-Security-Policy", "sandbox");
+        // PDFs must not carry this header: a sandbox CSP (or iframe sandbox)
+        // blocks the browser's built-in PDF viewer, so the file would never
+        // render. The exact content type + nosniff keep it inert anyway.
+        if (ext !== ".pdf") {
+          // Defense-in-depth: inert even if a listed type turns out active
+          res.header("Content-Security-Policy", "sandbox");
+        }
+        res.header("X-Content-Type-Options", "nosniff");
       } else {
         res.type("application/octet-stream");
         res.header(

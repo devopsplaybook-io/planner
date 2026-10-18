@@ -41,5 +41,7 @@
 - [x] Attachments can be downloaded from Tasks and Notes
 - [x] Only users with permission to view the Note or Task can download the attachment
 - [x] If the attachment is a picture, it is displayed in the UI. The max width should be the width of the viewport
+- [x] A shared attachment-viewer registry (file extension → viewer kind: image / pdf / audio / none) and a shared fullscreen viewer component decide how each attachment renders in the task and note dialogs; new viewer types are added in one place
+- [x] PDF attachments render in the browser's built-in PDF viewer; inline PDF responses omit the sandbox CSP (it blocks PDF rendering) and keep nosniff + exact content type
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-02_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-18_

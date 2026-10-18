@@ -148,10 +148,29 @@
                     :src="attachmentUrls[att.id]"
                     :alt="att.fileName"
                     class="attachment-preview"
-                    @click="fullscreenImage = attachmentUrls[att.id]"
+                    @click="
+                      fullscreenAttachment = {
+                        fileName: att.fileName,
+                        url: attachmentUrls[att.id],
+                      }
+                    "
                   />
                 </template>
                 <a
+                  v-if="isPdfFile(att.fileName) && attachmentUrls[att.id]"
+                  href="#"
+                  class="attachment-link"
+                  @click.prevent="
+                    fullscreenAttachment = {
+                      fileName: att.fileName,
+                      url: attachmentUrls[att.id],
+                    }
+                  "
+                >
+                  <i class="bi bi-file-earmark-pdf" /> {{ att.fileName }}
+                </a>
+                <a
+                  v-else
                   href="#"
                   rel="noopener"
                   class="attachment-link"
@@ -270,21 +289,11 @@
         </details>
       </template>
 
-      <!-- Fullscreen Image Viewer -->
-      <div
-        v-if="fullscreenImage"
-        class="fullscreen-overlay"
-        @click="fullscreenImage = null"
-      >
-        <button
-          class="fullscreen-close"
-          aria-label="Close"
-          @click.stop="fullscreenImage = null"
-        >
-          ×
-        </button>
-        <img :src="fullscreenImage" class="fullscreen-image" @click.stop />
-      </div>
+      <!-- Fullscreen attachment viewer (image / pdf via the shared component) -->
+      <AttachmentFullscreenViewer
+        :attachment="fullscreenAttachment"
+        @close="fullscreenAttachment = null"
+      />
 
       <!-- Delete Confirmation -->
       <dialog
@@ -319,6 +328,9 @@ import {
 import {
   downloadAttachment as downloadAttachmentFile,
   fetchAttachmentObjectUrl,
+  getAttachmentViewerKind,
+  isImageFile,
+  isPdfFile,
 } from "../utils/attachments";
 import { displayName } from "../utils/projectHierarchy";
 
@@ -349,9 +361,10 @@ const editing = ref(false);
 const saving = ref(false);
 const advancedMenuEl = ref(null);
 const editForm = ref({ title: "", description: "", labels: [], projectId: "" });
-const fullscreenImage = ref(null);
-// att.id -> blob object URL for image previews. Attachments are fetched
-// with the Bearer header; the JWT never appears in an attachment URL.
+const fullscreenAttachment = ref(null);
+// att.id -> blob object URL for inline previews (image / pdf). Attachments
+// are fetched with the Bearer header; the JWT never appears in an attachment
+// URL.
 const attachmentUrls = ref({});
 // Long descriptions collapse behind a "Show more/less" disclosure in view
 // mode; Edit mode always shows the full text (the textarea is untouched).
@@ -429,7 +442,7 @@ watch(
   },
 );
 
-// Fetch image previews as blobs whenever the attachment list changes
+// Fetch image previews and PDF blobs whenever the attachment list changes
 // (dialog open, upload, delete) and drop object URLs for gone attachments
 watch(
   () => note.value?.attachments,
@@ -445,7 +458,8 @@ watch(
     }
     attachmentUrls.value = nextUrls;
     for (const att of attachments || []) {
-      if (!isImageFile(att.fileName) || attachmentUrls.value[att.id]) continue;
+      const needsUrl = getAttachmentViewerKind(att.fileName) !== null;
+      if (!needsUrl || attachmentUrls.value[att.id]) continue;
       try {
         attachmentUrls.value[att.id] = await fetchAttachmentObjectUrl(
           `/notes/${note.value.id}/attachments/${att.id}?inline=true`,
@@ -620,21 +634,6 @@ async function uploadAttachment() {
   } finally {
     uploading.value = false;
   }
-}
-
-function isImageFile(fileName) {
-  const ext = fileName.split(".").pop()?.toLowerCase();
-  return [
-    "jpg",
-    "jpeg",
-    "png",
-    "gif",
-    "webp",
-    "svg",
-    "bmp",
-    "ico",
-    "avif",
-  ].includes(ext || "");
 }
 
 async function deleteAttachment(attachmentId) {
@@ -996,48 +995,5 @@ section h4 {
   padding: 0.05em 0.35em;
   border-radius: var(--radius-full);
   margin-left: auto;
-}
-
-/* Fullscreen image viewer */
-.fullscreen-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: rgba(0, 0, 0, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.fullscreen-image {
-  max-width: 95vw;
-  max-height: 95vh;
-  object-fit: contain;
-  cursor: default;
-  border-radius: var(--radius-sm);
-}
-
-.fullscreen-close {
-  position: fixed;
-  top: var(--space-md);
-  right: var(--space-md);
-  z-index: 10000;
-  background: rgba(0, 0, 0, 0.5);
-  color: #fff;
-  border: none;
-  border-radius: 50%;
-  width: 2.5em;
-  height: 2.5em;
-  font-size: var(--text-2xl);
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.fullscreen-close:hover {
-  background: rgba(0, 0, 0, 0.8);
 }
 </style>

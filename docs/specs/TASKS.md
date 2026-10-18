@@ -68,6 +68,8 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 
 [x] Audio attachments: audio files (voice message recordings and other audio attachments) play through an inline player in the task dialog attachments section next to the regular download link; the authenticated blob mechanism keeps the JWT out of attachment URLs.
 
+[x] PDF attachments: PDF files open in a fullscreen inline PDF viewer from the task dialog attachments section (click to open; click-outside or the close button to dismiss) through the same generic viewer mechanism as images and audio; the authenticated blob mechanism keeps the JWT out of attachment URLs; the download link stays available.
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.

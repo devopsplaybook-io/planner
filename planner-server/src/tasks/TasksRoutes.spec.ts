@@ -1321,6 +1321,35 @@ describe("TasksRoutes project visibility", () => {
     expect(res.headers["content-security-policy"]).toBe("sandbox");
   });
 
+  it("should serve PDF files inline without a sandbox CSP", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (getTaskAttachment as jest.Mock).mockResolvedValue({
+      id: "att-pdf",
+      taskId: task.id,
+      fileName: "spec.pdf",
+      filePath: "/data/attachments/tasks/att-pdf.pdf",
+      dateCreated: "2026-10-18T00:00:00.000Z",
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["pdf-bytes"]));
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/${task.id}/attachments/att-pdf?inline=true`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("application/pdf");
+    expect(res.headers["content-disposition"]).toContain("inline");
+    // A sandbox CSP blocks the browser's built-in PDF viewer
+    expect(res.headers["content-security-policy"]).toBeUndefined();
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
   it("should always force SVG files to download, even with inline=true", async () => {
     const task = makeTask(publicProject);
     (TasksDataGet as jest.Mock).mockResolvedValue(task);
