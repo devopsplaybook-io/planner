@@ -1,5 +1,24 @@
 import api from "./api";
 
+// Attachment viewer registry: file extension -> viewer kind. Adding a new
+// viewer type means one entry here plus one renderer branch in the shared
+// AttachmentFullscreenViewer component.
+export type AttachmentViewerKind = "image" | "pdf" | "audio";
+
+const IMAGE_EXTENSIONS = [
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "svg",
+  "bmp",
+  "ico",
+  "avif",
+];
+
+const PDF_EXTENSIONS = ["pdf"];
+
 const AUDIO_EXTENSIONS = [
   "webm",
   "m4a",
@@ -12,13 +31,44 @@ const AUDIO_EXTENSIONS = [
   "aac",
 ];
 
+function fileExtension(fileName: string): string {
+  return fileName.split(".").pop()?.toLowerCase() || "";
+}
+
+/**
+ * The viewer kind that should render this file (image preview, PDF viewer,
+ * audio player) or null when there is no inline viewer for it (download only).
+ */
+export function getAttachmentViewerKind(
+  fileName: string,
+): AttachmentViewerKind | null {
+  const ext = fileExtension(fileName);
+  if (PDF_EXTENSIONS.includes(ext)) return "pdf";
+  if (IMAGE_EXTENSIONS.includes(ext)) return "image";
+  if (AUDIO_EXTENSIONS.includes(ext)) return "audio";
+  return null;
+}
+
+/**
+ * True when a file name has an image extension (image previews).
+ */
+export function isImageFile(fileName: string): boolean {
+  return getAttachmentViewerKind(fileName) === "image";
+}
+
+/**
+ * True when a file name has a PDF extension (inline PDF viewer).
+ */
+export function isPdfFile(fileName: string): boolean {
+  return getAttachmentViewerKind(fileName) === "pdf";
+}
+
 /**
  * True when a file name has an audio extension (voice message recordings
  * and other audio attachments); `.mp4` is deliberately not audio.
  */
 export function isAudioFile(fileName: string): boolean {
-  const ext = fileName.split(".").pop()?.toLowerCase() || "";
-  return AUDIO_EXTENSIONS.includes(ext);
+  return getAttachmentViewerKind(fileName) === "audio";
 }
 
 /**

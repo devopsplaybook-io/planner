@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import api from "./api";
-import { downloadAttachment, fetchAttachmentObjectUrl, isAudioFile } from "./attachments";
+import {
+  downloadAttachment,
+  fetchAttachmentObjectUrl,
+  getAttachmentViewerKind,
+  isAudioFile,
+  isImageFile,
+  isPdfFile,
+} from "./attachments";
 
 vi.mock("./api", () => ({
   default: {
@@ -10,6 +17,60 @@ vi.mock("./api", () => ({
 }));
 
 const mockedGet = api.get as ReturnType<typeof vi.fn>;
+
+describe("getAttachmentViewerKind", () => {
+  it("maps PDF extensions to the pdf viewer", () => {
+    expect(getAttachmentViewerKind("spec.pdf")).toBe("pdf");
+    expect(getAttachmentViewerKind("spec.PDF")).toBe("pdf");
+  });
+
+  it("maps image extensions to the image viewer", () => {
+    for (const ext of [
+      "jpg",
+      "jpeg",
+      "png",
+      "gif",
+      "webp",
+      "svg",
+      "bmp",
+      "ico",
+      "avif",
+    ]) {
+      expect(getAttachmentViewerKind(`photo.${ext}`)).toBe("image");
+      expect(getAttachmentViewerKind(`photo.${ext.toUpperCase()}`)).toBe("image");
+    }
+  });
+
+  it("maps audio extensions to the audio viewer", () => {
+    expect(getAttachmentViewerKind("voice-message.webm")).toBe("audio");
+    expect(getAttachmentViewerKind("song.MP3")).toBe("audio");
+  });
+
+  it("returns null for files without an inline viewer", () => {
+    expect(getAttachmentViewerKind("archive.zip")).toBeNull();
+    expect(getAttachmentViewerKind("video.mp4")).toBeNull();
+    expect(getAttachmentViewerKind("noextension")).toBeNull();
+  });
+});
+
+describe("isPdfFile", () => {
+  it("detects PDF extensions case-insensitively", () => {
+    expect(isPdfFile("spec.pdf")).toBe(true);
+    expect(isPdfFile("spec.PDF")).toBe(true);
+    expect(isPdfFile("spec.pdfx")).toBe(false);
+    expect(isPdfFile("photo.png")).toBe(false);
+  });
+});
+
+describe("isImageFile", () => {
+  it("detects image extensions case-insensitively", () => {
+    expect(isImageFile("photo.png")).toBe(true);
+    expect(isImageFile("photo.JPG")).toBe(true);
+    expect(isImageFile("logo.svg")).toBe(true);
+    expect(isImageFile("spec.pdf")).toBe(false);
+    expect(isImageFile("noextension")).toBe(false);
+  });
+});
 
 describe("isAudioFile", () => {
   it("detects audio extensions case-insensitively", () => {

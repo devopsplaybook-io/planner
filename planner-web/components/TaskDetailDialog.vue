@@ -412,7 +412,12 @@
                     :src="attachmentUrls[att.id]"
                     :alt="att.fileName"
                     class="attachment-preview"
-                    @click="fullscreenImage = attachmentUrls[att.id]"
+                    @click="
+                      fullscreenAttachment = {
+                        fileName: att.fileName,
+                        url: attachmentUrls[att.id],
+                      }
+                    "
                   />
                 </template>
                 <audio
@@ -423,6 +428,20 @@
                   class="attachment-audio"
                 />
                 <a
+                  v-if="isPdfFile(att.fileName) && attachmentUrls[att.id]"
+                  href="#"
+                  class="attachment-link"
+                  @click.prevent="
+                    fullscreenAttachment = {
+                      fileName: att.fileName,
+                      url: attachmentUrls[att.id],
+                    }
+                  "
+                >
+                  <i class="bi bi-file-earmark-pdf" /> {{ att.fileName }}
+                </a>
+                <a
+                  v-else
                   href="#"
                   rel="noopener"
                   class="attachment-link"
@@ -603,21 +622,11 @@
         </details>
       </template>
 
-      <!-- Fullscreen Image Viewer -->
-      <div
-        v-if="fullscreenImage"
-        class="fullscreen-overlay"
-        @click="fullscreenImage = null"
-      >
-        <button
-          class="fullscreen-close"
-          aria-label="Close"
-          @click.stop="fullscreenImage = null"
-        >
-          ×
-        </button>
-        <img :src="fullscreenImage" class="fullscreen-image" @click.stop />
-      </div>
+      <!-- Fullscreen attachment viewer (image / pdf via the shared component) -->
+      <AttachmentFullscreenViewer
+        :attachment="fullscreenAttachment"
+        @close="fullscreenAttachment = null"
+      />
 
       <!-- Delete Confirmation -->
       <dialog
@@ -700,7 +709,10 @@ import api from "../utils/api";
 import {
   downloadAttachment as downloadAttachmentFile,
   fetchAttachmentObjectUrl,
+  getAttachmentViewerKind,
   isAudioFile,
+  isImageFile,
+  isPdfFile,
 } from "../utils/attachments";
 import { fileExtensionForMimeType } from "../utils/dictationMime";
 import { displayName } from "../utils/projectHierarchy";
@@ -764,9 +776,10 @@ const editForm = ref({
   labels: [],
   projectId: "",
 });
-const fullscreenImage = ref(null);
-// att.id -> blob object URL for image previews. Attachments are fetched
-// with the Bearer header; the JWT never appears in an attachment URL.
+const fullscreenAttachment = ref(null);
+// att.id -> blob object URL for inline previews (image / pdf). Attachments
+// are fetched with the Bearer header; the JWT never appears in an attachment
+// URL.
 const attachmentUrls = ref({});
 const users = ref([]);
 // Long descriptions collapse behind a "Show more/less" disclosure in view
@@ -1159,9 +1172,9 @@ watch(
   },
 );
 
-// Fetch image previews and audio players as blobs whenever the attachment
-// list changes (dialog open, upload, delete) and drop object URLs for gone
-// attachments
+// Fetch image previews, PDF viewers and audio players as blobs whenever the
+// attachment list changes (dialog open, upload, delete) and drop object URLs
+// for gone attachments
 watch(
   () => task.value?.attachments,
   async (attachments) => {
@@ -1176,8 +1189,7 @@ watch(
     }
     attachmentUrls.value = nextUrls;
     for (const att of attachments || []) {
-      const needsUrl =
-        isImageFile(att.fileName) || isAudioFile(att.fileName);
+      const needsUrl = getAttachmentViewerKind(att.fileName) !== null;
       if (!needsUrl || attachmentUrls.value[att.id]) continue;
       try {
         attachmentUrls.value[att.id] = await fetchAttachmentObjectUrl(
@@ -1633,21 +1645,6 @@ function voiceMessageBaseName() {
   const now = new Date();
   const pad = (n) => String(n).padStart(2, "0");
   return `voice-message-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
-
-function isImageFile(fileName) {
-  const ext = fileName.split(".").pop()?.toLowerCase();
-  return [
-    "jpg",
-    "jpeg",
-    "png",
-    "gif",
-    "webp",
-    "svg",
-    "bmp",
-    "ico",
-    "avif",
-  ].includes(ext || "");
 }
 
 async function deleteAttachment(attachmentId) {
@@ -2326,46 +2323,4 @@ section h4 {
   margin-left: auto;
 }
 
-/* Fullscreen image viewer */
-.fullscreen-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: rgba(0, 0, 0, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.fullscreen-image {
-  max-width: 95vw;
-  max-height: 95vh;
-  object-fit: contain;
-  cursor: default;
-  border-radius: var(--radius-sm);
-}
-
-.fullscreen-close {
-  position: fixed;
-  top: var(--space-md);
-  right: var(--space-md);
-  z-index: 10000;
-  background: rgba(0, 0, 0, 0.5);
-  color: #fff;
-  border: none;
-  border-radius: 50%;
-  width: 2.5em;
-  height: 2.5em;
-  font-size: var(--text-2xl);
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.fullscreen-close:hover {
-  background: rgba(0, 0, 0, 0.8);
-}
 </style>
