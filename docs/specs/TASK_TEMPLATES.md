@@ -31,7 +31,7 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 ## Management of Templates
 
-[x] Templates are managed in the Settings **Task Templates** tab, available to every user (see [USER_INTERFACE.md](USER_INTERFACE.md)); the tab lists the templates of the projects the user can see, newest first, as cards following the application's shared item-card design language (like the task, note and project cards: priority accent stripe, icon and truncated title, automation chip with the schedule label or "Manual", a chip with the configured initial status when set, project name, meta counts and label tags; the card has no action buttons). Clicking a card opens the template dialog in view mode; the dialog follows the standardized detail-dialog header (icon-only Edit, Save and Cancel buttons, an advanced (…) menu, a close button).
+[x] Templates are managed in the Settings **Task Templates** tab, available to every user (see [USER_INTERFACE.md](USER_INTERFACE.md)); the tab lists the templates of the projects the user can see, alphabetically by title within each project, grouped per project with one group header per project following the update feed's day-header format (the header shows the full project display path). Each card follows the update-feed entry layout — the title on its own line, then the automation chip (schedule label or "Manual"), the chip with the configured initial status when set, the meta counts and the label tags on the subsequent lines; the card carries no project name (the group header does) and no action buttons, and keeps the shared item-card design language (priority accent stripe, icon). Clicking a card opens the template dialog in view mode; the dialog follows the standardized detail-dialog header (icon-only Edit, Save and Cancel buttons, an advanced (…) menu, a close button).
 
 [x] The list offers a project filter (applying to the project's whole subtree, like the other views) and a case-insensitive search over title and description.
 
@@ -84,4 +84,4 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 [x] The migration is transactional per task, isolated (one failing task does not block the others), runs before the scheduler starts, and when no recurring tasks remain it drops the legacy column and records its completion so later startups are no-ops.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-18_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-19_
