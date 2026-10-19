@@ -214,6 +214,7 @@
 
 <script setup>
 import { useDictation } from "../composables/useDictation";
+import { formatLocalDate } from "../utils/date";
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -407,7 +408,7 @@ function noteTitleFromText(text) {
     .map((line) => line.replace(/^#+\s*/, "").replace(/[*_`>-]/g, "").trim())
     .find((line) => line.length > 0);
   if (!firstLine) {
-    return `Dictation ${new Date().toISOString().slice(0, 10)}`;
+    return `Dictation ${formatLocalDate(new Date())}`;
   }
   return firstLine.length > 60 ? `${firstLine.slice(0, 57)}…` : firstLine;
 }

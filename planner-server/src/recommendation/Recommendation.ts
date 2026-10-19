@@ -4,6 +4,7 @@ import * as path from "path";
 import * as cron from "node-cron";
 import { Config } from "../Config";
 import { DbUtilsQuerySQL, DbUtilsGetType } from "../utils/DbUtils";
+import { formatLocalDate } from "../utils/DateUtils";
 import { buildInPlaceholders } from "../tasks/TasksData";
 
 const logger = console;
@@ -291,7 +292,10 @@ interface UserRecommendationStats {
 
 async function CollectStats(userId: string): Promise<UserRecommendationStats> {
   const dbType = DbUtilsGetType();
-  const now = new Date().toISOString();
+  // Day boundary in the server timezone: a date-only dueDate is overdue only
+  // from the day after its due date (comparing against the raw instant would
+  // count tasks due today as overdue)
+  const todayKey = formatLocalDate(new Date());
 
   // Get user info
   const userRows = await DbUtilsQuerySQL(SQL_QUERIES.GET_USER[dbType], [
@@ -324,7 +328,11 @@ async function CollectStats(userId: string): Promise<UserRecommendationStats> {
   const todo: TaskStats[] = [];
 
   for (const task of assignedTasks) {
-    if (task.dueDate && task.dueDate < now && task.status !== "Done") {
+    if (
+      task.dueDate &&
+      task.dueDate.substring(0, 10) < todayKey &&
+      task.status !== "Done"
+    ) {
       overdue.push(task);
     }
     if (task.status === "In Progress") {

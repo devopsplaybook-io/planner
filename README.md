@@ -71,8 +71,21 @@ Configuration can be provided via a JSON configuration file (e.g., using a Confi
 | DEV_MODE              | Skip the JWT_KEY requirement (local development)     | `false`             | Environment variable                |
 | JWT_KEY               | JWT signing key (required; refuses empty or `"dev"`) |                     | Config file or environment variable |
 | JWT_VALIDITY_DURATION | JWT token validity duration in seconds               | `2592000` (30 days) | Config file or environment variable |
+| TZ                    | Server timezone (IANA name, e.g. `Europe/Paris`)     | `UTC`               | Environment variable                |
 
 > **JWT_KEY is mandatory**: the server refuses to start when `JWT_KEY` is empty or set to the placeholder `"dev"` (unless `DEV_MODE=true`). Generate one with `openssl rand -hex 32` and provide it via a Secret / environment variable. To rotate it, change the value and restart the server: all user sessions are invalidated (API keys are unaffected).
+
+## Timezone
+
+The server timezone — the container's system timezone, set with the `TZ` environment variable (IANA name) — drives every day-level behavior of the instance:
+
+- **Task template schedules**: cron automations fire at server-local time ("every day at 00:00" is server-local midnight).
+- **Dated instance titles**: the ` YYYY.MN.DD` suffix of instances created from a template uses the server's calendar day.
+- **Due-date day boundaries**: the dashboard overdue/upcoming windows and the LLM recommendation overdue stats evaluate "today" in the server timezone.
+- **Voice dictation**: relative dates ("tomorrow", "next Monday") are resolved against the server's calendar day.
+- **Notifications**: the fallback timezone for "today"/"tomorrow" and the reminder hour when `WEB_PUSH_TIMEZONE` is empty (see below).
+
+The default is `UTC`. Set it at the container level, e.g. `TZ=Europe/Paris` — the image ships the `tzdata` package so any IANA timezone name works. Per-user display (dates, "Today" grouping, due-date urgency) always follows the browser's timezone, and reminders can use a different timezone than the server via `WEB_PUSH_TIMEZONE`. The effective timezone is logged at startup (`[Timezone] Server timezone: ...`).
 
 ## LLM Recommendation
 
@@ -84,7 +97,7 @@ Planner can generate task recommendations using any OpenAI-compatible chat compl
 | `LLM_API_URL`                      | Chat completions endpoint URL                          | `https://api.deepseek.com/chat/completions` |
 | `LLM_MODEL`                        | Model name to use                                      | `deepseek-chat`                             |
 | `LLM_RECOMMENDATION_ENABLED`       | Enable LLM-based task recommendations                  | `false`                                     |
-| `LLM_RECOMMENDATION_SCHEDULE_CRON` | Cron expression for recommendation schedule (UTC time) | `0 0 * * *` (daily at midnight)             |
+| `LLM_RECOMMENDATION_SCHEDULE_CRON` | Cron expression for recommendation schedule (server time) | `0 0 * * *` (daily at midnight)             |
 | `RATE_LIMIT_LLM_IMPROVE_MAX`       | Max `improve` requests per user per hour               | `30`                                        |
 | `RATE_LIMIT_LLM_REGENERATE_MAX`    | Max recommendation regenerations per user per hour     | `5`                                         |
 
@@ -137,7 +150,7 @@ VAPID keys are read from the environment when both `WEB_PUSH_VAPID_PUBLIC_KEY` a
 | `WEB_PUSH_SUBJECT`           | Contact address advertised to push services (`mailto:` or `https:`) | `mailto:admin@localhost`       |
 | `WEB_PUSH_NOTIFY_HOUR`       | Hour of the day (0-23) from which reminders are sent                | `9`                            |
 | `WEB_PUSH_SCHEDULE_CRON`     | Cron expression for the reminder check                              | `\*/15 * * * *` (every 15 min) |
-| `WEB_PUSH_TIMEZONE`          | Timezone used for the day/hour calculation (IANA name)              | empty (server timezone)        |
+| `WEB_PUSH_TIMEZONE`          | Timezone used for the day/hour calculation (IANA name)              | empty (server timezone, `TZ`)  |
 | `WEB_PUSH_VAPID_PUBLIC_KEY`  | VAPID public key (base64url), overrides the generated one           |                                |
 | `WEB_PUSH_VAPID_PRIVATE_KEY` | VAPID private key (base64url), overrides the generated one          |                                |
 

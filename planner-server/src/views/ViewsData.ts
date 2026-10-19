@@ -1,4 +1,5 @@
 import { DbUtilsQuerySQL, DbUtilsGetType } from "../utils/DbUtils";
+import { formatLocalDate } from "../utils/DateUtils";
 import { visibleProjectsCondition } from "../projects/ProjectVisibility";
 import { buildInPlaceholders } from "../tasks/TasksData";
 
@@ -56,12 +57,17 @@ function orderDateUpdatedDesc(): string {
 export async function ViewsDataGetDashboard(
   filters?: DashboardFilters,
 ): Promise<NextViewData> {
-  const now = new Date().toISOString();
-  const in1Month = new Date(
-    Date.now() + 30 * 24 * 60 * 60 * 1000,
-  ).toISOString();
+  // Day boundaries in the server timezone (the container's TZ): a date-only
+  // dueDate is due until the end of its calendar day, so a task due today is
+  // "upcoming" and becomes "overdue" only from tomorrow (string comparison
+  // against a day key works for both date-only and timestamp values)
+  const now = new Date();
+  const todayKey = formatLocalDate(now);
+  const in1MonthKey = formatLocalDate(
+    new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+  );
   const thirtyDaysAgo = new Date(
-    Date.now() - 30 * 24 * 60 * 60 * 1000,
+    now.getTime() - 30 * 24 * 60 * 60 * 1000,
   ).toISOString();
 
   const dueCol = col("dueDate");
@@ -102,19 +108,19 @@ export async function ViewsDataGetDashboard(
   const filterClause =
     filterConditions.length > 0 ? ` AND ${filterConditions.join(" AND ")}` : "";
 
-  // Overdue: dueDate IS NOT NULL AND dueDate < now AND status != 'Done'
+  // Overdue: dueDate IS NOT NULL AND dueDate < today (server timezone) AND status != 'Done'
   const overdueSql = `${getSelectSql()} WHERE ${dueCol} IS NOT NULL AND ${dueCol} < ? AND ${statCol} != ?${filterClause} ${orderDueDateAsc()} LIMIT ${DASHBOARD_SECTION_LIMIT}`;
   const overdueRows = await DbUtilsQuerySQL(overdueSql, [
-    now,
+    todayKey,
     "Done",
     ...filterParams,
   ]);
 
-  // Upcoming (1 month): dueDate >= now AND dueDate <= now+1month AND status != 'Done'
+  // Upcoming (1 month): today <= dueDate <= today+30d AND status != 'Done'
   const upcomingSql = `${getSelectSql()} WHERE ${dueCol} IS NOT NULL AND ${dueCol} >= ? AND ${dueCol} <= ? AND ${statCol} != ?${filterClause} ${orderDueDateAsc()} LIMIT ${DASHBOARD_SECTION_LIMIT}`;
   const upcomingRows = await DbUtilsQuerySQL(upcomingSql, [
-    now,
-    in1Month,
+    todayKey,
+    in1MonthKey,
     "Done",
     ...filterParams,
   ]);

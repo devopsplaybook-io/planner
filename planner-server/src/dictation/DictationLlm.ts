@@ -1,3 +1,5 @@
+import { formatLocalDate } from "../utils/DateUtils";
+
 export type DictationActionType = "create_task" | "create_note";
 
 export interface DictationActionProposal {
@@ -59,7 +61,9 @@ export function BuildActionsPrompt(
   const hint = language
     ? `The dictated text is in language code "${language}".\n`
     : "";
-  const today = now.toISOString().slice(0, 10);
+  // Relative dates ("tomorrow") resolve against the server's local calendar
+  // day (the container's TZ), not the UTC day which can differ by one
+  const today = formatLocalDate(now);
   return `Today's date is ${today} (YYYY-MM-DD). Resolve relative dates like "tomorrow" against it.\n${hint}Text:\n${text}`;
 }
 

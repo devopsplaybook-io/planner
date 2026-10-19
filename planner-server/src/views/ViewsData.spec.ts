@@ -157,6 +157,21 @@ describe("ViewsDataGetDashboard sections", () => {
     expect(noDateSql).toContain(`LIMIT ${DASHBOARD_SECTION_LIMIT}`);
   });
 
+  it("should bound overdue and upcoming with server-local day keys, not timestamps", async () => {
+    await ViewsDataGetDashboard({});
+    const [overdueSql, overdueParams] = mockQuery.mock.calls[0];
+    const [upcomingSql, upcomingParams] = mockQuery.mock.calls[1];
+    // A date-only dueDate is compared against day keys: a task due today is
+    // upcoming and becomes overdue only from tomorrow (server timezone)
+    expect(overdueSql).toContain("dueDate < ?");
+    expect(overdueParams[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(upcomingSql).toContain("dueDate >= ? AND dueDate <= ?");
+    expect(upcomingParams[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(upcomingParams[1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(upcomingParams[0]).toBe(overdueParams[0]);
+    expect(upcomingParams[1] >= upcomingParams[0]).toBe(true);
+  });
+
   it("should limit recently-done to the 5 most recently updated (spec)", async () => {
     await ViewsDataGetDashboard({});
     const doneSql = mockQuery.mock.calls[3][0] as string;

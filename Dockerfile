@@ -31,8 +31,13 @@ RUN cd planner-web && \
 FROM node:26-alpine
 
 # ffmpeg decodes the dictation uploads to 16 kHz WAV for whisper-cli;
-# zip/unzip cover archive maintenance on the /data volume (gunzip comes with gzip)
-RUN apk add --no-cache gzip ffmpeg zip unzip
+# zip/unzip cover archive maintenance on the /data volume (gunzip comes with gzip);
+# tzdata resolves the TZ environment variable (IANA name, default UTC) so the
+# server timezone drives the day boundaries — without it Alpine silently
+# ignores TZ and everything evaluates in UTC
+RUN apk add --no-cache gzip ffmpeg zip unzip tzdata
+
+ENV TZ=UTC
 
 COPY --from=builder /opt/src/planner-server/node_modules /opt/app/planner/node_modules
 COPY --from=builder /opt/src/planner-server/dist /opt/app/planner/dist

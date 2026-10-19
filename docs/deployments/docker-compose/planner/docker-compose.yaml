@@ -10,5 +10,9 @@ services:
       # Required: strong private JWT signing key (generate one with
       # `openssl rand -hex 32`); the server refuses to start without it
       - JWT_KEY=${JWT_KEY:?set JWT_KEY to a strong random value}
+      # Server timezone (IANA name): drives the task template schedules, the
+      # dated instance titles, the due-date day boundaries and the
+      # notification fallback (default UTC)
+      - TZ=Europe/Paris
     volumes:
       - ./data:/data
