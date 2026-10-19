@@ -1,3 +1,4 @@
+import { formatLocalDate } from "../utils/DateUtils";
 import {
   ACTIONS_SYSTEM_PROMPT,
   BuildActionsPrompt,
@@ -36,17 +37,13 @@ describe("BuildActionsPrompt", () => {
   });
 
   it("should include the date from the provided now", () => {
-    const prompt = BuildActionsPrompt(
-      "Buy milk",
-      null,
-      new Date("2026-10-06T12:00:00Z"),
-    );
+    const prompt = BuildActionsPrompt("Buy milk", null, new Date(2026, 9, 6));
     expect(prompt).toContain("2026-10-06");
   });
 
-  it("should default to the current date", () => {
+  it("should default to the current local date", () => {
     const prompt = BuildActionsPrompt("Buy milk", null);
-    expect(prompt).toContain(new Date().toISOString().slice(0, 10));
+    expect(prompt).toContain(formatLocalDate(new Date()));
   });
 });
 

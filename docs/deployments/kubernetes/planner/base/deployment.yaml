@@ -26,6 +26,11 @@ spec:
                 secretKeyRef:
                   name: planner-secrets
                   key: jwtKey
+            # Server timezone (IANA name): drives the task template schedules,
+            # the dated instance titles, the due-date day boundaries and the
+            # notification fallback (default UTC)
+            - name: TZ
+              value: Europe/Paris
           readinessProbe:
             httpGet:
               path: /api/status

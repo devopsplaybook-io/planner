@@ -24,9 +24,9 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 | Setting | Description |
 | ------- | ----------- |
-| [x] Schedule | A cron expression (validated server-side with node-cron, e.g. `0 0 * * *`); when empty, the template is manual and only creates instances on demand. The UI shows a human-readable label ("Every day at 00:00", "Every Mon, Fri at 00:00", "On day 15 of the month at 00:00") and falls back to the raw expression for unknown shapes |
+| [x] Schedule | A cron expression (validated server-side with node-cron, e.g. `0 0 * * *`); when empty, the template is manual and only creates instances on demand. Cron fires in the server timezone (the container's `TZ`, default UTC): "00:00" means server-local midnight. The UI shows a human-readable label ("Every day at 00:00", "Every Mon, Fri at 00:00", "On day 15 of the month at 00:00") and falls back to the raw expression for unknown shapes |
 | [x] Skip if previous instance not done | When enabled and the previous instance still exists in a status other than Done, the scheduled tick creates nothing; when the previous instance was deleted, a new one is created |
-| [x] Add the date to the title | When enabled, every created instance's title gets a " YYYY.MN.DD" suffix (zero-padded creation date, e.g. "Report 2026.10.17") |
+| [x] Add the date to the title | When enabled, every created instance's title gets a " YYYY.MN.DD" suffix (zero-padded creation date in the server timezone, e.g. "Report 2026.10.17") |
 | [x] Initial status of instances | When set, created instances start in this status instead of the project's first status; the value is validated against the template's project statuses (server-side) and the UI offers the selected project's statuses plus a "Project default" empty option. The UI resets the selection to "Project default" when switching to a project that does not have the selected status, and updating a template (e.g. moving it to another project) clears a stored status the target project does not have |
 
 ## Management of Templates

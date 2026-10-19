@@ -6,6 +6,7 @@ import { watchFile, readJsonSync } from "fs-extra";
 import * as path from "path";
 import { Config } from "./Config";
 import { DbUtilsInit } from "./utils/DbUtils";
+import { formatLocalDate } from "./utils/DateUtils";
 import { RunMigrations } from "./DbMigrations";
 import { AuthInit, AuthGetUserSession } from "./users/Auth";
 import { ApiKeysDataBackfillHashes } from "./users/ApiKeysData";
@@ -50,6 +51,16 @@ const appVersion = (() => {
     return "0.0.0";
   }
 })();
+
+// The server timezone (the container's TZ) drives every day boundary: the
+// task template cron schedules, the dated instance titles, the overdue
+// windows and the notifications fallback. Log it so a misconfigured TZ is
+// visible at startup.
+const resolvedTimezone =
+  Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+logger.info(
+  `[Timezone] Server timezone: ${resolvedTimezone} (TZ="${process.env.TZ || ""}"), server date: ${formatLocalDate(new Date())}`,
+);
 
 Promise.resolve()
   .then(async () => {
