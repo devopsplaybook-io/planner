@@ -11,55 +11,52 @@
           <span class="item-icon"><i class="bi bi-arrow-repeat" /></span>
           <span class="item-title">{{ template.title }}</span>
         </div>
-        <div class="card-status-row">
-          <span
-            class="automation-chip"
-            :title="template.automation?.scheduleCron || ''"
-            >{{ automationLabel }}</span
-          >
-          <span
-            v-if="template.automation?.instanceStatus"
-            class="initial-status-chip"
-            :title="'Instances start in ' + template.automation.instanceStatus"
-            ><i class="bi bi-flag" /> {{ template.automation.instanceStatus }}</span
-          >
-          <span v-if="projectName" class="project-name" :title="projectName">{{
-            projectName
-          }}</span>
-        </div>
-        <div class="card-meta">
-          <small
-            v-if="template.checklist && template.checklist.length"
-            class="checklist-progress"
-          >
-            <i class="bi bi-list-check" />
-            {{ template.checklist.filter((c) => c.done).length }}/{{
-              template.checklist.length
-            }}
-          </small>
-          <small
-            v-if="template.assignees && template.assignees.length"
-            class="assignee-count"
-          >
-            <i class="bi bi-people-fill" /> {{ template.assignees.length }}
-          </small>
-          <small
-            v-if="template.attachments && template.attachments.length"
-            class="attachment-count"
-          >
-            <i class="bi bi-paperclip" /> {{ template.attachments.length }}
-          </small>
-          <small
-            v-if="template.comments && template.comments.length"
-            class="comment-count"
-          >
-            <i class="bi bi-chat-left-text" /> {{ template.comments.length }}
-          </small>
-          <small v-if="template.automation?.skipIfPreviousNotDone" class="skip-flag">
-            <i class="bi bi-skip-forward" /> skips open
-          </small>
-        </div>
       </header>
+      <div class="card-status-row">
+        <span
+          class="automation-chip"
+          :title="template.automation?.scheduleCron || ''"
+          >{{ automationLabel }}</span
+        >
+        <span
+          v-if="template.automation?.instanceStatus"
+          class="initial-status-chip"
+          :title="'Instances start in ' + template.automation.instanceStatus"
+          ><i class="bi bi-flag" /> {{ template.automation.instanceStatus }}</span
+        >
+      </div>
+      <div class="card-meta">
+        <small
+          v-if="template.checklist && template.checklist.length"
+          class="checklist-progress"
+        >
+          <i class="bi bi-list-check" />
+          {{ template.checklist.filter((c) => c.done).length }}/{{
+            template.checklist.length
+          }}
+        </small>
+        <small
+          v-if="template.assignees && template.assignees.length"
+          class="assignee-count"
+        >
+          <i class="bi bi-people-fill" /> {{ template.assignees.length }}
+        </small>
+        <small
+          v-if="template.attachments && template.attachments.length"
+          class="attachment-count"
+        >
+          <i class="bi bi-paperclip" /> {{ template.attachments.length }}
+        </small>
+        <small
+          v-if="template.comments && template.comments.length"
+          class="comment-count"
+        >
+          <i class="bi bi-chat-left-text" /> {{ template.comments.length }}
+        </small>
+        <small v-if="template.automation?.skipIfPreviousNotDone" class="skip-flag">
+          <i class="bi bi-skip-forward" /> skips open
+        </small>
+      </div>
       <footer v-if="template.labels && template.labels.length">
         <span v-for="l in template.labels" :key="l" class="label-tag">{{ l }}</span>
       </footer>
@@ -69,9 +66,7 @@
 
 <script setup>
 import { computed } from "vue";
-import { displayName } from "../utils/projectHierarchy";
 import { cronLabel } from "../utils/taskTemplate";
-import { useProjectsStore } from "../stores/projects";
 
 const props = defineProps({
   template: { type: Object, required: true },
@@ -79,18 +74,9 @@ const props = defineProps({
 
 defineEmits(["click"]);
 
-const projectsStore = useProjectsStore();
-
 const automationLabel = computed(
   () => cronLabel(props.template.automation?.scheduleCron) || "Manual",
 );
-
-const projectName = computed(() => {
-  const project = projectsStore.projects.find(
-    (p) => p.id === props.template.projectId,
-  );
-  return project ? displayName(project.name) : "";
-});
 </script>
 
 <style scoped>
@@ -105,8 +91,8 @@ const projectName = computed(() => {
   background: var(--color-text-muted);
 }
 
-/* Automation chip and project name share one line; both truncate with an
-   ellipsis when they don't fit together (full text on hover via title) */
+/* Chip row on its own line under the title; chips truncate with an ellipsis
+   when they don't fit together (full text on hover via title) */
 .card-status-row {
   display: flex;
   align-items: center;
@@ -151,16 +137,6 @@ const projectName = computed(() => {
 
 .initial-status-chip i {
   font-size: 0.85em;
-}
-
-.project-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
 }
 
 .card-meta {

@@ -43,12 +43,15 @@
     </div>
 
     <div v-else class="template-list">
-      <TemplateCard
-        v-for="template in templates"
-        :key="template.id"
-        :template="template"
-        @click="openTemplate"
-      />
+      <section v-for="group in groups" :key="group.key" class="project-group">
+        <h2 class="project-header">{{ group.label }}</h2>
+        <TemplateCard
+          v-for="template in group.templates"
+          :key="template.id"
+          :template="template"
+          @click="openTemplate"
+        />
+      </section>
     </div>
 
     <TaskTemplateDialog
@@ -62,6 +65,8 @@
 </template>
 
 <script setup>
+import { groupTemplatesByProject } from "../utils/templateGroups";
+
 const taskTemplatesStore = useTaskTemplatesStore();
 const projectsStore = useProjectsStore();
 
@@ -75,6 +80,11 @@ const dialogOpen = ref(false);
 const editingTemplateId = ref(null);
 
 const templates = computed(() => taskTemplatesStore.templates);
+
+// Alphabetical within each project, groups ordered by project display path
+const groups = computed(() =>
+  groupTemplatesByProject(taskTemplatesStore.templates, projectsStore.projects),
+);
 
 async function reload() {
   listError.value = "";
@@ -167,10 +177,24 @@ onMounted(async () => {
   font-size: var(--text-xl);
 }
 
-/* Card list like the dashboard task list (flex column, small gap) */
+/* Grouped card list like the update feed (grid, small gap) */
 .template-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: var(--space-xs);
+}
+
+.project-group {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+/* Compact group header, visually subordinate to the section h2 (same
+   treatment as the update feed's day headers) */
+.project-header {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  letter-spacing: var(--tracking-wide);
+  margin: var(--space-sm) 0 var(--space-xs);
 }
 </style>

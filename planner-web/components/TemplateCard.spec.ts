@@ -52,12 +52,27 @@ function mountCard(overrides = {}) {
 }
 
 describe("TemplateCard", () => {
-  it("should render the title, project name and labels", () => {
+  it("should render the title and labels", () => {
     const wrapper = mountCard();
     expect(wrapper.find(".item-title").text()).toBe("Weekly report");
-    expect(wrapper.find(".project-name").text()).toBe("Home / Chores");
     const labels = wrapper.findAll(".label-tag");
     expect(labels.map((l) => l.text())).toEqual(["ops", "weekly"]);
+  });
+
+  it("should keep the title row alone in the header (feed-style layout)", () => {
+    const wrapper = mountCard();
+    const header = wrapper.find("header");
+    expect(header.findAll(".card-title-row")).toHaveLength(1);
+    expect(header.find(".card-status-row").exists()).toBe(false);
+    expect(header.find(".card-meta").exists()).toBe(false);
+    // The chips and meta counts move to their own rows below the header
+    expect(wrapper.find(".card-body > .card-status-row").exists()).toBe(true);
+    expect(wrapper.find(".card-body > .card-meta").exists()).toBe(true);
+  });
+
+  it("should not carry a project name (the group header does)", () => {
+    const wrapper = mountCard();
+    expect(wrapper.find(".project-name").exists()).toBe(false);
   });
 
   it("should show a Manual automation chip when no cron is set", () => {
