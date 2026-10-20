@@ -37,6 +37,7 @@ import {
   addTaskAttachment,
   deleteTaskAttachment,
   getTaskAttachment,
+  MutateTaskLabels,
 } from "./TasksData";
 import * as fs from "fs-extra";
 import * as path from "path";
@@ -218,6 +219,42 @@ export function parseLabels(value: unknown): string[] | undefined {
     }
   }
   return labels.length > 0 ? labels : undefined;
+}
+
+/** Longest accepted label name, after trimming. */
+export const MAX_LABEL_LENGTH = 100;
+
+/**
+ * Validates and normalizes a label list payload: an array of strings, each
+ * trimmed, non-empty and at most MAX_LABEL_LENGTH characters, de-duplicated
+ * preserving the first occurrence. Label names are case-sensitive: the
+ * stored case is preserved and "Agent:" differs from "agent:". Throws an
+ * Error with the API's "Invalid: ..." message shape when the payload does
+ * not satisfy the contract. Pure so it can be unit-tested.
+ */
+export function validateLabelList(value: unknown, field = "labels"): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.some((label) => typeof label !== "string")
+  ) {
+    throw new Error(`Invalid: ${field} (must be an array of strings)`);
+  }
+  const labels: string[] = [];
+  for (const raw of value as string[]) {
+    const label = raw.trim();
+    if (!label) {
+      throw new Error(`Invalid: ${field} (label names must be non-empty)`);
+    }
+    if (label.length > MAX_LABEL_LENGTH) {
+      throw new Error(
+        `Invalid: ${field} (label names must be at most ${MAX_LABEL_LENGTH} characters)`,
+      );
+    }
+    if (!labels.includes(label)) {
+      labels.push(label);
+    }
+  }
+  return labels;
 }
 
 /**
@@ -483,6 +520,14 @@ export class TasksRoutes {
         }
         dependencyIds = validation.ids;
       }
+      let labels: string[] | undefined;
+      if (req.body.labels !== undefined) {
+        try {
+          labels = validateLabelList(req.body.labels);
+        } catch (error) {
+          return res.status(400).send({ error: (error as Error).message });
+        }
+      }
 
       const task = new Task();
       task.projectId = req.body.projectId;
@@ -495,7 +540,7 @@ export class TasksRoutes {
         task.assignees = req.body.assignees.map((u) => ({ userId: u }));
       else if (userSession.userId)
         task.assignees = [{ userId: userSession.userId }];
-      if (req.body.labels) task.labels = req.body.labels;
+      if (labels) task.labels = labels;
       if (req.body.checklist) task.checklist = req.body.checklist;
       task.dependencies = dependencyIds.map((id) => ({ taskId: id }));
       await TasksDataAdd(task);
@@ -923,14 +968,11 @@ export class TasksRoutes {
       if (guard) {
         return res.status(guard.status).send({ error: guard.error });
       }
-      const labels = req.body.labels;
-      if (
-        !Array.isArray(labels) ||
-        labels.some((label) => typeof label !== "string")
-      ) {
-        return res
-          .status(400)
-          .send({ error: "Invalid: labels (must be an array of strings)" });
+      let labels: string[];
+      try {
+        labels = validateLabelList(req.body.labels);
+      } catch (error) {
+        return res.status(400).send({ error: (error as Error).message });
       }
       await replaceLabels(req.params.id, labels);
       await TasksDataTouch(req.params.id);
@@ -940,6 +982,61 @@ export class TasksRoutes {
         "Labels updated",
       );
       return res.status(201).send({});
+    });
+
+    interface PatchLabel extends RequestGenericInterface {
+      Params: { id: string };
+      Body: { add?: string[]; remove?: string[]; quiet?: boolean };
+    }
+    fastify.patch<PatchLabel>("/:id/labels", async (req, res) => {
+      try {
+        await AuthMustBeAuthenticated(req, res);
+      } catch {
+        return;
+      }
+      const userSession = await AuthGetUserSession(req);
+      const task = await getVisibleTask(req.params.id, userSession);
+      if (!task) return res.status(404).send({ error: "Task Not Found" });
+      const guard = await projectMutationError(
+        task.projectId,
+        userSession,
+        "update",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
+      }
+      const body = req.body || ({} as PatchLabel["Body"]);
+      let add: string[];
+      let remove: string[];
+      try {
+        add = validateLabelList(body.add === undefined ? [] : body.add, "add");
+        remove = validateLabelList(
+          body.remove === undefined ? [] : body.remove,
+          "remove",
+        );
+      } catch (error) {
+        return res.status(400).send({ error: (error as Error).message });
+      }
+      if (body.quiet !== undefined && typeof body.quiet !== "boolean") {
+        return res
+          .status(400)
+          .send({ error: "Invalid: quiet (must be a boolean)" });
+      }
+      const result = await MutateTaskLabels(req.params.id, add, remove);
+      if (result.changed) {
+        await TasksDataTouch(req.params.id);
+        // Quiet mode is for machine-managed labels (agent run state, model
+        // provenance): the same permission applies, but the change creates
+        // no "Labels updated" feed entry and no assignee push notification
+        if (!body.quiet) {
+          await recordTaskUpdate(
+            req.params.id,
+            userSession.userId,
+            "Labels updated",
+          );
+        }
+      }
+      return res.status(200).send(result);
     });
 
     // ==================== DEPENDENCIES ====================

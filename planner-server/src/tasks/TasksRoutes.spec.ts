@@ -11,9 +11,11 @@ import {
   parseOffset,
   parseProjectIds,
   resolveTaskStatus,
+  MAX_LABEL_LENGTH,
   TASKS_DEFAULT_LIMIT,
   TasksRoutes,
   validateDependencies,
+  validateLabelList,
 } from "./TasksRoutes";
 import {
   TasksDataAdd,
@@ -30,6 +32,7 @@ import {
   removeAssignee,
   replaceLabels,
   replaceDependencies,
+  MutateTaskLabels,
   TasksDataTouch,
   updateComment,
 } from "./TasksData";
@@ -59,6 +62,7 @@ jest.mock("./TasksData", () => ({
   updateComment: jest.fn(),
   replaceLabels: jest.fn(),
   replaceDependencies: jest.fn(),
+  MutateTaskLabels: jest.fn(),
   addDependency: jest.fn(),
   addTaskAttachment: jest.fn(),
   deleteTaskAttachment: jest.fn(),
@@ -206,6 +210,61 @@ describe("parseAssigneeUserId", () => {
 
   it("should ignore a non-string value", () => {
     expect(parseAssigneeUserId(42)).toBeUndefined();
+  });
+});
+
+describe("validateLabelList", () => {
+  it("should reject a payload that is not an array of strings", () => {
+    for (const value of [undefined, null, "urgent", 42, {}, [1], [{}], [[]]]) {
+      expect(() => validateLabelList(value)).toThrow(
+        "Invalid: labels (must be an array of strings)",
+      );
+    }
+  });
+
+  it("should accept an empty array", () => {
+    expect(validateLabelList([])).toEqual([]);
+  });
+
+  it("should trim names and preserve the stored case", () => {
+    expect(validateLabelList([" urgent ", "Bug"])).toEqual(["urgent", "Bug"]);
+  });
+
+  it("should de-duplicate names preserving the first occurrence", () => {
+    expect(validateLabelList(["a", "b", "a", " b "])).toEqual(["a", "b"]);
+  });
+
+  it("should treat labels as case-sensitive", () => {
+    expect(validateLabelList(["Agent:", "agent:"])).toEqual([
+      "Agent:",
+      "agent:",
+    ]);
+  });
+
+  it("should reject trimmed-empty names", () => {
+    for (const value of [[""], ["   "], ["ok", "  "]]) {
+      expect(() => validateLabelList(value)).toThrow(
+        "label names must be non-empty",
+      );
+    }
+  });
+
+  it("should accept a name of exactly the maximum length", () => {
+    const name = "x".repeat(MAX_LABEL_LENGTH);
+    expect(validateLabelList([name])).toEqual([name]);
+  });
+
+  it("should reject names longer than the maximum", () => {
+    const name = "x".repeat(MAX_LABEL_LENGTH + 1);
+    expect(() => validateLabelList([name])).toThrow(
+      `at most ${MAX_LABEL_LENGTH} characters`,
+    );
+  });
+
+  it("should name the field in the error message", () => {
+    expect(() => validateLabelList("nope", "add")).toThrow(
+      "Invalid: add (must be an array of strings)",
+    );
   });
 });
 
@@ -726,6 +785,38 @@ describe("TasksRoutes project visibility", () => {
     expect(TasksDataAdd).toHaveBeenCalledTimes(1);
   });
 
+  it("should trim and de-duplicate the labels given at creation", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "New",
+        labels: [" urgent ", "bug", "urgent"],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect((TasksDataAdd as jest.Mock).mock.calls[0][0].labels).toEqual([
+      "urgent",
+      "bug",
+    ]);
+  });
+
+  it("should reject invalid labels at creation with 400", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    for (const labels of ["urgent", [1], [""], ["x".repeat(MAX_LABEL_LENGTH + 1)]]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: { projectId: publicProject.id, title: "New", labels },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain("labels");
+    }
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
   it("should reject creating a task with a status outside the project catalog", async () => {
     const project = makeProject("public", []);
     project.statuses = ["To Do", "Done"];
@@ -1121,6 +1212,229 @@ describe("TasksRoutes project visibility", () => {
       expect(res.json().error).toContain("labels");
     }
     expect(replaceLabels).not.toHaveBeenCalled();
+  });
+
+  it("should trim and de-duplicate the replacement labels", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/labels`,
+      payload: { labels: [" urgent ", "bug", "urgent"] },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(replaceLabels).toHaveBeenCalledWith(task.id, ["urgent", "bug"]);
+  });
+
+  it("should reject trimmed-empty or too long replacement labels with 400", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    for (const labels of [[""], ["  "], ["x".repeat(MAX_LABEL_LENGTH + 1)]]) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/${task.id}/labels`,
+        payload: { labels },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain("labels");
+    }
+    expect(replaceLabels).not.toHaveBeenCalled();
+  });
+
+  // ==================== LABELS (PATCH, atomic) ====================
+  it("should add and remove labels atomically and return the full list", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (MutateTaskLabels as jest.Mock).mockResolvedValue({
+      labels: ["bug", "urgent"],
+      changed: true,
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/${task.id}/labels`,
+      payload: { add: [" urgent "], remove: ["stale"] },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ labels: ["bug", "urgent"], changed: true });
+    expect(MutateTaskLabels).toHaveBeenCalledTimes(1);
+    expect(MutateTaskLabels).toHaveBeenCalledWith(task.id, ["urgent"], [
+      "stale",
+    ]);
+    expect(TasksDataTouch).toHaveBeenCalledWith(task.id);
+    expect(TaskActivityDataAdd).toHaveBeenCalledWith(
+      task.id,
+      "user-1",
+      "Labels updated",
+    );
+  });
+
+  it("should treat an absent add or remove list as empty", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (MutateTaskLabels as jest.Mock).mockResolvedValue({
+      labels: ["urgent"],
+      changed: true,
+    });
+
+    await app.inject({
+      method: "PATCH",
+      url: `/${task.id}/labels`,
+      payload: { add: ["urgent"] },
+    });
+    expect(MutateTaskLabels).toHaveBeenLastCalledWith(task.id, ["urgent"], []);
+
+    await app.inject({
+      method: "PATCH",
+      url: `/${task.id}/labels`,
+      payload: { remove: ["urgent"] },
+    });
+    expect(MutateTaskLabels).toHaveBeenLastCalledWith(task.id, [], ["urgent"]);
+
+    await app.inject({
+      method: "PATCH",
+      url: `/${task.id}/labels`,
+      payload: {},
+    });
+    expect(MutateTaskLabels).toHaveBeenLastCalledWith(task.id, [], []);
+  });
+
+  it("should skip the touch and the activity entry when nothing changed", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (MutateTaskLabels as jest.Mock).mockResolvedValue({
+      labels: ["urgent"],
+      changed: false,
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/${task.id}/labels`,
+      payload: { add: ["urgent"] },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ labels: ["urgent"], changed: false });
+    expect(TasksDataTouch).not.toHaveBeenCalled();
+    expect(TaskActivityDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should keep quiet mutations out of the activity feed but still touch the task", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (MutateTaskLabels as jest.Mock).mockResolvedValue({
+      labels: ["agent:running"],
+      changed: true,
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/${task.id}/labels`,
+      payload: { add: ["agent:running"], quiet: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      labels: ["agent:running"],
+      changed: true,
+    });
+    expect(TasksDataTouch).toHaveBeenCalledWith(task.id);
+    expect(TaskActivityDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should answer 400 for invalid PATCH label payloads", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ add: "urgent" }, "add"],
+      [{ add: [1] }, "add"],
+      [{ add: [""] }, "add"],
+      [{ add: ["x".repeat(MAX_LABEL_LENGTH + 1)] }, "add"],
+      [{ remove: "stale" }, "remove"],
+      [{ remove: ["  "] }, "remove"],
+      [{ remove: [{}] }, "remove"],
+      [{ quiet: "yes" }, "quiet"],
+      [{ quiet: 1 }, "quiet"],
+    ];
+    for (const [payload, field] of cases) {
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/${task.id}/labels`,
+        payload,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain(field);
+    }
+    expect(MutateTaskLabels).not.toHaveBeenCalled();
+  });
+
+  it("should answer 404 for a PATCH on a task the user cannot see", async () => {
+    const task = makeTask(hiddenProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(hiddenProject);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/${task.id}/labels`,
+      payload: { add: ["urgent"] },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(MutateTaskLabels).not.toHaveBeenCalled();
+  });
+
+  it("should require the update permission for PATCH", async () => {
+    for (const [permission, expected] of [
+      ["view", 403],
+      ["comment", 403],
+      ["update", 200],
+      ["all", 200],
+    ] as const) {
+      (MutateTaskLabels as jest.Mock).mockResolvedValue({
+        labels: [],
+        changed: false,
+      });
+      const project = makeProject("restricted", [
+        { userId: "user-1", permission },
+      ]);
+      const task = makeTask(project);
+      (TasksDataGet as jest.Mock).mockResolvedValue(task);
+      (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/${task.id}/labels`,
+        payload: { add: ["urgent"] },
+      });
+      expect(res.statusCode).toBe(expected);
+    }
+  });
+
+  it("should reject an unauthenticated PATCH with 401", async () => {
+    // Mirror the real guard: it answers 401 itself, then throws so the
+    // route handler stops
+    (AuthMustBeAuthenticated as jest.Mock).mockImplementation(
+      async (_req: unknown, res: { status: (code: number) => { send: (body: unknown) => void } }) => {
+        res.status(401).send({ error: "Access Denied" });
+        throw new Error("Access Denied");
+      },
+    );
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/task-1/labels",
+      payload: { add: ["urgent"] },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(MutateTaskLabels).not.toHaveBeenCalled();
   });
 
   // ==================== DEPENDENCIES ====================

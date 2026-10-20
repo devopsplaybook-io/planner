@@ -104,22 +104,34 @@ describe("ViewsDataGetDashboard labels filter", () => {
     mockQuery.mockResolvedValue([]);
   });
 
-  it("should add the labels clause to every section query with params in order", async () => {
+  it("should add one EXISTS per label (AND) to every section query with params in order", async () => {
     await ViewsDataGetDashboard({ labels: ["urgent", "ui"] });
     const calls = mockQuery.mock.calls;
     expect(calls.length).toBe(4);
     for (const [sql, params] of calls) {
       expect(sql).toContain(
-        "id IN (SELECT taskId FROM task_labels WHERE name IN (?, ?))",
+        "EXISTS (SELECT 1 FROM task_labels tl WHERE tl.taskId = tasks.id AND tl.name = ?) " +
+          "AND EXISTS (SELECT 1 FROM task_labels tl WHERE tl.taskId = tasks.id AND tl.name = ?)",
       );
+      expect(sql).not.toContain("name IN");
       expect(params).toContain("urgent");
       expect(params).toContain("ui");
+      expect((params as unknown[]).indexOf("urgent")).toBeLessThan(
+        (params as unknown[]).indexOf("ui"),
+      );
     }
     // The section params (dates, status) come before the filter params
     const overdueParams = mockQuery.mock.calls[0][1] as unknown[];
     expect(overdueParams.indexOf("urgent")).toBeGreaterThan(
       overdueParams.indexOf("Done"),
     );
+  });
+
+  it("should qualify tasks.id so the inner task_labels.id cannot shadow it", async () => {
+    await ViewsDataGetDashboard({ labels: ["urgent"] });
+    for (const [sql] of mockQuery.mock.calls) {
+      expect(sql).toContain("tl.taskId = tasks.id");
+    }
   });
 
   it("should combine the labels clause with the visibility clause", async () => {

@@ -212,6 +212,7 @@
               v-if="editing"
               v-model="editForm.labels"
               :suggestions="labelsStore.labels"
+              :exclude-prefixes="MACHINE_LABEL_PREFIXES"
             />
             <div v-else class="tag-list">
               <span v-for="l in task.labels" :key="l" class="tag">{{ l }}</span>
@@ -701,6 +702,7 @@
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
 import { formatRelativeTime } from "../utils/relativeTime";
+import { MACHINE_LABEL_PREFIXES } from "../utils/labels";
 import {
   loadCommentDraft,
   clearCommentDraft,

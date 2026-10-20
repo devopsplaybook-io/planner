@@ -129,6 +129,7 @@ describe("RunMigrations (fresh database)", () => {
     ).map((r) => r.name as string);
     expect(indexes).toContain("idx_tasks_projectId");
     expect(indexes).toContain("idx_task_labels_taskId");
+    expect(indexes).toContain("idx_task_labels_taskId_name");
     expect(indexes).toContain("idx_project_users_userId");
     expect(indexes).toContain("idx_api_keys_userId");
     expect(indexes).toContain("idx_task_dependencies_taskId");
@@ -259,6 +260,11 @@ describe("RunMigrations (legacy database upgrade)", () => {
       "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
       ["l1", "t1", "bug"],
     );
+    // A duplicate pair written before the unique index existed
+    await DbUtilsExecSQL(
+      "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+      ["l2", "t1", "bug"],
+    );
     await DbUtilsExecSQL(
       "INSERT INTO api_keys (id, userId, key, dateCreated) VALUES (?,?,?,?)",
       ["k1", "u1", "pk_legacyplaintextkey", now],
@@ -314,6 +320,24 @@ describe("RunMigrations (legacy database upgrade)", () => {
     const projectUsers = await DbUtilsQuerySQL("SELECT * FROM project_users");
     expect(projectUsers).toHaveLength(1);
     expect(projectUsers[0].projectId).toBe("p1");
+  });
+
+  it("should deduplicate (taskId, name) rows and enforce the unique index", async () => {
+    const duplicates = await DbUtilsQuerySQL(
+      "SELECT id FROM task_labels WHERE taskId = 't1' AND name = 'bug'",
+    );
+    expect(duplicates.map((r) => r.id)).toEqual(["l1"]);
+
+    let error: Error | undefined;
+    try {
+      await DbUtilsExecSQL(
+        "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+        ["l3", "t1", "bug"],
+      );
+    } catch (caught) {
+      error = caught as Error;
+    }
+    expect(error).toBeDefined();
   });
 
   it("should add the tokenVersion column to users", async () => {

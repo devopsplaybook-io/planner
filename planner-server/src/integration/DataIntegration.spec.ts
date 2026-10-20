@@ -14,10 +14,13 @@ import { Config } from "../Config";
 import { NotesDataDelete, NotesDataList } from "../notes/NotesData";
 import { ProjectsDataDelete } from "../projects/ProjectsData";
 import {
+  MutateTaskLabels,
   TasksDataDelete,
   TasksDataGet,
   TasksDataList,
+  TaskLabelsGet,
   replaceDependencies,
+  replaceLabels,
 } from "../tasks/TasksData";
 import {
   TaskActivityDataAdd,
@@ -1170,5 +1173,173 @@ describe("cleanup rules (integration)", () => {
         "p-cleanup",
       ]),
     ).toBe(2);
+  });
+});
+
+describe("task label mutations (integration)", () => {
+  beforeAll(async () => {
+    await fs.remove(dir);
+    await fs.ensureDir(dir);
+    const config = new Config();
+    config.DATA_DIR = dir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+
+    await insertUser("u-labels");
+    await insertProject("p-labels");
+    await insertTask("t-labels-1", "p-labels");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+      ["l-labels-1", "t-labels-1", "keep"],
+    );
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(dir);
+  });
+
+  it("should add and remove labels while preserving every other label", async () => {
+    const result = await MutateTaskLabels(
+      "t-labels-1",
+      ["urgent", "ui"],
+      ["keep"],
+    );
+    expect(result.changed).toBe(true);
+    expect([...result.labels].sort()).toEqual(["ui", "urgent"]);
+    expect(await TaskLabelsGet("t-labels-1")).toEqual(
+      expect.arrayContaining(["ui", "urgent"]),
+    );
+  });
+
+  it("should report no change when re-adding an existing label", async () => {
+    const result = await MutateTaskLabels("t-labels-1", ["urgent"], []);
+    expect(result.changed).toBe(false);
+    expect(await count("SELECT COUNT(*) AS c FROM task_labels WHERE taskId = ? AND name = ?", ["t-labels-1", "urgent"])).toBe(1);
+  });
+
+  it("should report no change when removing a missing label", async () => {
+    const result = await MutateTaskLabels("t-labels-1", [], ["missing"]);
+    expect(result.changed).toBe(false);
+    expect([...result.labels].sort()).toEqual(["ui", "urgent"]);
+  });
+
+  it("should apply adds before removes for a name listed in both", async () => {
+    const removedExisting = await MutateTaskLabels(
+      "t-labels-1",
+      ["ui"],
+      ["ui"],
+    );
+    expect(removedExisting.changed).toBe(true);
+    expect(removedExisting.labels).not.toContain("ui");
+
+    const absent = await MutateTaskLabels("t-labels-1", ["late"], ["late"]);
+    expect(absent.changed).toBe(false);
+    expect(absent.labels).not.toContain("late");
+  });
+
+  it("should be idempotent on repeated identical mutations", async () => {
+    const first = await MutateTaskLabels("t-labels-1", ["repeat"], []);
+    expect(first.changed).toBe(true);
+    const second = await MutateTaskLabels("t-labels-1", ["repeat"], []);
+    expect(second.changed).toBe(false);
+    expect(
+      await count(
+        "SELECT COUNT(*) AS c FROM task_labels WHERE taskId = ? AND name = ?",
+        ["t-labels-1", "repeat"],
+      ),
+    ).toBe(1);
+  });
+
+  it("should reject a raw duplicate insert at the unique index", async () => {
+    let error: Error | undefined;
+    try {
+      await DbUtilsExecSQL(
+        "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+        ["l-duplicate", "t-labels-1", "urgent"],
+      );
+    } catch (caught) {
+      error = caught as Error;
+    }
+    expect(error).toBeDefined();
+    expect(error?.message).toContain("UNIQUE constraint failed");
+    expect(
+      await count(
+        "SELECT COUNT(*) AS c FROM task_labels WHERE taskId = ? AND name = ?",
+        ["t-labels-1", "urgent"],
+      ),
+    ).toBe(1);
+  });
+
+  it("should accept duplicate input in the full replacement", async () => {
+    await replaceLabels("t-labels-1", ["one", "one", "two"]);
+    expect([...await TaskLabelsGet("t-labels-1")].sort()).toEqual([
+      "one",
+      "two",
+    ]);
+  });
+
+  it("should not lose concurrent add and remove operations", async () => {
+    await replaceLabels("t-labels-1", ["base"]);
+    await Promise.all([
+      MutateTaskLabels("t-labels-1", ["a"], []),
+      MutateTaskLabels("t-labels-1", ["b"], []),
+      MutateTaskLabels("t-labels-1", [], ["base"]),
+      MutateTaskLabels("t-labels-1", ["c"], []),
+    ]);
+    const labels = await TaskLabelsGet("t-labels-1");
+    expect([...labels].sort()).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("dashboard label filter AND semantics (integration)", () => {
+  beforeAll(async () => {
+    await fs.remove(dir);
+    await fs.ensureDir(dir);
+    const config = new Config();
+    config.DATA_DIR = dir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+
+    await insertUser("u-and");
+    await insertProject("p-and");
+    await insertTask("t-and-both", "p-and");
+    await insertTask("t-and-one", "p-and");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+      ["l-and-1", "t-and-both", "urgent"],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+      ["l-and-2", "t-and-both", "ui"],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+      ["l-and-3", "t-and-one", "urgent"],
+    );
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(dir);
+  });
+
+  it("should only return tasks carrying every selected label", async () => {
+    const data = await ViewsDataGetDashboard({
+      projectId: "p-and",
+      labels: ["urgent", "ui"],
+    });
+    expect(data.noDate.map((t) => t.id)).toEqual(["t-and-both"]);
+  });
+
+  it("should return every task carrying the single selected label", async () => {
+    const data = await ViewsDataGetDashboard({
+      projectId: "p-and",
+      labels: ["urgent"],
+    });
+    expect(data.noDate.map((t) => t.id).sort()).toEqual([
+      "t-and-both",
+      "t-and-one",
+    ]);
   });
 });

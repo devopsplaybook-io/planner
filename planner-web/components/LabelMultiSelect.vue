@@ -55,9 +55,24 @@
 // Chip editor for free-form labels with autocomplete from existing labels
 // (modeled on UserMultiSelect): labels are plain strings, so typing a new
 // name and pressing Enter adds it.
+// Explicit imports so the component also mounts under plain vitest
+// (without Nuxt's auto-imports) — see LabelMultiSelect.spec.ts
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
+
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   suggestions: { type: Array, default: () => [] },
+  // Suggestions starting with one of these prefixes are hidden from the
+  // dropdown (machine-managed labels in the human editors); typed free-form
+  // entry is unaffected
+  excludePrefixes: { type: Array, default: () => [] },
   placeholder: { type: String, default: "Add labels…" },
   disabled: { type: Boolean, default: false },
 });
@@ -77,6 +92,7 @@ const filtered = computed(() => {
     (s) =>
       s?.name &&
       !props.modelValue.includes(s.name) &&
+      !props.excludePrefixes.some((prefix) => s.name.startsWith(prefix)) &&
       (!q || s.name.toLowerCase().includes(q)),
   );
 });
