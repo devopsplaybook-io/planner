@@ -18,7 +18,6 @@ vi.mock("pdfjs-dist/build/pdf.worker.min.mjs?url", () => ({
 function fakePdfDocument(numPages: number) {
   return {
     numPages,
-    destroy: vi.fn(),
     getPage: vi.fn(async (_pageNum: number) => ({
       getViewport: ({ scale }: { scale: number }) => ({
         width: 612 * scale,
@@ -26,6 +25,13 @@ function fakePdfDocument(numPages: number) {
       }),
       render: vi.fn(() => ({ promise: Promise.resolve() })),
     })),
+  };
+}
+
+function fakePdfLoadingTask(doc: ReturnType<typeof fakePdfDocument>) {
+  return {
+    promise: Promise.resolve(doc),
+    destroy: vi.fn(() => Promise.resolve()),
   };
 }
 
@@ -55,7 +61,7 @@ describe("AttachmentFullscreenViewer", () => {
 
   it("renders PDF pages on canvas through pdf.js (mobile browsers cannot render PDFs in iframes)", async () => {
     const doc = fakePdfDocument(2);
-    getDocumentMock.mockReturnValue({ promise: Promise.resolve(doc) });
+    getDocumentMock.mockReturnValue(fakePdfLoadingTask(doc));
     const wrapper = mount(AttachmentFullscreenViewer, {
       props: {
         attachment: { fileName: "spec.pdf", url: "blob:planner/spec" },
@@ -80,9 +86,10 @@ describe("AttachmentFullscreenViewer", () => {
   });
 
   it("shows an error message when the PDF cannot be loaded", async () => {
-    getDocumentMock.mockReturnValue(
-      { promise: Promise.reject(new Error("boom")) },
-    );
+    getDocumentMock.mockReturnValue({
+      promise: Promise.reject(new Error("boom")),
+      destroy: vi.fn(() => Promise.resolve()),
+    });
     const wrapper = mount(AttachmentFullscreenViewer, {
       props: {
         attachment: { fileName: "broken.pdf", url: "blob:planner/broken" },
@@ -92,6 +99,76 @@ describe("AttachmentFullscreenViewer", () => {
 
     expect(wrapper.find(".pdf-message").exists()).toBe(true);
     expect(wrapper.findAll("canvas")).toHaveLength(0);
+  });
+
+  it("renders a second PDF after the viewer is closed", async () => {
+    const firstTask = fakePdfLoadingTask(fakePdfDocument(1));
+    const secondTask = fakePdfLoadingTask(fakePdfDocument(2));
+    getDocumentMock
+      .mockReturnValueOnce(firstTask)
+      .mockReturnValueOnce(secondTask);
+    const wrapper = mount(AttachmentFullscreenViewer, {
+      props: {
+        attachment: { fileName: "first.pdf", url: "blob:planner/first" },
+      },
+    });
+    await flushAll();
+    expect(wrapper.findAll("canvas.pdf-page")).toHaveLength(1);
+
+    await wrapper.setProps({ attachment: undefined });
+    await flushAll();
+    expect(firstTask.destroy).toHaveBeenCalledTimes(1);
+    expect(wrapper.findAll("canvas.pdf-page")).toHaveLength(0);
+
+    await wrapper.setProps({
+      attachment: { fileName: "second.pdf", url: "blob:planner/second" },
+    });
+    await flushAll();
+    expect(wrapper.findAll("canvas.pdf-page")).toHaveLength(2);
+    expect(getDocumentMock).toHaveBeenCalledTimes(2);
+    expect(secondTask.destroy).not.toHaveBeenCalled();
+  });
+
+  it("destroys the loading task on unmount", async () => {
+    const task = fakePdfLoadingTask(fakePdfDocument(1));
+    getDocumentMock.mockReturnValue(task);
+    const wrapper = mount(AttachmentFullscreenViewer, {
+      props: {
+        attachment: { fileName: "spec.pdf", url: "blob:planner/spec" },
+      },
+    });
+    await flushAll();
+
+    wrapper.unmount();
+    expect(task.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels an in-flight document load when the viewer is closed", async () => {
+    let resolveDoc!: (doc: ReturnType<typeof fakePdfDocument>) => void;
+    const task = {
+      promise: new Promise<ReturnType<typeof fakePdfDocument>>((resolve) => {
+        resolveDoc = resolve;
+      }),
+      destroy: vi.fn(() => Promise.resolve()),
+    };
+    getDocumentMock.mockReturnValue(task);
+    const wrapper = mount(AttachmentFullscreenViewer, {
+      props: {
+        attachment: { fileName: "slow.pdf", url: "blob:planner/slow" },
+      },
+    });
+    await flushPromises();
+    expect(getDocumentMock).toHaveBeenCalledTimes(1);
+
+    await wrapper.setProps({ attachment: undefined });
+    await flushAll();
+    expect(task.destroy).toHaveBeenCalledTimes(1);
+
+    resolveDoc(fakePdfDocument(1));
+    await flushAll();
+    expect(wrapper.find(".fullscreen-pdf").exists()).toBe(false);
+    expect(wrapper.find(".pdf-message").exists()).toBe(false);
+    expect(wrapper.findAll("canvas.pdf-page")).toHaveLength(0);
   });
 
   it("renders nothing for a null attachment", () => {

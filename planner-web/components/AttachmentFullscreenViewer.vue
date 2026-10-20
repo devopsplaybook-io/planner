@@ -74,26 +74,32 @@ const pdfPagesEl = ref(null);
 const pdfLoading = ref(false);
 const pdfError = ref(false);
 let renderToken = 0;
-let pdfDoc = null;
+// pdf.js v6 has no PDFDocumentProxy.destroy(): cancellation is done on the
+// loading task, which also terminates the worker
+let pdfLoadingTask = null;
+
+function destroyPdfLoadingTask() {
+  const task = pdfLoadingTask;
+  pdfLoadingTask = null;
+  if (task) task.destroy().catch(() => {});
+}
 
 watch(
   () => [props.attachment?.url, viewerKind.value],
   async ([url, kind]) => {
     const token = ++renderToken;
-    pdfDoc?.destroy();
-    pdfDoc = null;
+    destroyPdfLoadingTask();
     pdfError.value = false;
+    pdfLoading.value = false;
     if (kind !== "pdf" || !url) return;
     pdfLoading.value = true;
     try {
       const pdfjs = await loadPdfjs();
       if (token !== renderToken) return;
-      const doc = await pdfjs.getDocument({ url }).promise;
-      if (token !== renderToken) {
-        doc.destroy();
-        return;
-      }
-      pdfDoc = doc;
+      const task = pdfjs.getDocument({ url });
+      pdfLoadingTask = task;
+      const doc = await task.promise;
+      if (token !== renderToken) return;
       await nextTick();
       const container = pdfPagesEl.value;
       if (!container || token !== renderToken) return;
@@ -133,8 +139,7 @@ watch(
 
 onUnmounted(() => {
   renderToken++;
-  pdfDoc?.destroy();
-  pdfDoc = null;
+  destroyPdfLoadingTask();
 });
 
 function download() {
