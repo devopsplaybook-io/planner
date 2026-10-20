@@ -177,6 +177,7 @@
 
 <script setup>
 import { renderMarkdown } from "../composables/useMarkdown";
+import { parseLabelQuery, serializeLabelQuery } from "../utils/labels";
 
 const DONE_WINDOW_DAYS = 30;
 
@@ -191,8 +192,9 @@ const route = useRoute();
 const loading = ref(true);
 const showCreateDialog = ref(false);
 // Label filter: applies to every dashboard section, including the Recently
-// Done list; empty selection = no filter
-const selectedLabels = ref([]);
+// Done list; empty selection = no filter. Initialized from ?labels= so a
+// filtered view survives a reload or a shared/bookmarked URL.
+const selectedLabels = ref(parseLabelQuery(route.query.labels));
 const dashboardData = ref({
   overdue: [],
   upcoming: [],
@@ -257,10 +259,31 @@ function onFilterChange(projectId) {
 }
 
 // The chips are the visible hint; re-slice every section when the label
-// selection changes
-watch(selectedLabels, () => {
+// selection changes and persist it in the URL (other query keys such as
+// taskId are preserved) so the view is bookmarkable
+watch(selectedLabels, (labels) => {
+  const serialized = serializeLabelQuery(labels);
+  if (serializeLabelQuery(parseLabelQuery(route.query.labels)) !== serialized) {
+    router.replace({
+      path: route.path,
+      query: { ...route.query, labels: serialized },
+    });
+  }
   fetchDashboard({ silent: true });
 });
+
+// Follow URL changes to ?labels= (browser back/forward, shared links)
+watch(
+  () => route.query.labels,
+  (value) => {
+    if (
+      serializeLabelQuery(parseLabelQuery(value)) !==
+      serializeLabelQuery(selectedLabels.value)
+    ) {
+      selectedLabels.value = parseLabelQuery(value);
+    }
+  },
+);
 
 // silent: refresh in place (no loading indicator) so the view stays mounted
 // and the scroll position is preserved

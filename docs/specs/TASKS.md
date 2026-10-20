@@ -25,7 +25,7 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 
 [x] Update: when a task is clicked, the task is displayed and the user can edit the task.
 
-[x] Labels: labels are free-form strings set at creation and in the task dialog edit mode via the chip editor with autocomplete from existing labels; they are saved through the labels replace API (`POST /api/tasks/:id/labels`).
+[x] Labels: labels are free-form strings set at creation and in the task dialog edit mode via the chip editor with autocomplete from existing labels (machine-managed `agent:` and `model:` labels are not suggested there, but remain selectable in the dashboard and notes filters); the editor saves through the labels replace API (`POST /api/tasks/:id/labels`, see Task Label API below).
 
 [x] Advanced menu: the task dialog offers an advanced menu with Clone, Improve and Delete; delete is no longer a standalone button.
 
@@ -89,4 +89,13 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 - `limit` / `offset` — pagination (default limit 1000).
 - [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dependencies`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees, dependencies) are not queried server-side.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-18_
+## Task Label API
+
+- [x] Label names are free-form strings validated on every write (task create, `POST`, `PATCH`): each name is trimmed, must be non-empty and at most 100 characters, and duplicates are dropped preserving the first occurrence; invalid input answers 400. Matching is case-sensitive (the stored case is preserved, `Agent:` and `agent:` are distinct labels).
+- [x] `task_labels` enforces one row per `(taskId, name)` through a unique index, so concurrent or duplicate writes cannot create duplicate labels; the migration deduplicates pre-existing rows first.
+- [x] `POST /api/tasks/:id/labels` with `{ labels: string[] }` replaces the whole label list in one transaction (used by the UI chip editor) and records a "Labels updated" activity entry. The response is `201 {}`.
+- [x] `PATCH /api/tasks/:id/labels` with `{ add?: string[], remove?: string[], quiet?: boolean }` mutates labels atomically in one transaction without touching the other labels and answers `200 { labels, changed }` (the resulting full list). Adds are applied before removes, so a name listed in both ends up removed. The operation is idempotent: when no row is inserted or deleted (`changed: false`) the task is not touched and no activity entry is recorded.
+- [x] Both label writes require the task to be visible (404 otherwise) and the project `update` permission (403 otherwise), like the other task sub-resources.
+- [x] Quiet mode (`quiet: true`, same permission) skips the "Labels updated" activity entry and the assignee push notification but still touches `dateUpdated` when the label set changes. It is meant for machine-managed labels (the LLM agent's transient `agent:running` state and `model:<model>` provenance) so automation does not flood the update feed or notify assignees.
+
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-20_

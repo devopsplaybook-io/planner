@@ -304,6 +304,51 @@ export async function addLabel(taskId: string, name: string): Promise<void> {
   ]);
 }
 
+/** The task's label names, in storage order. */
+export async function TaskLabelsGet(taskId: string): Promise<string[]> {
+  const rows = await DbUtilsQuerySQL(
+    SQL_QUERIES.GET_TASK_LABELS[DbUtilsGetType()],
+    [taskId],
+  );
+  return rows.map((row) => row.name as string);
+}
+
+/**
+ * Atomically adds and removes labels and returns the resulting full list.
+ * Adds apply before removes, so a name listed in both ends up removed;
+ * conflict-tolerant inserts and plain deletes make every operation
+ * idempotent. `changed` is false when the statements touched no row, so a
+ * repeated call is a no-op (no task touch, no activity entry).
+ */
+export async function MutateTaskLabels(
+  taskId: string,
+  add: string[],
+  remove: string[],
+): Promise<{ labels: string[]; changed: boolean }> {
+  const { v4: uuidv4 } = await import("uuid");
+  return DbUtilsTransaction(async () => {
+    const removeSet = new Set(remove);
+    let changes = 0;
+    for (const name of add) {
+      if (removeSet.has(name)) {
+        continue;
+      }
+      changes += await DbUtilsExecSQL(SQL_QUERIES.INSERT_LABEL[DbUtilsGetType()], [
+        uuidv4(),
+        taskId,
+        name,
+      ]);
+    }
+    for (const name of remove) {
+      changes += await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_LABEL[DbUtilsGetType()], [
+        taskId,
+        name,
+      ]);
+    }
+    return { labels: await TaskLabelsGet(taskId), changed: changes > 0 };
+  });
+}
+
 export async function clearLabels(taskId: string): Promise<void> {
   await DbUtilsExecSQL(SQL_QUERIES.DELETE_TASK_LABELS[DbUtilsGetType()], [
     taskId,
@@ -663,8 +708,17 @@ const SQL_QUERIES = {
   },
   INSERT_LABEL: {
     postgres:
-      'INSERT INTO task_labels ("id", "taskId", "name") VALUES ($1, $2, $3)',
-    sqlite: "INSERT INTO task_labels (id, taskId, name) VALUES (?, ?, ?)",
+      'INSERT INTO task_labels ("id", "taskId", "name") VALUES ($1, $2, $3) ON CONFLICT ("taskId", "name") DO NOTHING',
+    sqlite:
+      "INSERT INTO task_labels (id, taskId, name) VALUES (?, ?, ?) ON CONFLICT (taskId, name) DO NOTHING",
+  },
+  DELETE_TASK_LABEL: {
+    postgres: 'DELETE FROM task_labels WHERE "taskId" = $1 AND "name" = $2',
+    sqlite: "DELETE FROM task_labels WHERE taskId = ? AND name = ?",
+  },
+  GET_TASK_LABELS: {
+    postgres: 'SELECT name FROM task_labels WHERE "taskId" = $1',
+    sqlite: "SELECT name FROM task_labels WHERE taskId = ?",
   },
   GET_LABELS_BY_TASK_IDS: {
     postgres: 'SELECT * FROM task_labels WHERE "taskId" IN (:ids)',

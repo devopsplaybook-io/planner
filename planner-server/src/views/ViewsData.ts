@@ -89,11 +89,15 @@ export async function ViewsDataGetDashboard(
   }
 
   if (filters?.labels && filters.labels.length > 0) {
-    const placeholders = filters.labels.map(() => "?").join(", ");
-    filterConditions.push(
-      `id IN (SELECT ${col("taskId")} FROM task_labels WHERE name IN (${placeholders}))`,
-    );
-    filterParams.push(...filters.labels);
+    // One EXISTS per label so only tasks carrying every listed label match
+    // (AND semantics, same as GET /api/tasks). tasks.id is qualified so the
+    // inner task_labels.id cannot shadow it.
+    for (const label of filters.labels) {
+      filterConditions.push(
+        `EXISTS (SELECT 1 FROM ${col("task_labels")} tl WHERE tl.${col("taskId")} = tasks.${col("id")} AND tl.${col("name")} = ?)`,
+      );
+      filterParams.push(label);
+    }
   }
 
   if (filters?.visibleTo) {

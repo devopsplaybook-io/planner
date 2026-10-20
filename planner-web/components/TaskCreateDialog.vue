@@ -80,6 +80,7 @@
           <LabelMultiSelect
             v-model="form.labels"
             :suggestions="labelsStore.labels"
+            :exclude-prefixes="MACHINE_LABEL_PREFIXES"
           />
         </fieldset>
         <fieldset>
@@ -117,6 +118,7 @@
 
 <script setup>
 import api from "../utils/api";
+import { MACHINE_LABEL_PREFIXES } from "../utils/labels";
 
 const props = defineProps({
   open: { type: Boolean, default: false },

@@ -14,7 +14,8 @@ Each view provides a different perspective on the same task data.
   - [x] Tasks without dates, ordered by priority
   - [x] The tasks marked as Done within the past 30 days (same window as the Kanban board)
 - [x] The overdue and upcoming day boundaries are evaluated in the server timezone (the container's `TZ`): a task due today is upcoming and becomes overdue only from the next day, in line with the due-date urgency shown in the task dialog and the reminder rules
-- [x] The dashboard can be filtered by project or labels. By default all projects are displayed; the label filter selects one or more existing labels (autocomplete from the project's labels) and only tasks carrying every selected label are shown — the filter applies to every section, including Recently Done
+- [x] The dashboard can be filtered by project or labels. By default all projects are displayed; the label filter selects one or more existing labels (autocomplete from the project's labels) and only tasks carrying every selected label are shown (AND semantics, matching `GET /api/tasks`) — the filter applies to every section, including Recently Done
+- [x] The dashboard label filter is stored in the URL as `?labels=<name>,<name>`: the selection is restored on reload and browser navigation, and a filtered view (for example an `agent:running` view) is bookmarkable and shareable; machine labels stay selectable in this filter
 - [x] Selecting a project in the dashboard filter includes the project's whole subtree (see [PROJECTS.md](PROJECTS.md))
 - [x] The task cards and the task detail dialog show the project's full path (e.g. Home / Parents) instead of the bare name; long paths keep the existing ellipsis truncation with the full text on hover
 - [x] Task status labels on the dashboard use the color configured for the status in the admin Statuses tab
@@ -70,4 +71,4 @@ Each view provides a different perspective on the same task data.
 - [x] Each kanban column has a max-height of 90% of the board height; the task list inside the column scrolls with an internal vertical scrollbar while the column header stays visible; on mobile (viewport ≤ 767px) the column minimum height is increased to 300px
 - [x] Tasks in each column are ordered by last update date, newest first (the most recently updated task appears at the top of its column).
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-19_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-20_
