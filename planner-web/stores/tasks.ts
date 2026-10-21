@@ -62,8 +62,8 @@ export interface UpdateFeedEntry {
 }
 
 /**
- * Sparse fieldsets for list reads: everything the board, search results,
- * history, calendar and tasks pages render, minus the heavy description/
+ * Sparse fieldsets for list reads: everything the dashboard, calendar,
+ * search results and tasks board render, minus the heavy description/
  * comments/attachments payload (the task dialog always re-fetches the full
  * task by id).
  */

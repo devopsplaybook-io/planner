@@ -14,8 +14,9 @@ Each view provides a different perspective on the same task data.
   - [x] Tasks without dates, ordered by priority
   - [x] The tasks marked as Done within the past 30 days (same window as the Kanban board)
 - [x] The overdue and upcoming day boundaries are evaluated in the server timezone (the container's `TZ`): a task due today is upcoming and becomes overdue only from the next day, in line with the due-date urgency shown in the task dialog and the reminder rules
-- [x] The dashboard can be filtered by project or labels. By default all projects are displayed; the label filter selects one or more existing labels (autocomplete from the project's labels) and only tasks carrying every selected label are shown (AND semantics, matching `GET /api/tasks`) — the filter applies to every section, including Recently Done
+- [x] The dashboard can be filtered by project or labels. By default all projects are displayed; the label filter selects one or more existing labels (autocomplete from the labels in use) and only tasks carrying every selected label are shown (AND semantics, matching `GET /api/tasks`) — the filter applies to every section, including Recently Done
 - [x] The dashboard label filter is stored in the URL as `?labels=<name>,<name>`: the selection is restored on reload and browser navigation, and a filtered view (for example an `agent:running` view) is bookmarkable and shareable; machine labels stay selectable in this filter
+- [x] The dashboard shows a tag cloud of the labels in use on tasks and notes with their usage counts, most used first; the tags are sized by usage and clicking a tag adds it to the label filter while clicking an active tag removes it, keeping the cloud, the filter chips and the `?labels=` URL in sync; active tags are highlighted
 - [x] Selecting a project in the dashboard filter includes the project's whole subtree (see [PROJECTS.md](PROJECTS.md))
 - [x] The task cards and the task detail dialog show the project's full path (e.g. Home / Parents) instead of the bare name; long paths keep the existing ellipsis truncation with the full text on hover
 - [x] Task status labels on the dashboard use the color configured for the status in the admin Statuses tab
@@ -23,23 +24,9 @@ Each view provides a different perspective on the same task data.
 - [x] The dashboard only includes tasks from projects visible to the current user (see [PROJECTS.md](PROJECTS.md)); admins see all tasks
 - [x] Each dashboard section's task-list container has a max-height of 90% of the parent container and scrolls with an internal vertical scrollbar when the tasks exceed it; the cards keep their natural height — the list scrolls instead of being compressed; on mobile (viewport ≤ 767px) the task-list container is capped at 70vh
 
-### History View
-
-- [x] The History page is reachable from a link at the very bottom of the dashboard (no side-menu entry)
-- [x] The History page shows a vertical timeline of tasks where each task is displayed as a bar spanning from its creation date to its end (Done tasks end at their last update; open tasks extend to now)
-- [x] Each bar shows the task title and its assignees, and uses the color configured for the task status in the admin Statuses tab
-- [x] The timeline can be filtered by project; the filter is applied client-side
-- [x] Selecting a project in the history filter includes the project's whole subtree (see [PROJECTS.md](PROJECTS.md))
-- [x] The top 10 assignees of the filtered tasks are shown at the top of the page
-- [x] The timeline rows are sorted from oldest to newest (by creation date)
-- [x] The Gantt area scrolls horizontally (the label column stays fixed) while the page itself never scrolls sideways
-- [x] The Gantt width depends on the timeline span: each month of the domain gets a minimum horizontal width, so short spans fill the available width and long spans become scrollable
-- [x] The task-name column has the same width for every row and never exceeds 30% of the timeline's width; long titles and assignee lists are truncated with an ellipsis
-- [x] The History page is computed client-side from the existing tasks API (no server-side changes); a loading indicator is shown while fetching
-
 ### Update Feed View
 
-- [x] The Update Feed page is reachable from the main navigation and from a link at the very bottom of the dashboard, next to the History link; both links have comfortable spacing at the bottom of the page
+- [x] The Update Feed page is reachable from the main navigation
 - [x] The feed lists the latest activity (comments and task updates) on the tasks the current user is assigned to
 - [x] The feed is scoped to the tasks the user is assigned to and to projects visible to the user (see [PROJECTS.md](PROJECTS.md)); admins get the visibility bypass but the feed still only covers their assigned tasks
 - [x] Entries are sorted by date, newest first

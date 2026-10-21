@@ -22,7 +22,7 @@ It is installable on mobile and desktop devices and works offline.
 
 - [x] The command palette opens with Ctrl/Cmd+K from every page (the shortcut works while focus is in an input) and from a Search button in the menu for touch access; the button shows the Ctrl K / ⌘K shortcut hint, hidden on mobile
 - [x] Typing searches tasks and notes server-side (case-insensitive substring over title and description, visibility-safe); results are grouped into Tasks and Notes and ranked by fuzzy title match; selecting a result opens its detail dialog over the current page
-- [x] With an empty query the palette offers quick actions: new task, new note, and go to view (Dashboard, Tasks, Calendar, Notes, Update Feed, History, Settings)
+- [x] With an empty query the palette offers quick actions: new task, new note, and go to view (Dashboard, Tasks, Calendar, Notes, Update Feed, Settings)
 - [x] Keyboard-first interaction: arrow keys move the selection with wrapping, Enter activates the selection, Escape closes the palette; the palette lists the shortcuts in its footer
 - [x] The palette reuses the standard application dialog layout (a centered modal dialog with the shared header/body/footer structure and a close button) and stays responsive on mobile; the dashboard search was removed in favour of the global palette
 
@@ -64,7 +64,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] A shared multi-user selection component (auto-complete box with removable chips) is used for task assignees and project user access, replacing per-user checkbox lists; for project user access it offers an optional compact permission select per chip (All / Update tasks / Comment / View, defaulting to All) next to the remove button
 - [x] A shared label chip editor (free-form label chips with remove buttons, autocomplete from existing labels with usage counts, keyboard navigation with ArrowUp/ArrowDown/Enter/Escape and Backspace to remove the last chip) is used for task create/edit, note edit and the dashboard/notes label filters
 - [x] When a Task, Note or Project detail dialog is closed, the view behind it refreshes its data in place: the list is not unmounted and the user's scroll position is preserved (the full loading indicator is only shown on initial load)
-- [x] Each main list page (Dashboard, Tasks board, Calendar, History, Update Feed and Notes) regularly refreshes the list it displays, once a minute and again when the tab becomes visible again after being hidden for at least that interval: the refresh is silent (no loading indicator, the list is not unmounted, the scroll position is preserved), always applies the current filters (the project filter is re-read at refresh time), skips ticks while the tab is hidden and while a refresh is still in flight, and never loses data on a failed refresh
+- [x] Each main list page (Dashboard, Tasks board, Calendar, Update Feed and Notes) regularly refreshes the list it displays, once a minute and again when the tab becomes visible again after being hidden for at least that interval: the refresh is silent (no loading indicator, the list is not unmounted, the scroll position is preserved), always applies the current filters (the project filter is re-read at refresh time), skips ticks while the tab is hidden and while a refresh is still in flight, and never loses data on a failed refresh
 - [x] Long markdown descriptions in the Task, Note and Project detail dialogs collapse to a capped height with a fade at the cut and a "Show more/less" disclosure exposing `aria-expanded`: the full text is shown when expanded, the disclosure only appears when the content actually overflows the cap (a short description is never faded or truncated), and Edit mode always shows the complete description; the disclosure keeps its quiet text-button appearance on hover and focus (no filled background)
 
 ### Tasks
@@ -75,4 +75,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-19_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-21_
