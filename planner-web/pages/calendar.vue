@@ -21,9 +21,23 @@
 
     <template v-else>
       <div class="month-nav">
-        <button @click="prevMonth"><i class="bi bi-chevron-left" /></button>
-        <h2>{{ currentMonthName }} {{ currentYear }}</h2>
-        <button @click="nextMonth"><i class="bi bi-chevron-right" /></button>
+        <button
+          type="button"
+          aria-label="Previous month"
+          title="Previous month"
+          @click="prevMonth"
+        >
+          <i class="bi bi-chevron-left" />
+        </button>
+        <h2 aria-live="polite">{{ currentMonthName }} {{ currentYear }}</h2>
+        <button
+          type="button"
+          aria-label="Next month"
+          title="Next month"
+          @click="nextMonth"
+        >
+          <i class="bi bi-chevron-right" />
+        </button>
       </div>
 
       <div class="calendar-grid">
@@ -318,16 +332,22 @@ async function onDrop(dateStr) {
 }
 
 .month-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5em; /* ≈44px at --text-lg: 1.1em */
+  height: 2.5em;
+  padding: 0;
   background: none;
   border: none;
+  color: var(--color-text);
   font-size: var(--text-lg);
   cursor: pointer;
-  padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-sm);
 }
 
 .month-nav button:hover {
-  background: var(--color-border);
+  background: var(--color-surface-hover);
 }
 
 .calendar-grid {
