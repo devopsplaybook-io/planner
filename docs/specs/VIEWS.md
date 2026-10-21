@@ -59,6 +59,7 @@ Each view provides a different perspective on the same task data.
 - [x] Allows drag-and-drop to reschedule tasks.
 - [x] Each task is displayed with the color configured for its status in the admin Statuses tab.
 - [x] Selecting a project in the calendar filter includes the project's whole subtree (see [PROJECTS.md](PROJECTS.md)).
+- [x] The month header offers previous and next month controls that stay clearly visible in light and dark themes, carry accessible labels, and have touch-sized targets on mobile; clicking them updates the displayed month and grid immediately.
 
 ### Kanban View
 
@@ -71,4 +72,4 @@ Each view provides a different perspective on the same task data.
 - [x] Each kanban column has a max-height of 90% of the board height; the task list inside the column scrolls with an internal vertical scrollbar while the column header stays visible; on mobile (viewport ≤ 767px) the column minimum height is increased to 300px
 - [x] Tasks in each column are ordered by last update date, newest first (the most recently updated task appears at the top of its column).
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-20_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-21_
