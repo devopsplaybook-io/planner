@@ -28,6 +28,8 @@
     <div v-if="loading" class="loading-indicator" />
 
     <template v-else>
+      <TagCloud v-model="selectedLabels" :tags="labelsStore.labels" />
+
       <!-- LLM Recommendations Section -->
       <section
         v-if="recommendationStore.isLlmEnabled"
@@ -156,15 +158,6 @@
         <i class="bi bi-check-circle" />
         <p>All caught up! No tasks need immediate attention.</p>
       </div>
-
-      <nav class="page-links" aria-label="Dashboard views">
-        <NuxtLink to="/history">
-          <i class="bi bi-clock-history" /> History
-        </NuxtLink>
-        <NuxtLink to="/update-feed">
-          <i class="bi bi-activity" /> Update Feed
-        </NuxtLink>
-      </nav>
     </template>
   </div>
 
@@ -408,10 +401,10 @@ section h2 {
 }
 
 /* Each section's list scrolls internally once the section reaches its 90%
-   cap, so one long section can't push the others (and the History link)
-   out of reach. flex-shrink: 0 keeps cards at their natural height:
-   TaskCard has overflow: hidden, so a flex child with default
-   flex-shrink would be squashed to a sliver instead of overflowing */
+   cap, so one long section can't push the others out of reach. flex-shrink: 0
+   keeps cards at their natural height: TaskCard has overflow: hidden, so a
+   flex child with default flex-shrink would be squashed to a sliver instead
+   of overflowing */
 .task-list {
   display: flex;
   flex-direction: column;
@@ -429,30 +422,6 @@ section h2 {
   font-size: var(--text-xs);
   font-weight: var(--weight-normal);
   color: var(--color-text-muted);
-}
-
-/* Bottom links row (History, Update Feed): flex-wrap so both links stay
-   reachable on narrow screens. The extra bottom margin keeps the links
-   from sitting against the main container's small (0.5em) padding. */
-.page-links {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: var(--space-md) var(--space-lg);
-  margin: var(--space-xl) 0 var(--space-xl);
-}
-
-.page-links a {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2xs);
-  color: var(--color-primary);
-  text-decoration: none;
-  font-weight: var(--weight-medium);
-}
-
-.page-links a:hover {
-  text-decoration: underline;
 }
 
 .recommendation-section {

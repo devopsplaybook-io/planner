@@ -213,7 +213,7 @@ onMounted(async () => {
   // The app shell scrolls inside <main> (app.vue, overflow-y: auto), not the
   // window: the infinite scroll must observe it
   scroller.value = pageRoot.value?.closest("main") ?? null;
-  // Status colors and project names for the entries (same as history page)
+  // Status colors and project names for the entries
   try {
     await Promise.all([projectsStore.fetchAll(), statusesStore.fetchAll()]);
   } catch {

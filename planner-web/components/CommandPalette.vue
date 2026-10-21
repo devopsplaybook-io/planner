@@ -106,7 +106,6 @@ const goToViews = [
   { title: "Calendar", path: "/calendar", icon: "bi-calendar" },
   { title: "Notes", path: "/notes", icon: "bi-journal-text" },
   { title: "Update Feed", path: "/update-feed", icon: "bi-activity" },
-  { title: "History", path: "/history", icon: "bi-clock-history" },
   { title: "Settings", path: "/settings", icon: "bi-gear" },
 ];
 
