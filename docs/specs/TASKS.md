@@ -90,7 +90,7 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 - `doneSince` — ISO 8601 timestamp; keeps non-Done tasks and Done tasks updated since the cutoff.
 - `assigneeUserId` — only tasks assigned to this user, in all statuses.
 - `labels` — comma-separated label names; only tasks carrying every listed label are returned.
-- `limit` / `offset` — pagination (default limit 1000).
+- `limit` / `offset` — pagination: `limit` defaults to 1000 and is capped at 1000 (larger, non-positive or non-integer values answer 400); `offset` defaults to 0 and must be a non-negative integer.
 - [x] `fields` — sparse fieldsets: comma-separated allowlist of top-level task keys (`id`, `projectId`, `title`, `description`, `status`, `priority`, `dueDate`, `checklist`, `assignees`, `comments`, `attachments`, `labels`, `dependencies`, `dateCreated`, `dateUpdated`); unrequested keys are omitted from the response (not sent empty), unknown names are ignored silently, and an absent or `*` value returns the full shape; unrequested child collections (comments, attachments, labels, assignees, dependencies) are not queried server-side.
 
 ## Task Label API

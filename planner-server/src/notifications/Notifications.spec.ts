@@ -1,5 +1,6 @@
 import {
   buildDigestPayload,
+  buildReminderTasksQuery,
   formatLocalDate,
   getRecipientsForTask,
   getTaskNotificationKind,
@@ -268,5 +269,41 @@ describe("buildDigestPayload", () => {
       "2026-10-15",
     );
     expect(payload.body).toBe("Due today: Only due today");
+  });
+});
+
+describe("buildReminderTasksQuery", () => {
+  // 2026-10-15 10:00 local
+  const now = new Date(2026, 9, 15, 10, 0);
+
+  it("should bound the due date to the day after tomorrow (sqlite)", () => {
+    const { sql, params } = buildReminderTasksQuery(now, "", "sqlite");
+    expect(sql).toBe(
+      "SELECT id, title, status, dueDate, projectId FROM tasks " +
+        "WHERE dueDate IS NOT NULL AND dueDate < ? AND status != ?",
+    );
+    expect(params).toEqual([getZonedDateKey(now, "", 2), "Done"]);
+    expect(params[0]).toBe("2026-10-17");
+  });
+
+  it("should quote identifiers for postgres", () => {
+    const { sql, params } = buildReminderTasksQuery(now, "", "postgres");
+    expect(sql).toBe(
+      'SELECT id, title, status, "dueDate", "projectId" FROM tasks ' +
+        'WHERE "dueDate" IS NOT NULL AND "dueDate" < ? AND "status" != ?',
+    );
+    expect(params).toEqual([getZonedDateKey(now, "", 2), "Done"]);
+  });
+
+  it("should compute the bound in the configured timezone", () => {
+    // 2026-10-15 02:00 UTC is still 2026-10-14 in New York
+    const instant = new Date(Date.UTC(2026, 9, 15, 2, 0));
+    const { params } = buildReminderTasksQuery(
+      instant,
+      "America/New_York",
+      "sqlite",
+    );
+    expect(params).toEqual([getZonedDateKey(instant, "America/New_York", 2), "Done"]);
+    expect(params[0]).toBe("2026-10-16");
   });
 });

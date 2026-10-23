@@ -67,16 +67,29 @@ export async function RecommendationGetCached(
 
 // ── Generate for all users ────────────────────────────────────────────────────
 
+let generateAllInFlight = false;
+
 export async function RecommendationGenerateAll(): Promise<void> {
-  const users = await DbUtilsQuerySQL(SQL_QUERIES.LIST_USERS[DbUtilsGetType()]);
-  for (const user of users) {
-    try {
-      await RecommendationGenerateForUser(user.id);
-    } catch (err) {
-      logger.error(
-        `[Recommendation] Failed to generate recommendation for user ${user.id}: ${err.message}`,
-      );
+  if (generateAllInFlight) {
+    logger.info("[Recommendation] Skipping overlapping generation run");
+    return;
+  }
+  generateAllInFlight = true;
+  try {
+    const users = await DbUtilsQuerySQL(
+      SQL_QUERIES.LIST_USERS[DbUtilsGetType()],
+    );
+    for (const user of users) {
+      try {
+        await RecommendationGenerateForUser(user.id);
+      } catch (err) {
+        logger.error(
+          `[Recommendation] Failed to generate recommendation for user ${user.id}: ${err.message}`,
+        );
+      }
     }
+  } finally {
+    generateAllInFlight = false;
   }
 }
 

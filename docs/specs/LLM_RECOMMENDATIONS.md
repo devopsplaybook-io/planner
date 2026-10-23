@@ -9,7 +9,7 @@ The dashboard displays AI-generated recommendations for each user, providing ins
 - [x] The dashboard displays personalized recommendations for the authenticated user.
 - [x] Recommendations are calculated per user by the LLM:
   - [x] The LLM receives as input the tasks assigned to the user that are not in a "Done" state (in single-user mode, all tasks are treated as assigned to the user); unassigned tasks are excluded so recommendations never surface tasks from projects the user cannot see.
-  - [x] Recommendations are generated on a configurable schedule (cron expression defined in configuration).
+  - [x] Recommendations are generated on a configurable schedule (cron expression defined in configuration). Scheduled runs never overlap: a tick that fires while the previous run is still processing users is skipped. The manual per-user single-flight is unchanged.
   - [x] The recommendation feature can be enabled or disabled via configuration.
   - [x] The dashboard displays only the most recent recommendation for each user.
   - [x] Each user can only see their own recommendations.
@@ -25,4 +25,4 @@ The dashboard displays AI-generated recommendations for each user, providing ins
 
 ## Implementation Status
 
-`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-10-02
+`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-10-23

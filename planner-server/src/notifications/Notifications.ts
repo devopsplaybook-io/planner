@@ -65,6 +65,25 @@ export function NotificationsGetPublicKey(): string {
 
 // ── Due date check ────────────────────────────────────────────────────────────
 
+/** Reminder candidates: due before local midnight of the day after tomorrow. */
+export function buildReminderTasksQuery(
+  now: Date,
+  timezone: string,
+  dbType: "sqlite" | "postgres" = DbUtilsGetType(),
+): { sql: string; params: unknown[] } {
+  const quote = (name: string) =>
+    dbType === "postgres" ? `"${name}"` : name;
+  const endExclusive = getZonedDateKey(now, timezone, 2);
+  return {
+    sql:
+      `SELECT id, title, status, ${quote("dueDate")}, ${quote("projectId")} FROM tasks` +
+      ` WHERE ${quote("dueDate")} IS NOT NULL AND ${quote("dueDate")} < ? AND ${quote("status")} != ?`,
+    params: [endExclusive, "Done"],
+  };
+}
+
+let checkAndSendInFlight = false;
+
 export async function NotificationsCheckAndSend(
   now: Date = new Date(),
 ): Promise<void> {
@@ -74,17 +93,35 @@ export async function NotificationsCheckAndSend(
   if (now.getHours() < config.WEB_PUSH_NOTIFY_HOUR) {
     return;
   }
+  if (checkAndSendInFlight) {
+    logger.info("[Notifications] Skipping overlapping reminder run");
+    return;
+  }
+  checkAndSendInFlight = true;
+  try {
+    await runCheckAndSend(now);
+  } finally {
+    checkAndSendInFlight = false;
+  }
+}
 
-  const sql =
-    DbUtilsGetType() === "postgres"
-      ? 'SELECT id, title, status, "dueDate", "projectId" FROM tasks WHERE "dueDate" IS NOT NULL'
-      : "SELECT id, title, status, dueDate, projectId FROM tasks WHERE dueDate IS NOT NULL";
-  const rows = await DbUtilsQuerySQL(sql);
+async function runCheckAndSend(now: Date): Promise<void> {
+  const { sql, params } = buildReminderTasksQuery(
+    now,
+    config.WEB_PUSH_TIMEZONE,
+  );
+  const rows = await DbUtilsQuerySQL(sql, params);
 
   const subscriptions = await NotificationsDataListSubscriptions();
   if (subscriptions.length === 0) {
     // Nothing to claim either: reminders stay available until someone subscribes
     return;
+  }
+  const subscriptionsByUser = new Map<string, PushSubscriptionRecord[]>();
+  for (const subscription of subscriptions) {
+    const list = subscriptionsByUser.get(subscription.userId) ?? [];
+    list.push(subscription);
+    subscriptionsByUser.set(subscription.userId, list);
   }
 
   const digestOptedIn = new Set(await UsersDataListNotificationDigestOptIn());
@@ -131,8 +168,7 @@ export async function NotificationsCheckAndSend(
         entries.push({ title: row.title as string, kind });
         digestEntries.set(userId, entries);
       } else {
-        const userSubscriptions =
-          await NotificationsDataListSubscriptionsByUser(userId);
+        const userSubscriptions = subscriptionsByUser.get(userId) ?? [];
         await sendToSubscriptions(
           userSubscriptions,
           row.id as string,
@@ -145,8 +181,7 @@ export async function NotificationsCheckAndSend(
 
   // One consolidated push per digest user for this run
   for (const [userId, entries] of digestEntries) {
-    const userSubscriptions =
-      await NotificationsDataListSubscriptionsByUser(userId);
+    const userSubscriptions = subscriptionsByUser.get(userId) ?? [];
     if (userSubscriptions.length === 0) {
       continue;
     }

@@ -20,6 +20,9 @@ import { Config } from "../Config";
 import {
   TaskVoiceCommentsEnqueue,
   TaskVoiceCommentsInit,
+  TaskVoiceCommentsQueueCount,
+  TaskVoiceCommentsRateLimitedUsers,
+  TaskVoiceCommentsSweep,
 } from "./TaskVoiceComments";
 import { DictationTranscribeAndPolish } from "../dictation/Dictation";
 import { UsersDataGet } from "../users/UsersData";
@@ -279,6 +282,50 @@ describe("TaskVoiceComments", () => {
 
       expect(mockTranscribeAndPolish).toHaveBeenCalledTimes(2);
       expect(mockAddComment).toHaveBeenCalledTimes(2);
+    });
+
+    it("should drop the user queue entry once the jobs settled", async () => {
+      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "queue-user" }));
+      await flush();
+
+      expect(TaskVoiceCommentsQueueCount()).toBe(0);
+    });
+
+    it("should drop the user queue entry after a failing job", async () => {
+      mockTranscribeAndPolish.mockRejectedValueOnce(new Error("STT down"));
+      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "queue-fail-user" }));
+      await flush();
+
+      expect(TaskVoiceCommentsQueueCount()).toBe(0);
+    });
+
+    it("should sweep expired rate-limit entries while keeping fresh ones", async () => {
+      const config = enabledConfig();
+      config.RATE_LIMIT_DICTATION_MAX = 1;
+      await TaskVoiceCommentsInit(config);
+
+      const windowMs = 60 * 60 * 1000;
+      const base = Date.now() - 3 * windowMs;
+      const dateSpy = jest.spyOn(Date, "now").mockReturnValue(base);
+
+      const usersBefore = TaskVoiceCommentsRateLimitedUsers();
+      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "sweep-old" }));
+      await flush();
+
+      dateSpy.mockReturnValue(base + windowMs + 1000);
+      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "sweep-fresh" }));
+      await flush();
+      expect(TaskVoiceCommentsRateLimitedUsers()).toBe(usersBefore + 2);
+
+      expect(TaskVoiceCommentsSweep(base + windowMs + 1000)).toBe(1);
+      expect(TaskVoiceCommentsRateLimitedUsers()).toBe(usersBefore + 1);
+
+      // The fresh entry still enforces the hourly limit for that user
+      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "sweep-fresh" }));
+      await flush();
+      expect(mockTranscribeAndPolish).toHaveBeenCalledTimes(2);
+
+      dateSpy.mockRestore();
     });
   });
 });

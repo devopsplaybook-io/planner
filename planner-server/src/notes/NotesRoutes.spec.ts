@@ -117,6 +117,8 @@ describe("NotesRoutes project visibility", () => {
     expect(res.statusCode).toBe(200);
     expect(NotesDataList).toHaveBeenCalledWith({
       projectId: undefined,
+      limit: 1000,
+      offset: 0,
       visibleTo: { userId: "user-1" },
     });
   });
@@ -126,6 +128,8 @@ describe("NotesRoutes project visibility", () => {
     await app.inject({ method: "GET", url: "/" });
     expect(NotesDataList).toHaveBeenCalledWith({
       projectId: undefined,
+      limit: 1000,
+      offset: 0,
       visibleTo: undefined,
     });
   });
@@ -135,8 +139,32 @@ describe("NotesRoutes project visibility", () => {
     expect(NotesDataList).toHaveBeenCalledWith({
       projectId: undefined,
       projectIds: ["proj-1", "proj-2"],
+      limit: 1000,
+      offset: 0,
       visibleTo: { userId: "user-1" },
     });
+  });
+
+  it("should forward limit and offset for pagination", async () => {
+    await app.inject({ method: "GET", url: "/?limit=5&offset=10" });
+    expect(NotesDataList).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 5, offset: 10 }),
+    );
+  });
+
+  it("should answer 400 for an invalid limit or offset", async () => {
+    for (const url of [
+      "/?limit=1001",
+      "/?limit=0",
+      "/?limit=-1",
+      "/?limit=abc",
+      "/?offset=-1",
+    ]) {
+      const res = await app.inject({ method: "GET", url });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toEqual(expect.stringContaining("Invalid:"));
+    }
+    expect(NotesDataList).not.toHaveBeenCalled();
   });
 
   it("should not set projectIds when the param is absent", async () => {

@@ -27,6 +27,8 @@ export interface TaskVoiceCommentRequest {
   userName?: string;
 }
 
+let sweepTimer: ReturnType<typeof setInterval> | null = null;
+
 export async function TaskVoiceCommentsInit(configIn: Config): Promise<void> {
   config = configIn;
   if (configIn.DICTATION_ENABLED && configIn.IsDictationSttConfigured()) {
@@ -37,6 +39,12 @@ export async function TaskVoiceCommentsInit(configIn: Config): Promise<void> {
     logger.info(
       "[VoiceComments] Feature disabled (dictation disabled or STT not configured)",
     );
+  }
+  if (!sweepTimer) {
+    sweepTimer = setInterval(() => {
+      TaskVoiceCommentsSweep();
+    }, RATE_LIMIT_WINDOW_MS);
+    sweepTimer.unref?.();
   }
 }
 
@@ -65,11 +73,46 @@ export function TaskVoiceCommentsEnqueue(request: TaskVoiceCommentRequest): void
         );
       });
     userQueues.set(request.userId, next);
+    // Drop the queue entry once this user's chain is idle: settled queues
+    // must not accumulate per user for the lifetime of the process
+    next.finally(() => {
+      if (userQueues.get(request.userId) === next) {
+        userQueues.delete(request.userId);
+      }
+    });
   } catch (error) {
     logger.error(
       `[VoiceComments] Failed to enqueue a voice comment job: ${(error as Error).message}`,
     );
   }
+}
+
+/**
+ * Drops expired rate-limit timestamps and deletes the users that have none
+ * left. Returns the number of removed users.
+ */
+export function TaskVoiceCommentsSweep(now: number = Date.now()): number {
+  let removed = 0;
+  for (const [userId, timestamps] of recentTranscriptions) {
+    const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+    if (recent.length === 0) {
+      recentTranscriptions.delete(userId);
+      removed++;
+    } else {
+      recentTranscriptions.set(userId, recent);
+    }
+  }
+  return removed;
+}
+
+/** Test helper: users with a pending voice-comment queue. */
+export function TaskVoiceCommentsQueueCount(): number {
+  return userQueues.size;
+}
+
+/** Test helper: users currently tracked by the hourly rate limiter. */
+export function TaskVoiceCommentsRateLimitedUsers(): number {
+  return recentTranscriptions.size;
 }
 
 /**

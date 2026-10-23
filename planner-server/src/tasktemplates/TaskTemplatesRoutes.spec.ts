@@ -161,6 +161,8 @@ describe("TaskTemplatesRoutes list and read", () => {
       projectId: undefined,
       projectIds: undefined,
       q: undefined,
+      limit: 1000,
+      offset: 0,
       visibleTo: { userId: "user-1" },
     });
   });
@@ -172,6 +174,8 @@ describe("TaskTemplatesRoutes list and read", () => {
       projectId: undefined,
       projectIds: undefined,
       q: undefined,
+      limit: 1000,
+      offset: 0,
     });
   });
 
@@ -184,8 +188,31 @@ describe("TaskTemplatesRoutes list and read", () => {
       projectId: "p1",
       projectIds: ["p1", "p2"],
       q: "report",
+      limit: 1000,
+      offset: 0,
       visibleTo: { userId: "user-1" },
     });
+  });
+
+  it("should forward limit and offset for pagination", async () => {
+    await app.inject({ method: "GET", url: "/?limit=5&offset=10" });
+    expect(TaskTemplatesList).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 5, offset: 10 }),
+    );
+  });
+
+  it("should answer 400 for an invalid limit or offset", async () => {
+    for (const url of [
+      "/?limit=1001",
+      "/?limit=0",
+      "/?limit=abc",
+      "/?offset=-1",
+    ]) {
+      const res = await app.inject({ method: "GET", url });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toEqual(expect.stringContaining("Invalid:"));
+    }
+    expect(TaskTemplatesList).not.toHaveBeenCalled();
   });
 
   it("should return a template by id", async () => {

@@ -115,6 +115,31 @@ describe("LoginRateLimiter", () => {
     limiter.registerFailure("a", 0);
     expect(limiter.retryAfterSeconds("b", 0)).toBe(0);
   });
+
+  it("should sweep fully expired keys and keep recent ones", () => {
+    const limiter = new LoginRateLimiter(2, 1000);
+    limiter.registerFailure("old|alice", 1000);
+    limiter.registerFailure("fresh|bob", 5000);
+    expect(limiter.size()).toBe(2);
+
+    expect(limiter.sweep(4500)).toBe(1);
+    expect(limiter.size()).toBe(1);
+
+    // The fresh key was not pruned and is still usable
+    expect(limiter.retryAfterSeconds("fresh|bob", 4500)).toBe(0);
+    limiter.registerFailure("fresh|bob", 4500);
+    expect(limiter.retryAfterSeconds("fresh|bob", 4500)).toBeGreaterThan(0);
+  });
+
+  it("should keep a fresh lockout after a sweep", () => {
+    const limiter = new LoginRateLimiter(2, 60000);
+    limiter.registerFailure("ip|carol", 1000);
+    limiter.registerFailure("ip|carol", 2000);
+
+    expect(limiter.sweep(2500)).toBe(0);
+    expect(limiter.size()).toBe(1);
+    expect(limiter.retryAfterSeconds("ip|carol", 2500)).toBeGreaterThan(0);
+  });
 });
 
 describe("UsersRoutes", () => {

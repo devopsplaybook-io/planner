@@ -28,6 +28,10 @@ export interface TaskTemplateListFilters {
   projectIds?: string[];
   /** Case-insensitive substring matched against title and description. */
   q?: string;
+  /** Maximum number of rows to return; unbounded when omitted. */
+  limit?: number;
+  /** Number of rows to skip; only applies together with a limit. */
+  offset?: number;
   /** When set, restricts results to projects visible to this user (non-admin viewers). */
   visibleTo?: { userId: string };
 }
@@ -73,8 +77,17 @@ export function buildListTemplatesQuery(
   }
   const whereClause =
     conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  let limitClause = "";
+  if (typeof filters.limit === "number" && filters.limit > 0) {
+    limitClause = ` LIMIT ?`;
+    params.push(filters.limit);
+    if (typeof filters.offset === "number" && filters.offset > 0) {
+      limitClause += ` OFFSET ?`;
+      params.push(filters.offset);
+    }
+  }
   return {
-    sql: `SELECT * FROM task_templates${whereClause} ORDER BY ${quote("dateCreated")} DESC`,
+    sql: `SELECT * FROM task_templates${whereClause} ORDER BY ${quote("dateCreated")} DESC${limitClause}`,
     params,
   };
 }
