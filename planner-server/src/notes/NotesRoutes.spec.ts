@@ -10,9 +10,11 @@ import {
   NotesDataUpdate,
   addNoteComment,
   deleteNoteAttachment,
+  deleteNoteComment,
   getNoteAttachment,
   getNoteComment,
   replaceNoteLabels,
+  updateNoteComment,
 } from "./NotesData";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
 import { ProjectsDataGet } from "../projects/ProjectsData";
@@ -773,6 +775,7 @@ describe("NotesRoutes project permission levels", () => {
       payload: { text: "edited" },
     });
     expect(edit.statusCode).toBe(200);
+    expect(getNoteComment).toHaveBeenCalledWith("comment-1", note.id);
     const del = await app.inject({
       method: "DELETE",
       url: `/${note.id}/comments/comment-1`,
@@ -794,6 +797,52 @@ describe("NotesRoutes project permission levels", () => {
     });
     expect(update.statusCode).toBe(403);
     expect(NotesDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should answer 404 when a note comment is updated through another note", async () => {
+    const project = projectWithLevel("comment");
+    const noteWithComment = makeNote(project);
+    const otherNote = makeNote(project);
+    (NotesDataGet as jest.Mock).mockResolvedValue(otherNote);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (getNoteComment as jest.Mock).mockImplementation(
+      async (_commentId: string, noteId: string) =>
+        noteId === noteWithComment.id
+          ? { id: "comment-a", userId: "user-1", text: "on A" }
+          : null,
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${otherNote.id}/comments/comment-a`,
+      payload: { text: "hijacked" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe("Comment Not Found");
+    expect(getNoteComment).toHaveBeenCalledWith("comment-a", otherNote.id);
+    expect(updateNoteComment).not.toHaveBeenCalled();
+  });
+
+  it("should answer 404 when a note comment is deleted through another note", async () => {
+    const project = projectWithLevel("comment");
+    const noteWithComment = makeNote(project);
+    const otherNote = makeNote(project);
+    (NotesDataGet as jest.Mock).mockResolvedValue(otherNote);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (getNoteComment as jest.Mock).mockImplementation(
+      async (_commentId: string, noteId: string) =>
+        noteId === noteWithComment.id
+          ? { id: "comment-a", userId: "user-1", text: "on A" }
+          : null,
+    );
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/${otherNote.id}/comments/comment-a`,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe("Comment Not Found");
+    expect(deleteNoteComment).not.toHaveBeenCalled();
   });
 
   it("should let an update user edit notes and sub-resources but not delete", async () => {

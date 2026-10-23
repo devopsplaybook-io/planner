@@ -241,7 +241,7 @@ export class NotesRoutes {
         if (guard) {
           return res.status(guard.status).send({ error: guard.error });
         }
-        const comment = await getNoteComment(req.params.commentId);
+        const comment = await getNoteComment(req.params.commentId, req.params.id);
         if (!comment)
           return res.status(404).send({ error: "Comment Not Found" });
         if (comment.userId !== userSession.userId && userSession.role !== "admin") {
@@ -273,7 +273,7 @@ export class NotesRoutes {
       if (guard) {
         return res.status(guard.status).send({ error: guard.error });
       }
-      const comment = await getNoteComment(req.params.commentId);
+      const comment = await getNoteComment(req.params.commentId, req.params.id);
       if (!comment)
         return res.status(404).send({ error: "Comment Not Found" });
       if (comment.userId !== userSession.userId && userSession.role !== "admin") {
@@ -282,7 +282,7 @@ export class NotesRoutes {
       if (!req.body.text)
         return res.status(400).send({ error: "Missing: text" });
       await updateNoteComment(req.params.commentId, req.body.text);
-      const updated = await getNoteComment(req.params.commentId);
+      const updated = await getNoteComment(req.params.commentId, req.params.id);
       return res.status(200).send(updated);
     });
 

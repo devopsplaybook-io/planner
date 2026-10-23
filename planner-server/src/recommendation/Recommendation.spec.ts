@@ -343,4 +343,106 @@ describe("Recommendation", () => {
       expect(userMessage.content).not.toContain("unassigned");
     });
   });
+
+  describe("project visibility filtering", () => {
+    interface QueryCall {
+      sql: string;
+      params: unknown[];
+    }
+    const captures: QueryCall[] = [];
+
+    function mockUserQueries(role: string, userCount: number): void {
+      mockDbUtils.DbUtilsQuerySQL.mockImplementation(
+        (sql: string, params: unknown[] = []) => {
+          captures.push({ sql, params });
+          if (sql.includes("FROM users WHERE id"))
+            return Promise.resolve([{ id: "user-1", name: "Alice", role }]);
+          if (sql.includes("COUNT(*)"))
+            return Promise.resolve([{ count: userCount }]);
+          return Promise.resolve([]);
+        },
+      );
+      mockAxios.post.mockResolvedValue({
+        data: {
+          choices: [
+            {
+              message: {
+                content: "## Analysis\nok\n\n## Recommendations\nok",
+              },
+            },
+          ],
+        },
+      });
+    }
+
+    beforeEach(() => {
+      captures.length = 0;
+    });
+
+    it("should filter assigned-task stats through project visibility for non-admins", async () => {
+      mockUserQueries("user", 2);
+      await RecommendationInit(config);
+      await RecommendationGenerateForUser("user-1");
+
+      const taskCalls = captures.filter((call) =>
+        call.sql.includes("task_assignees"),
+      );
+      expect(taskCalls).toHaveLength(2);
+      for (const call of taskCalls) {
+        expect(call.sql).toContain(
+          "IN (SELECT id FROM projects WHERE visibility = 'public')",
+        );
+        expect(call.params).toEqual(["user-1", "user-1"]);
+      }
+    });
+
+    it("should not filter assigned-task stats for admins", async () => {
+      mockUserQueries("admin", 2);
+      await RecommendationInit(config);
+      await RecommendationGenerateForUser("user-1");
+
+      const taskCalls = captures.filter((call) =>
+        call.sql.includes("task_assignees"),
+      );
+      expect(taskCalls).toHaveLength(2);
+      for (const call of taskCalls) {
+        expect(call.sql).not.toContain("visibility = 'public'");
+        expect(call.params).toEqual(["user-1"]);
+      }
+    });
+
+    it("should filter all-task stats in single-user mode for non-admins", async () => {
+      mockUserQueries("user", 1);
+      await RecommendationInit(config);
+      await RecommendationGenerateForUser("user-1");
+
+      const allTaskCalls = captures.filter(
+        (call) =>
+          call.sql.includes("FROM tasks t WHERE") &&
+          !call.sql.includes("task_assignees"),
+      );
+      expect(allTaskCalls).toHaveLength(2);
+      for (const call of allTaskCalls) {
+        expect(call.sql).toContain("visibility = 'public'");
+        expect(call.params).toEqual(["user-1"]);
+      }
+    });
+
+    it("should not filter all-task stats in single-user mode for admins", async () => {
+      mockUserQueries("admin", 1);
+      await RecommendationInit(config);
+      await RecommendationGenerateForUser("user-1");
+
+      const allTaskCalls = captures.filter(
+        (call) =>
+          call.sql.includes("FROM tasks t WHERE") &&
+          !call.sql.includes("task_assignees"),
+      );
+      expect(allTaskCalls).toHaveLength(2);
+      for (const call of allTaskCalls) {
+        expect(call.sql).not.toContain("visibility = 'public'");
+        expect(call.params).toEqual([]);
+      }
+    });
+  });
 });

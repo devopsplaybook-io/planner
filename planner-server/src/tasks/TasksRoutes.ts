@@ -824,7 +824,7 @@ export class TasksRoutes {
         if (guard) {
           return res.status(guard.status).send({ error: guard.error });
         }
-        const comment = await getComment(req.params.commentId);
+        const comment = await getComment(req.params.commentId, req.params.id);
         if (!comment)
           return res.status(404).send({ error: "Comment Not Found" });
         if (comment.userId !== userSession.userId && userSession.role !== "admin") {
@@ -863,7 +863,7 @@ export class TasksRoutes {
       if (guard) {
         return res.status(guard.status).send({ error: guard.error });
       }
-      const comment = await getComment(req.params.commentId);
+      const comment = await getComment(req.params.commentId, req.params.id);
       if (!comment)
         return res.status(404).send({ error: "Comment Not Found" });
       if (comment.userId !== userSession.userId && userSession.role !== "admin") {
@@ -878,7 +878,7 @@ export class TasksRoutes {
         userSession.userId,
         "Comment updated",
       );
-      const updated = await getComment(req.params.commentId);
+      const updated = await getComment(req.params.commentId, req.params.id);
       return res.status(200).send(updated);
     });
 

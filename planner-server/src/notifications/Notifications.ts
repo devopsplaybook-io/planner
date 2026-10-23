@@ -91,19 +91,8 @@ export async function NotificationsCheckAndSend(
   const assigneesByTask = await NotificationsDataListAssigneesByTaskIds(
     rows.map((row) => row.id as string),
   );
-  const adminIds = await getAdminIds();
-  const visibleProjectsByUser = new Map<string, Set<string>>();
-  for (const userId of new Set([...assigneesByTask.values()].flat())) {
-    if (!adminIds.has(userId)) {
-      visibleProjectsByUser.set(
-        userId,
-        new Set(await NotificationsDataListVisibleProjectIds(userId)),
-      );
-    }
-  }
-  const canSeeProject = createProjectVisibilityChecker(
-    adminIds,
-    visibleProjectsByUser,
+  const canSeeProject = await buildProjectVisibilityChecker(
+    [...assigneesByTask.values()].flat(),
   );
 
   const digestEntries = new Map<string, ReminderEntry[]>();
@@ -362,6 +351,13 @@ export async function NotificationsTaskUpdated(
     if (assigneeIds.length === 0) {
       return;
     }
+    const canSeeProject = await buildProjectVisibilityChecker(assigneeIds);
+    const recipients = getRecipientsForTask(assigneeIds, (userId) =>
+      canSeeProject(userId, task.projectId),
+    );
+    if (recipients.length === 0) {
+      return;
+    }
     const payload = JSON.stringify({
       title: `Task updated by ${actorName || "someone"}`,
       body: summary ? `${task.title} — ${summary}` : task.title,
@@ -369,7 +365,7 @@ export async function NotificationsTaskUpdated(
       // Same tag replaces the previous update notification instead of stacking
       tag: `task-${task.id}-update`,
     });
-    for (const userId of assigneeIds) {
+    for (const userId of recipients) {
       const subscriptions =
         await NotificationsDataListSubscriptionsByUser(userId);
       for (const subscription of subscriptions) {
@@ -384,6 +380,26 @@ export async function NotificationsTaskUpdated(
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Per-run project visibility for the given users: admins bypass the filter,
+ * every other user gets the projects they can see resolved once up front.
+ */
+async function buildProjectVisibilityChecker(
+  userIds: Iterable<string>,
+): Promise<(userId: string, projectId: string) => boolean> {
+  const adminIds = await getAdminIds();
+  const visibleProjectsByUser = new Map<string, Set<string>>();
+  for (const userId of new Set(userIds)) {
+    if (!adminIds.has(userId)) {
+      visibleProjectsByUser.set(
+        userId,
+        new Set(await NotificationsDataListVisibleProjectIds(userId)),
+      );
+    }
+  }
+  return createProjectVisibilityChecker(adminIds, visibleProjectsByUser);
+}
 
 /**
  * Per-run project visibility, mirroring ProjectVisibility.isProjectVisible:

@@ -286,6 +286,35 @@ describe("ProjectsRoutes admin enforcement", () => {
     expect(ProjectsDataAdd).not.toHaveBeenCalled();
   });
 
+  it("should reject invalid visibility values with 400 on create", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    for (const visibility of ["privat", ""]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: { name: "New Project", visibility },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe("Invalid visibility");
+    }
+    expect(ProjectsDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should accept public and restricted visibility on create", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    (ProjectsDataAdd as jest.Mock).mockResolvedValue(undefined);
+    for (const visibility of ["public", "restricted"]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: { name: `Project ${visibility}`, visibility },
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.json().visibility).toBe(visibility);
+    }
+    expect(ProjectsDataAdd).toHaveBeenCalledTimes(2);
+  });
+
   // ==================== UPDATE ====================
   it("should reject project update for a non-admin user", async () => {
     denyNonAdmin();
@@ -379,6 +408,42 @@ describe("ProjectsRoutes admin enforcement", () => {
       payload: { name: "Renamed" },
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("should reject invalid visibility values with 400 on update", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const project = new Project();
+    project.name = "Old Name";
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    for (const visibility of ["privat", ""]) {
+      const res = await app.inject({
+        method: "PUT",
+        url: `/${project.id}`,
+        payload: { visibility },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe("Invalid visibility");
+    }
+    expect(project.visibility).toBe("public");
+    expect(ProjectsDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should accept public and restricted visibility on update", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const project = new Project();
+    project.name = "Old Name";
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (ProjectsDataUpdate as jest.Mock).mockResolvedValue(undefined);
+    for (const visibility of ["restricted", "public"]) {
+      const res = await app.inject({
+        method: "PUT",
+        url: `/${project.id}`,
+        payload: { visibility },
+      });
+      expect(res.statusCode).toBe(201);
+      expect(project.visibility).toBe(visibility);
+    }
+    expect(ProjectsDataUpdate).toHaveBeenCalledTimes(2);
   });
 
   // ==================== ARCHIVE ====================
