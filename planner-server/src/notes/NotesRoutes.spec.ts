@@ -549,6 +549,41 @@ describe("NotesRoutes project visibility", () => {
     expect(res.headers["content-security-policy"]).toBeUndefined();
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
   });
+
+  it("should encode non-ASCII note attachment file names per RFC 6266", async () => {
+    const note = makeNote(publicProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (getNoteAttachment as jest.Mock).mockResolvedValue({
+      id: "att-unicode",
+      fileName: "Résumé final.pdf",
+      filePath: "/data/attachments/notes/att-unicode.pdf",
+      dateCreated: "2026-10-18T00:00:00.000Z",
+      noteId: note.id,
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["pdf-bytes"]));
+
+    const inline = await app.inject({
+      method: "GET",
+      url: `/${note.id}/attachments/att-unicode?inline=true`,
+    });
+    expect(inline.statusCode).toBe(200);
+    expect(inline.headers["content-disposition"]).toBe(
+      `inline; filename="R_sum_ final.pdf"; filename*=UTF-8''R%C3%A9sum%C3%A9%20final.pdf`,
+    );
+
+    const download = await app.inject({
+      method: "GET",
+      url: `/${note.id}/attachments/att-unicode`,
+    });
+    expect(download.statusCode).toBe(200);
+    expect(download.headers["content-disposition"]).toBe(
+      `attachment; filename="R_sum_ final.pdf"; filename*=UTF-8''R%C3%A9sum%C3%A9%20final.pdf`,
+    );
+  });
 });
 
 describe("NotesRoutes archived project guard", () => {
@@ -1114,6 +1149,7 @@ describe("NotesRoutes attachments", () => {
     const res = await upload(note, Buffer.alloc(1024, "a"));
 
     expect(res.statusCode).toBe(201);
+    expect(res.json()).not.toHaveProperty("filePath");
     expect(addNoteAttachment).toHaveBeenCalledTimes(1);
   });
 });

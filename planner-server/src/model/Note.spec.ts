@@ -93,5 +93,29 @@ describe("Note model", () => {
       expect(json.labels).toEqual(note.labels);
       expect(json.attachments).toEqual([]);
     });
+
+    it("should expose attachment metadata without the server file path", () => {
+      const note = new Note();
+      note.projectId = "p1";
+      note.title = "Attachments";
+      note.attachments = [
+        {
+          id: "att-1",
+          fileName: "spec.pdf",
+          filePath: "/data/attachments/notes/att-1.pdf",
+          dateCreated: "2026-09-01T00:00:00.000Z",
+        },
+      ];
+
+      const json = note.toTransportJson();
+      expect(json.attachments).toEqual([
+        {
+          id: "att-1",
+          fileName: "spec.pdf",
+          dateCreated: "2026-09-01T00:00:00.000Z",
+        },
+      ]);
+      expect(JSON.stringify(json)).not.toContain("/data/attachments");
+    });
   });
 });

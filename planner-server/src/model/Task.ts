@@ -172,7 +172,11 @@ export class Task {
       checklist: this.checklist,
       assignees: this.assignees,
       comments: this.comments,
-      attachments: this.attachments,
+      attachments: this.attachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        dateCreated: a.dateCreated,
+      })),
       labels: this.labels,
       dependencies: this.dependencies,
       dateCreated: this.dateCreated,

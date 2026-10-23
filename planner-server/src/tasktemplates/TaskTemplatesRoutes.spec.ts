@@ -967,6 +967,7 @@ describe("TaskTemplatesRoutes attachments", () => {
     const res = await upload(template, Buffer.alloc(1024, "a"));
 
     expect(res.statusCode).toBe(201);
+    expect(res.json()).not.toHaveProperty("filePath");
     expect(addTemplateAttachment).toHaveBeenCalledTimes(1);
   });
 
@@ -1042,5 +1043,40 @@ describe("TaskTemplatesRoutes attachments", () => {
     // A sandbox CSP blocks the browser's built-in PDF viewer
     expect(res.headers["content-security-policy"]).toBeUndefined();
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
+  it("should encode non-ASCII template attachment file names per RFC 6266", async () => {
+    const template = makeTemplate(publicProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (getTemplateAttachment as jest.Mock).mockResolvedValue({
+      id: "att-unicode",
+      templateId: template.id,
+      fileName: "Résumé final.pdf",
+      filePath: "/data/attachments/task-templates/att-unicode.pdf",
+      dateCreated: "2026-10-18T00:00:00.000Z",
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["pdf-bytes"]));
+
+    const inline = await app.inject({
+      method: "GET",
+      url: `/${template.id}/attachments/att-unicode?inline=true`,
+    });
+    expect(inline.statusCode).toBe(200);
+    expect(inline.headers["content-disposition"]).toBe(
+      `inline; filename="R_sum_ final.pdf"; filename*=UTF-8''R%C3%A9sum%C3%A9%20final.pdf`,
+    );
+
+    const download = await app.inject({
+      method: "GET",
+      url: `/${template.id}/attachments/att-unicode`,
+    });
+    expect(download.statusCode).toBe(200);
+    expect(download.headers["content-disposition"]).toBe(
+      `attachment; filename="R_sum_ final.pdf"; filename*=UTF-8''R%C3%A9sum%C3%A9%20final.pdf`,
+    );
   });
 });

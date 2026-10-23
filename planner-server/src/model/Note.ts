@@ -78,7 +78,11 @@ export class Note {
       title: this.title,
       description: this.description,
       comments: this.comments,
-      attachments: this.attachments,
+      attachments: this.attachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        dateCreated: a.dateCreated,
+      })),
       labels: this.labels,
       dateCreated: this.dateCreated,
       dateUpdated: this.dateUpdated,

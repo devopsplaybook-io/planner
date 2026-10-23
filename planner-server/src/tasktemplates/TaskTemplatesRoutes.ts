@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs-extra";
 import * as path from "path";
 import * as cron from "node-cron";
+import { buildContentDisposition } from "../utils/FileUtils";
 import { TaskTemplate } from "../model/TaskTemplate";
 import { UserSession } from "../model/UserSession";
 import { AuthGetUserSession, AuthMustBeAuthenticated } from "../users/Auth";
@@ -621,7 +622,6 @@ export class TaskTemplatesRoutes {
         return res.status(201).send({
           id: attachmentId,
           fileName: data.filename,
-          filePath: filePath,
           dateCreated: new Date().toISOString(),
         });
       },
@@ -677,7 +677,7 @@ export class TaskTemplatesRoutes {
         res.type(mimeTypes[ext] || "application/octet-stream");
         res.header(
           "Content-Disposition",
-          `inline; filename="${attachment.fileName}"`,
+          buildContentDisposition("inline", attachment.fileName),
         );
         // PDFs must not carry this header: a sandbox CSP (or iframe sandbox)
         // blocks the browser's built-in PDF viewer, so the file would never
@@ -691,7 +691,7 @@ export class TaskTemplatesRoutes {
         res.type("application/octet-stream");
         res.header(
           "Content-Disposition",
-          `attachment; filename="${attachment.fileName}"`,
+          buildContentDisposition("attachment", attachment.fileName),
         );
       }
 

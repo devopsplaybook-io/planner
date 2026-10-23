@@ -9,7 +9,9 @@ import {
 } from "./Auth";
 import {
   UserPasswordCheckPassword,
+  UserPasswordCompareDummy,
   UserPasswordSetPassword,
+  UserPasswordValidate,
 } from "./UserPassword";
 import {
   UsersDataAdd,
@@ -161,6 +163,9 @@ export class UsersRoutes {
       }
       const user = await UsersDataGetByName(req.body.name);
       if (!user) {
+        // Same bcrypt work as a wrong password: a miss must not be
+        // distinguishable from a hit by response timing.
+        await UserPasswordCompareDummy(req.body.password);
         loginRateLimiter.registerFailure(limiterKey);
         return res.status(403).send({ error: "Authentication Failed" });
       }
@@ -239,6 +244,10 @@ export class UsersRoutes {
       if (!req.body.password) {
         return res.status(400).send({ error: "Missing: Password" });
       }
+      const passwordError = UserPasswordValidate(req.body.password);
+      if (passwordError) {
+        return res.status(400).send({ error: passwordError });
+      }
       if (await UsersDataGetByName(req.body.name)) {
         return res.status(400).send({ error: "Username Already Exists" });
       }
@@ -268,6 +277,10 @@ export class UsersRoutes {
       if (!req.body?.password) {
         return res.status(400).send({ error: "Missing: Password" });
       }
+      const passwordError = UserPasswordValidate(req.body.password);
+      if (passwordError) {
+        return res.status(400).send({ error: passwordError });
+      }
       if (!(await UserPasswordCheckPassword(user, req.body.passwordOld))) {
         return res.status(403).send({ error: "Old Password Wrong" });
       }
@@ -296,6 +309,12 @@ export class UsersRoutes {
       }
       if (!req.body) {
         return res.status(400).send({ error: "Missing: body" });
+      }
+      if (req.body.password) {
+        const passwordError = UserPasswordValidate(req.body.password);
+        if (passwordError) {
+          return res.status(400).send({ error: passwordError });
+        }
       }
 
       if (req.body.role) {

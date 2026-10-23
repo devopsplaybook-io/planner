@@ -9,6 +9,13 @@
 
 - [x] A missing, empty or malformed request body on session (login), user creation, own-password change and admin user update answers 400 with a "Missing: ..." (or Fastify body-parse) error instead of a 500.
 
+## Passwords and login
+
+- [x] Passwords set or changed (user creation, own-password change, admin update) must be at least 8 characters; a shorter password answers 400 with `Invalid: Password (minimum 8 characters)` and nothing is written.
+- [x] Existing shorter passwords remain valid for login (no forced reset): the policy is enforced on set/change only, never on login.
+- [x] A login for an unknown username performs a bcrypt comparison against a fixed dummy hash, so a miss costs the same as a wrong password and response timing does not reveal which usernames exist.
+- [x] Unknown and existing usernames both answer the generic 403 `Authentication Failed`; the failed-login rate limiter is unchanged.
+
 ## Calendar feed (ICS)
 
 - [x] `GET /api/users/calendar.ics` returns an RFC 5545 ICS feed of the authenticated user's tasks that have a due date, as all-day events (due date → due date + 1 day).

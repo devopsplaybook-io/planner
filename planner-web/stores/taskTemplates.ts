@@ -30,7 +30,6 @@ export interface TaskTemplate {
   attachments: {
     id: string;
     fileName: string;
-    filePath: string;
     dateCreated: string;
   }[];
   labels: string[];
@@ -184,7 +183,7 @@ export const useTaskTemplatesStore = defineStore("taskTemplates", {
         `/task-templates/${templateId}/attachments/${attachmentId}`,
       );
       const drop = (
-        attachments: { id: string; fileName: string; filePath: string; dateCreated: string }[],
+        attachments: { id: string; fileName: string; dateCreated: string }[],
       ) => {
         const idx = attachments.findIndex((a) => a.id === attachmentId);
         if (idx >= 0) attachments.splice(idx, 1);

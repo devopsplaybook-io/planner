@@ -22,7 +22,7 @@ exactly one project and has the following attributes:
 
 [x] Label rules: note labels follow the task label rules — each name is trimmed, must be non-empty and at most 100 characters, duplicates are dropped preserving the first occurrence, and invalid input answers 400. A note create (with its labels) is transactional: a failing label leaves no note behind.
 
-[x] Attachments: an upload larger than the configured `ATTACHMENT_MAX_SIZE` answers 413, removes the partial file and records no attachment; a file exactly at the limit is accepted.
+[x] Attachments: an upload larger than the configured `ATTACHMENT_MAX_SIZE` answers 413, removes the partial file and records no attachment; a file exactly at the limit is accepted. Attachment payloads never expose server file paths; downloads stream by attachment id with an RFC 6266 `Content-Disposition` carrying an ASCII fallback plus a UTF-8 `filename*`, so non-ASCII names download with their exact name.
 
 [x] Notes list: notes are displayed as cards showing the title, creation date, a description preview of up to 5 lines, labels and the comment count; cards have a minimum height so notes without a description remain readable and clickable.
 
