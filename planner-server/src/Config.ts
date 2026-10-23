@@ -1,5 +1,21 @@
 import * as fs from "fs-extra";
 import * as path from "path";
+import * as crypto from "crypto";
+
+/**
+ * Development-only JWT signing key, generated on first use and kept for the
+ * life of the process so tokens survive configuration reloads. DEV_MODE
+ * still requires a usable key: signing with an empty secret makes every
+ * login fail.
+ */
+let generatedDevJwtKey: string | null = null;
+
+function getDevelopmentJwtKey(): string {
+  if (!generatedDevJwtKey) {
+    generatedDevJwtKey = crypto.randomBytes(48).toString("hex");
+  }
+  return generatedDevJwtKey;
+}
 
 export class Config {
   public CONFIG_FILE: string;
@@ -260,9 +276,16 @@ export class Config {
       this.WEB_PUSH_VAPID_PRIVATE_KEY = process.env.WEB_PUSH_VAPID_PRIVATE_KEY;
     }
 
-    // Never run with a missing or publicly known JWT secret outside of
-    // development: tokens signed with it can be forged by anyone.
-    if (!this.DEV_MODE && (!this.JWT_KEY || this.JWT_KEY === "dev")) {
+    // Never sign tokens with an empty or publicly known JWT secret: such
+    // tokens are invalid (empty) or forgeable by anyone ("dev"). Outside of
+    // development the key is mandatory; DEV_MODE falls back to a generated
+    // per-process key when none is configured.
+    const configuredJwtKey = (this.JWT_KEY || "").trim();
+    if (this.DEV_MODE) {
+      if (!configuredJwtKey) {
+        this.JWT_KEY = getDevelopmentJwtKey();
+      }
+    } else if (!configuredJwtKey || configuredJwtKey === "dev") {
       throw new Error(
         "JWT_KEY must be set to a strong, private value (or start with DEV_MODE=true for local development)",
       );

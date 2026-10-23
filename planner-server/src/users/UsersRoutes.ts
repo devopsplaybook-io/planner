@@ -105,7 +105,7 @@ export class UsersRoutes {
       }
 
       // From User/Pass
-      if (!req.body.name) {
+      if (!req.body?.name) {
         return res.status(400).send({ error: "Missing: Name" });
       }
       if (!req.body.password) {
@@ -191,7 +191,7 @@ export class UsersRoutes {
         }
       }
 
-      if (!req.body.name) {
+      if (!req.body?.name) {
         return res.status(400).send({ error: "Missing: Name" });
       }
       if (!req.body.password) {
@@ -223,7 +223,7 @@ export class UsersRoutes {
         return res.status(401).send({ error: "Access Denied" });
       }
       const user = await UsersDataGet(userSession.userId);
-      if (!req.body.password) {
+      if (!req.body?.password) {
         return res.status(400).send({ error: "Missing: Password" });
       }
       if (!(await UserPasswordCheckPassword(user, req.body.passwordOld))) {
@@ -251,6 +251,9 @@ export class UsersRoutes {
       const user = await UsersDataGet(req.params.id);
       if (!user) {
         return res.status(404).send({ error: "User Not Found" });
+      }
+      if (!req.body) {
+        return res.status(400).send({ error: "Missing: body" });
       }
 
       if (req.body.role) {

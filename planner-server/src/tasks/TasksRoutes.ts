@@ -258,6 +258,38 @@ export function validateLabelList(value: unknown, field = "labels"): string[] {
 }
 
 /**
+ * Validates and normalizes an assignee id list payload: an array of
+ * non-empty strings, each trimmed and de-duplicated preserving the first
+ * occurrence; every id must reference an existing user. Throws an Error
+ * with the API's "Invalid: ..." message shape otherwise, so an unknown user
+ * answers 400 instead of a foreign key 500.
+ */
+export async function validateAssigneeList(
+  value: unknown,
+  field = "assignees",
+): Promise<string[]> {
+  if (!Array.isArray(value) || value.some((id) => typeof id !== "string")) {
+    throw new Error(`Invalid: ${field} (must be an array of user ids)`);
+  }
+  const ids: string[] = [];
+  for (const raw of value as string[]) {
+    const id = raw.trim();
+    if (!id) {
+      throw new Error(`Invalid: ${field} (user ids must be non-empty)`);
+    }
+    if (!ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+  for (const id of ids) {
+    if (!(await UsersDataGet(id))) {
+      throw new Error(`Invalid: ${field} (unknown user: ${id})`);
+    }
+  }
+  return ids;
+}
+
+/**
  * Resolves the effective status for a task in a project: the requested
  * status when the project uses it, otherwise the project's first status —
  * used when no status is given (creation default) or when a moved task's
@@ -528,6 +560,14 @@ export class TasksRoutes {
           return res.status(400).send({ error: (error as Error).message });
         }
       }
+      let assigneeIds: string[] | undefined;
+      if (req.body.assignees !== undefined) {
+        try {
+          assigneeIds = await validateAssigneeList(req.body.assignees);
+        } catch (error) {
+          return res.status(400).send({ error: (error as Error).message });
+        }
+      }
 
       const task = new Task();
       task.projectId = req.body.projectId;
@@ -536,8 +576,8 @@ export class TasksRoutes {
       task.status = resolveTaskStatus(project, req.body.status);
       if (req.body.priority) task.priority = req.body.priority;
       if (req.body.dueDate) task.dueDate = req.body.dueDate;
-      if (req.body.assignees)
-        task.assignees = req.body.assignees.map((u) => ({ userId: u }));
+      if (assigneeIds)
+        task.assignees = assigneeIds.map((userId) => ({ userId }));
       else if (userSession.userId)
         task.assignees = [{ userId: userSession.userId }];
       if (labels) task.labels = labels;
@@ -904,8 +944,13 @@ export class TasksRoutes {
       if (guard) {
         return res.status(guard.status).send({ error: guard.error });
       }
-      if (!req.body.userId)
+      if (!req.body?.userId)
         return res.status(400).send({ error: "Missing: userId" });
+      if (!(await UsersDataGet(req.body.userId))) {
+        return res
+          .status(400)
+          .send({ error: "Invalid: userId (unknown user)" });
+      }
       await addAssignee(req.params.id, req.body.userId);
       await TasksDataTouch(req.params.id);
       await recordTaskUpdate(
@@ -1108,7 +1153,7 @@ export class TasksRoutes {
           return res.status(guard.status).send({ error: guard.error });
         }
 
-        const data = await req.file();
+        const data = await req.file({ throwFileSizeLimit: false });
         if (!data) {
           return res.status(400).send({ error: "No file uploaded" });
         }
@@ -1123,11 +1168,24 @@ export class TasksRoutes {
         const filePath = path.join(attachmentDir, savedFileName);
 
         const writeStream = fs.createWriteStream(filePath);
-        await new Promise<void>((resolve, reject) => {
-          data.file.pipe(writeStream);
-          writeStream.on("finish", () => resolve());
-          writeStream.on("error", reject);
-        });
+        try {
+          await new Promise<void>((resolve, reject) => {
+            data.file.on("error", reject);
+            data.file.pipe(writeStream);
+            writeStream.on("finish", () => resolve());
+            writeStream.on("error", reject);
+          });
+        } catch {
+          await fs.remove(filePath).catch(() => undefined);
+          return res.status(400).send({ error: "Invalid file upload" });
+        }
+        // The configured file-size limit truncates the stream instead of
+        // failing it: reject the partial file rather than registering it as
+        // a complete attachment.
+        if (data.file.truncated) {
+          await fs.remove(filePath).catch(() => undefined);
+          return res.status(413).send({ error: "File too large" });
+        }
 
         await addTaskAttachment(
           req.params.id,

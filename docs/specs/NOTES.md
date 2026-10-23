@@ -20,6 +20,10 @@ exactly one project and has the following attributes:
 
 [x] Labels: labels are free-form strings set at creation and in the note dialog edit mode via the chip editor with autocomplete from existing labels; they are saved through the labels replace API (`POST /api/notes/:id/labels`).
 
+[x] Label rules: note labels follow the task label rules — each name is trimmed, must be non-empty and at most 100 characters, duplicates are dropped preserving the first occurrence, and invalid input answers 400. A note create (with its labels) is transactional: a failing label leaves no note behind.
+
+[x] Attachments: an upload larger than the configured `ATTACHMENT_MAX_SIZE` answers 413, removes the partial file and records no attachment; a file exactly at the limit is accepted.
+
 [x] Notes list: notes are displayed as cards showing the title, creation date, a description preview of up to 5 lines, labels and the comment count; cards have a minimum height so notes without a description remain readable and clickable.
 
 [x] Notes list search and label filter: the notes page offers a debounced search input; the search term is sent as `q` to `GET /api/notes` and matched server-side as a case-insensitive substring over the note title and description; the search respects visibility and composes with the project filter (a selected project restricts the search to its whole subtree); while searching, the results replace the normal list and an empty result set shows a "No notes found" state. A label filter additionally selects one or more existing labels (autocomplete from the labels in use); only notes carrying every selected label are shown, and the label filter composes with both the search results and the project subtree filter.
@@ -36,4 +40,4 @@ exactly one project and has the following attributes:
 - [x] A note the user cannot see answers 404 on the note API, like a missing note.
 - [x] Creating a note requires the target project to be visible to the user; updating, deleting and interacting with a note (comments, labels, attachments) requires the note to be visible to the user; changing the project requires the target project to be visible to the user.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-18_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-23_

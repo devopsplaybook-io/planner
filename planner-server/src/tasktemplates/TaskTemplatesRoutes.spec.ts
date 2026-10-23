@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
-import { Readable } from "stream";
+import fastifyMultipart from "@fastify/multipart";
+import { Readable, Writable } from "stream";
 import { TaskTemplatesRoutes } from "./TaskTemplatesRoutes";
 import {
   TaskTemplatesAdd,
@@ -8,6 +9,7 @@ import {
   TaskTemplatesGet,
   TaskTemplatesList,
   TaskTemplatesUpdate,
+  addTemplateAttachment,
   addTemplateComment,
   deleteTemplateAttachment,
   deleteTemplateComment,
@@ -365,6 +367,55 @@ describe("TaskTemplatesRoutes create and update", () => {
     expect(TaskTemplatesAdd).not.toHaveBeenCalled();
   });
 
+  it("should trim and de-duplicate the labels and assignees given at creation", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "Weekly report",
+        labels: [" a ", "a", "b"],
+        assignees: [" user-2 ", "user-2"],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const created = (TaskTemplatesAdd as jest.Mock).mock.calls[0][0];
+    expect(created.labels).toEqual(["a", "b"]);
+    expect(created.assignees).toEqual([{ userId: "user-2" }]);
+  });
+
+  it("should reject invalid labels at creation with 400", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    for (const labels of ["urgent", [1], [""], ["x".repeat(101)]]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: { projectId: publicProject.id, title: "T", labels },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain("labels");
+    }
+    expect(TaskTemplatesAdd).not.toHaveBeenCalled();
+  });
+
+  it("should reject an unknown assignee at creation with 400", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (UsersDataGet as jest.Mock).mockResolvedValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "T",
+        assignees: ["ghost"],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Invalid: assignees (unknown user: ghost)");
+    expect(TaskTemplatesAdd).not.toHaveBeenCalled();
+  });
+
   it("should update the fields and replace assignees and labels", async () => {
     const template = makeTemplate(allProject);
     (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
@@ -388,6 +439,54 @@ describe("TaskTemplatesRoutes create and update", () => {
     ]);
     expect(replaceTemplateLabels).toHaveBeenCalledWith(template.id, ["a", "b"]);
     expect(TaskTemplatesSchedulerRefresh).toHaveBeenCalledWith(template.id);
+  });
+
+  it("should trim labels and reflect the validated lists in the update response", async () => {
+    const template = makeTemplate(allProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(allProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: { labels: [" a ", "a", "b"], assignees: [" user-2 "] },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(replaceTemplateLabels).toHaveBeenCalledWith(template.id, ["a", "b"]);
+    expect(replaceTemplateAssignees).toHaveBeenCalledWith(template.id, [
+      "user-2",
+    ]);
+    expect(res.json().labels).toEqual(["a", "b"]);
+    expect(res.json().assignees).toEqual([{ userId: "user-2" }]);
+  });
+
+  it("should reject invalid labels on update with 400 and write nothing", async () => {
+    const template = makeTemplate(allProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(allProject);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: { labels: [""] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(TaskTemplatesUpdate).not.toHaveBeenCalled();
+    expect(replaceTemplateLabels).not.toHaveBeenCalled();
+  });
+
+  it("should reject an unknown assignee on update with 400 and write nothing", async () => {
+    const template = makeTemplate(allProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(allProject);
+    (UsersDataGet as jest.Mock).mockResolvedValue(null);
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${template.id}`,
+      payload: { assignees: ["ghost"] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Invalid: assignees (unknown user: ghost)");
+    expect(TaskTemplatesUpdate).not.toHaveBeenCalled();
+    expect(replaceTemplateAssignees).not.toHaveBeenCalled();
   });
 
   it("should answer 400 for an invalid cron on update", async () => {
@@ -780,12 +879,68 @@ describe("TaskTemplatesRoutes attachments", () => {
 
   beforeAll(async () => {
     app = Fastify();
+    await app.register(fastifyMultipart, { limits: { fileSize: 1024 } });
     await new TaskTemplatesRoutes().getRoutes(app);
     await app.ready();
   });
 
   afterAll(async () => {
     await app.close();
+  });
+
+  function upload(template: TaskTemplate, content: Buffer) {
+    const boundary = "----jesttemplateboundary";
+    const head = Buffer.from(
+      `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="file.bin"\r\n' +
+        "Content-Type: application/octet-stream\r\n\r\n",
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+    return app.inject({
+      method: "POST",
+      url: `/${template.id}/attachments`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: Buffer.concat([head, content, tail]),
+    });
+  }
+
+  it("should reject an oversized attachment with 413 and remove the partial file", async () => {
+    const template = makeTemplate(publicProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.remove.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const res = await upload(template, Buffer.alloc(2048, "a"));
+
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error).toBe("File too large");
+    expect(addTemplateAttachment).not.toHaveBeenCalled();
+    expect(mockFs.remove).toHaveBeenCalledWith(
+      expect.stringContaining("/attachments/task-templates/"),
+    );
+  });
+
+  it("should accept an attachment of exactly the configured limit", async () => {
+    const template = makeTemplate(publicProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(template);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const res = await upload(template, Buffer.alloc(1024, "a"));
+
+    expect(res.statusCode).toBe(201);
+    expect(addTemplateAttachment).toHaveBeenCalledTimes(1);
   });
 
   it("should answer 404 for a missing attachment", async () => {

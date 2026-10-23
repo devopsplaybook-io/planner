@@ -11,7 +11,7 @@ import {
   projectMutationError,
 } from "../projects/ProjectVisibility";
 import { ProjectsDataGet } from "../projects/ProjectsData";
-import { parseProjectIds } from "../tasks/TasksRoutes";
+import { parseProjectIds, validateLabelList } from "../tasks/TasksRoutes";
 import {
   NotesDataAdd,
   NotesDataDelete,
@@ -24,7 +24,6 @@ import {
   getNoteComment,
   updateNoteComment,
   replaceNoteLabels,
-  addNoteLabel,
   addNoteAttachment,
   deleteNoteAttachment,
   getNoteAttachment,
@@ -119,15 +118,21 @@ export class NotesRoutes {
           .send({ error: permissionDeniedMessage("update") });
       }
 
+      let labels: string[] | undefined;
+      if (req.body.labels !== undefined) {
+        try {
+          labels = validateLabelList(req.body?.labels);
+        } catch (error) {
+          return res.status(400).send({ error: (error as Error).message });
+        }
+      }
+
       const note = new Note();
       note.projectId = req.body.projectId;
       note.title = req.body.title;
       note.description = req.body.description || "";
-      if (req.body.labels) note.labels = req.body.labels;
+      if (labels) note.labels = labels;
       await NotesDataAdd(note);
-      for (const label of note.labels) {
-        await addNoteLabel(note.id, label);
-      }
       return res.status(201).send(note.toTransportJson());
     });
 
@@ -308,14 +313,11 @@ export class NotesRoutes {
       if (guard) {
         return res.status(guard.status).send({ error: guard.error });
       }
-      const labels = req.body.labels;
-      if (
-        !Array.isArray(labels) ||
-        labels.some((label) => typeof label !== "string")
-      ) {
-        return res
-          .status(400)
-          .send({ error: "Invalid: labels (must be an array of strings)" });
+      let labels: string[];
+      try {
+        labels = validateLabelList(req.body?.labels);
+      } catch (error) {
+        return res.status(400).send({ error: (error as Error).message });
       }
       await replaceNoteLabels(req.params.id, labels);
       return res.status(201).send({});
@@ -344,7 +346,7 @@ export class NotesRoutes {
           return res.status(guard.status).send({ error: guard.error });
         }
 
-        const data = await req.file();
+        const data = await req.file({ throwFileSizeLimit: false });
         if (!data) {
           return res.status(400).send({ error: "No file uploaded" });
         }
@@ -359,11 +361,21 @@ export class NotesRoutes {
         const filePath = path.join(attachmentDir, savedFileName);
 
         const writeStream = fs.createWriteStream(filePath);
-        await new Promise<void>((resolve, reject) => {
-          data.file.pipe(writeStream);
-          writeStream.on("finish", () => resolve());
-          writeStream.on("error", reject);
-        });
+        try {
+          await new Promise<void>((resolve, reject) => {
+            data.file.on("error", reject);
+            data.file.pipe(writeStream);
+            writeStream.on("finish", () => resolve());
+            writeStream.on("error", reject);
+          });
+        } catch {
+          await fs.remove(filePath).catch(() => undefined);
+          return res.status(400).send({ error: "Invalid file upload" });
+        }
+        if (data.file.truncated) {
+          await fs.remove(filePath).catch(() => undefined);
+          return res.status(413).send({ error: "File too large" });
+        }
 
         await addNoteAttachment(
           req.params.id,

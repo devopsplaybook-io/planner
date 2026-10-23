@@ -14,6 +14,7 @@ import {
   MAX_LABEL_LENGTH,
   TASKS_DEFAULT_LIMIT,
   TasksRoutes,
+  validateAssigneeList,
   validateDependencies,
   validateLabelList,
 } from "./TasksRoutes";
@@ -269,6 +270,52 @@ describe("validateLabelList", () => {
   });
 });
 
+describe("validateAssigneeList", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (UsersDataGet as jest.Mock).mockResolvedValue({ id: "user-1" });
+  });
+
+  it("should reject a payload that is not an array of strings", async () => {
+    for (const value of [undefined, null, "user-1", 42, [1], [{}], [[]]]) {
+      await expect(validateAssigneeList(value)).rejects.toThrow(
+        "Invalid: assignees (must be an array of user ids)",
+      );
+    }
+  });
+
+  it("should accept an empty array", async () => {
+    await expect(validateAssigneeList([])).resolves.toEqual([]);
+  });
+
+  it("should trim ids and de-duplicate preserving the first occurrence", async () => {
+    await expect(
+      validateAssigneeList([" user-1 ", "user-2", "user-1"]),
+    ).resolves.toEqual(["user-1", "user-2"]);
+  });
+
+  it("should reject trimmed-empty ids", async () => {
+    for (const value of [[""], ["   "], ["user-1", " "]]) {
+      await expect(validateAssigneeList(value)).rejects.toThrow(
+        "user ids must be non-empty",
+      );
+    }
+  });
+
+  it("should reject an unknown user", async () => {
+    (UsersDataGet as jest.Mock).mockResolvedValue(null);
+    await expect(validateAssigneeList(["ghost"])).rejects.toThrow(
+      "Invalid: assignees (unknown user: ghost)",
+    );
+  });
+
+  it("should name the field in the error message", async () => {
+    await expect(validateAssigneeList("nope", "assigneeIds")).rejects.toThrow(
+      "Invalid: assigneeIds (must be an array of user ids)",
+    );
+  });
+});
+
 describe("parseLimit", () => {
   it("should default when absent or empty", () => {
     expect(parseLimit(undefined)).toBe(TASKS_DEFAULT_LIMIT);
@@ -482,8 +529,9 @@ describe("TasksRoutes project visibility", () => {
   beforeAll(async () => {
     app = Fastify();
     // The attachment upload route reads multipart parts; register the
-    // plugin so POST /:id/attachments can be exercised end-to-end
-    await app.register(fastifyMultipart);
+    // plugin so POST /:id/attachments can be exercised end-to-end. The
+    // small limit keeps the truncation cases cheap.
+    await app.register(fastifyMultipart, { limits: { fileSize: 1024 } });
     await new TasksRoutes().getRoutes(app);
     await app.ready();
   });
@@ -816,6 +864,57 @@ describe("TasksRoutes project visibility", () => {
       expect(res.json().error).toContain("labels");
     }
     expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should trim and de-duplicate the assignees given at creation", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (UsersDataGet as jest.Mock).mockResolvedValue({ id: "user-2" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "New",
+        assignees: [" user-2 ", "user-2"],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(TasksDataAdd).toHaveBeenCalledTimes(1);
+    expect((TasksDataAdd as jest.Mock).mock.calls[0][0].assignees).toEqual([
+      { userId: "user-2" },
+    ]);
+  });
+
+  it("should reject an unknown assignee at creation with 400 and persist nothing", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (UsersDataGet as jest.Mock).mockResolvedValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "New",
+        assignees: ["ghost"],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Invalid: assignees (unknown user: ghost)");
+    expect(TasksDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should reject adding an unknown assignee with 400", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (UsersDataGet as jest.Mock).mockResolvedValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/assignees`,
+      payload: { userId: "ghost" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Invalid: userId (unknown user)");
+    expect(addAssignee).not.toHaveBeenCalled();
   });
 
   it("should reject creating a task with a status outside the project catalog", async () => {
@@ -1829,6 +1928,70 @@ describe("TasksRoutes project visibility", () => {
     expect(TaskVoiceCommentsEnqueue).not.toHaveBeenCalled();
   });
 
+  it("should reject an oversized attachment with 413 and remove the partial file", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.remove.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const boundary = "----jestformboundary";
+    const head = Buffer.from(
+      `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="big.bin"\r\n' +
+        "Content-Type: application/octet-stream\r\n\r\n",
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/attachments`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: Buffer.concat([head, Buffer.alloc(2048, "a"), tail]),
+    });
+
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error).toBe("File too large");
+    expect(addTaskAttachment).not.toHaveBeenCalled();
+    expect(mockFs.remove).toHaveBeenCalledWith(
+      expect.stringContaining("/attachments/tasks/"),
+    );
+    expect(TaskVoiceCommentsEnqueue).not.toHaveBeenCalled();
+  });
+
+  it("should accept an attachment of exactly the configured limit", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const boundary = "----jestformboundary";
+    const head = Buffer.from(
+      `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="exact.bin"\r\n' +
+        "Content-Type: application/octet-stream\r\n\r\n",
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/attachments`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: Buffer.concat([head, Buffer.alloc(1024, "a"), tail]),
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(addTaskAttachment).toHaveBeenCalledTimes(1);
+  });
+
   it("should reject assignee removal on a task the user cannot see", async () => {
     const task = makeTask(hiddenProject);
     (TasksDataGet as jest.Mock).mockResolvedValue(task);
@@ -2373,6 +2536,7 @@ describe("TasksRoutes update feed (activity)", () => {
     const task = makeTask(publicProject);
     (TasksDataGet as jest.Mock).mockResolvedValue(task);
     (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (UsersDataGet as jest.Mock).mockResolvedValue({ id: "user-2", name: "User" });
     const res = await app.inject({
       method: "POST",
       url: `/${task.id}/assignees`,

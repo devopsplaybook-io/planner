@@ -106,18 +106,45 @@ describe("Config", () => {
       await expect(config.reload()).rejects.toThrow(/JWT_KEY/);
     });
 
+    it("should refuse a whitespace-only JWT_KEY outside DEV_MODE", async () => {
+      delete process.env.DEV_MODE;
+      await fs.writeJson(process.env.CONFIG_FILE, { JWT_KEY: "   " });
+      const config = new Config();
+      await expect(config.reload()).rejects.toThrow(/JWT_KEY/);
+    });
+
     it("should accept a real JWT_KEY outside DEV_MODE", async () => {
       delete process.env.DEV_MODE;
       const config = await writeConfig({ JWT_KEY: "a-strong-secret" });
       expect(config.JWT_KEY).toBe("a-strong-secret");
     });
 
-    it("should start with an empty JWT_KEY in DEV_MODE", async () => {
+    it("should generate a usable JWT_KEY in DEV_MODE when none is configured", async () => {
       process.env.DEV_MODE = "true";
       const config = new Config();
       await fs.writeJson(process.env.CONFIG_FILE, {});
       await expect(config.reload()).resolves.toBeUndefined();
-      expect(config.JWT_KEY).toBe("");
+      expect(config.JWT_KEY).not.toBe("");
+      expect(config.JWT_KEY).not.toBe("dev");
+      expect(config.JWT_KEY.length).toBeGreaterThanOrEqual(64);
+    });
+
+    it("should keep the generated DEV_MODE key stable across reloads", async () => {
+      process.env.DEV_MODE = "true";
+      const config = await writeConfig({});
+      const generated = config.JWT_KEY;
+      await config.reload();
+      expect(config.JWT_KEY).toBe(generated);
+
+      const other = new Config();
+      await other.reload();
+      expect(other.JWT_KEY).toBe(generated);
+    });
+
+    it("should keep an explicit JWT_KEY in DEV_MODE", async () => {
+      process.env.DEV_MODE = "true";
+      const config = await writeConfig({ JWT_KEY: "my-dev-key" });
+      expect(config.JWT_KEY).toBe("my-dev-key");
     });
 
     it("should read the rate limits and attachment size from the config file", async () => {
