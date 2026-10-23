@@ -12,6 +12,7 @@ import {
   parseProjectIds,
   resolveTaskStatus,
   MAX_LABEL_LENGTH,
+  MAX_LIST_LIMIT,
   TASKS_DEFAULT_LIMIT,
   TasksRoutes,
   validateAssigneeList,
@@ -323,9 +324,10 @@ describe("parseLimit", () => {
     expect(parseLimit("")).toBe(TASKS_DEFAULT_LIMIT);
   });
 
-  it("should accept positive integers", () => {
+  it("should accept positive integers up to the hard maximum", () => {
     expect(parseLimit("1")).toBe(1);
     expect(parseLimit("250")).toBe(250);
+    expect(parseLimit(String(MAX_LIST_LIMIT))).toBe(MAX_LIST_LIMIT);
   });
 
   it("should reject zero, negatives and non-integers", () => {
@@ -333,6 +335,12 @@ describe("parseLimit", () => {
     expect(() => parseLimit("-5")).toThrow();
     expect(() => parseLimit("1.5")).toThrow();
     expect(() => parseLimit("abc")).toThrow();
+  });
+
+  it("should reject a limit above the hard maximum", () => {
+    expect(() => parseLimit(String(MAX_LIST_LIMIT + 1))).toThrow(
+      "Invalid: limit (must be an integer between 1 and 1000)",
+    );
   });
 });
 
@@ -668,7 +676,7 @@ describe("TasksRoutes project visibility", () => {
   });
 
   it("should answer 400 for an invalid limit or offset", async () => {
-    for (const url of ["/?limit=0", "/?limit=abc", "/?limit=-1", "/?offset=-1", "/?offset=1.5"]) {
+    for (const url of ["/?limit=0", "/?limit=abc", "/?limit=-1", "/?limit=1001", "/?offset=-1", "/?offset=1.5"]) {
       const res = await app.inject({ method: "GET", url });
       expect(res.statusCode).toBe(400);
     }

@@ -28,6 +28,7 @@ The **Automation** section is specific to templates (tasks do not have it):
 | [x] Skip if previous instance not done | When enabled and the previous instance still exists in a status other than Done, the scheduled tick creates nothing; when the previous instance was deleted, a new one is created |
 | [x] Add the date to the title | When enabled, every created instance's title gets a " YYYY.MN.DD" suffix (zero-padded creation date in the server timezone, e.g. "Report 2026.10.17") |
 | [x] Initial status of instances | When set, created instances start in this status instead of the project's first status; the value is validated against the template's project statuses (server-side) and the UI offers the selected project's statuses plus a "Project default" empty option. The UI resets the selection to "Project default" when switching to a project that does not have the selected status, and updating a template (e.g. moving it to another project) clears a stored status the target project does not have |
+| [x] Serialized scheduling | Refreshes and scheduled ticks of one template are serialized: a refresh cannot re-register a schedule from a stale read after a newer edit, and two overlapping ticks cannot create two instances; the skip-if-previous-not-done rule is unchanged |
 
 ## Management of Templates
 
@@ -70,7 +71,7 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 ## API
 
-- [x] `GET /api/task-templates` lists templates newest first (visibility-scoped for non-admins); optional composable query parameters: `projectId`, `projectIds` (comma-separated subtree) and `q` (case-insensitive substring over title and description).
+- [x] `GET /api/task-templates` lists templates newest first (visibility-scoped for non-admins); optional composable query parameters: `projectId`, `projectIds` (comma-separated subtree), `q` (case-insensitive substring over title and description), `limit` (default 1000, maximum 1000; a larger, non-positive or non-integer value answers 400) and `offset` (default 0, non-negative integer).
 - [x] `POST /api/task-templates`, `GET/PUT/DELETE /api/task-templates/:id` manage templates with the permission rules above.
 - [x] `POST /api/task-templates/:id/create-instance` creates one task instance and returns it (201).
 - [x] `POST /api/task-templates/:id/comments`, `PUT/DELETE /api/task-templates/:id/comments/:commentId` manage template comments.

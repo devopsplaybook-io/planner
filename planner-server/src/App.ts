@@ -10,7 +10,10 @@ import { formatLocalDate } from "./utils/DateUtils";
 import { RunMigrations } from "./DbMigrations";
 import { AuthInit, AuthGetUserSession } from "./users/Auth";
 import { ApiKeysDataBackfillHashes } from "./users/ApiKeysData";
-import { UsersRoutes } from "./users/UsersRoutes";
+import {
+  LoginRateLimiterStartSweep,
+  UsersRoutes,
+} from "./users/UsersRoutes";
 import { UsersDataList } from "./users/UsersData";
 import { ProjectsRoutes } from "./projects/ProjectsRoutes";
 import { ProjectsDataAdd, ProjectsDataList } from "./projects/ProjectsData";
@@ -90,6 +93,7 @@ Promise.resolve()
     await TaskVoiceCommentsInit(config);
     await NotificationsInit(config);
     CleanupInit();
+    LoginRateLimiterStartSweep();
     await TaskTemplatesSchedulerInit();
 
     // Ensure a default project exists

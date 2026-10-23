@@ -28,6 +28,7 @@ const mockDbUtils = require("../utils/DbUtils") as any;
 import {
   RecommendationInit,
   RecommendationGetCached,
+  RecommendationGenerateAll,
   RecommendationGenerateForUser,
 } from "./Recommendation";
 import { Config } from "../Config";
@@ -443,6 +444,113 @@ describe("Recommendation", () => {
         expect(call.sql).not.toContain("visibility = 'public'");
         expect(call.params).toEqual([]);
       }
+    });
+  });
+
+  describe("RecommendationGenerateAll overlap guard", () => {
+    function deferred<T = unknown>() {
+      let resolve!: (value: T) => void;
+      let reject!: (error: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    }
+
+    async function flush(times = 5): Promise<void> {
+      for (let i = 0; i < times; i++) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    }
+
+    it("should not start a second run while one is in flight", async () => {
+      const userList = deferred<unknown[]>();
+      let userListCalls = 0;
+      mockDbUtils.DbUtilsQuerySQL.mockImplementation((sql: string) => {
+        if (sql.includes("FROM users")) {
+          userListCalls++;
+          return userList.promise;
+        }
+        return Promise.resolve([]);
+      });
+
+      const run1 = RecommendationGenerateAll();
+      await flush();
+      expect(userListCalls).toBe(1);
+
+      await RecommendationGenerateAll();
+      expect(userListCalls).toBe(1);
+
+      userList.resolve([]);
+      await run1;
+
+      await RecommendationGenerateAll();
+      expect(userListCalls).toBe(2);
+    });
+
+    it("should call the LLM once for two concurrent runs", async () => {
+      const llm = deferred();
+      mockDbUtils.DbUtilsQuerySQL.mockImplementation((sql: string) => {
+        if (sql.includes("FROM users WHERE id"))
+          return Promise.resolve([{ id: "user-1", name: "Alice", role: "admin" }]);
+        if (sql.includes("COUNT(*)")) return Promise.resolve([{ count: 2 }]);
+        if (sql.includes("FROM users"))
+          return Promise.resolve([{ id: "user-1", name: "Alice" }]);
+        return Promise.resolve([]);
+      });
+      mockAxios.post.mockReturnValue(llm.promise);
+
+      const run1 = RecommendationGenerateAll();
+      await flush();
+      expect(mockAxios.post).toHaveBeenCalledTimes(1);
+
+      await RecommendationGenerateAll();
+      expect(mockAxios.post).toHaveBeenCalledTimes(1);
+
+      llm.resolve({
+        data: {
+          choices: [
+            {
+              message: {
+                content: "## Analysis\nok\n\n## Recommendations\nok",
+              },
+            },
+          ],
+        },
+      });
+      await run1;
+
+      mockAxios.post.mockResolvedValue({
+        data: {
+          choices: [
+            {
+              message: {
+                content: "## Analysis\nok\n\n## Recommendations\nok",
+              },
+            },
+          ],
+        },
+      });
+      await RecommendationGenerateAll();
+      expect(mockAxios.post).toHaveBeenCalledTimes(2);
+    });
+
+    it("should reset the guard when the user-list query rejects", async () => {
+      let userListCalls = 0;
+      mockDbUtils.DbUtilsQuerySQL.mockImplementation((sql: string) => {
+        if (sql.includes("FROM users")) {
+          userListCalls++;
+          return userListCalls === 1
+            ? Promise.reject(new Error("db down"))
+            : Promise.resolve([]);
+        }
+        return Promise.resolve([]);
+      });
+
+      await expect(RecommendationGenerateAll()).rejects.toThrow("db down");
+      await expect(RecommendationGenerateAll()).resolves.toBeUndefined();
+      expect(userListCalls).toBe(2);
     });
   });
 });

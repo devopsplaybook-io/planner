@@ -79,9 +79,51 @@ export class LoginRateLimiter {
   public reset(key: string): void {
     this.failures.delete(key);
   }
+
+  /**
+   * Drops expired timestamps and deletes the keys that have none left.
+   * Returns the number of removed keys.
+   */
+  public sweep(now: number = Date.now()): number {
+    let removed = 0;
+    for (const [key, timestamps] of this.failures) {
+      const recent = timestamps.filter((t) => now - t < this.windowMs);
+      if (recent.length === 0) {
+        this.failures.delete(key);
+        removed++;
+      } else {
+        this.failures.set(key, recent);
+      }
+    }
+    return removed;
+  }
+
+  /** Number of keys currently tracked (test helper). */
+  public size(): number {
+    return this.failures.size;
+  }
 }
 
 const loginRateLimiter = new LoginRateLimiter();
+
+let loginRateLimiterSweepTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Periodically prunes the failed-login map so attacker-controlled
+ * IP|username keys cannot accumulate forever. The timer never blocks
+ * process exit and starting it twice is a no-op.
+ */
+export function LoginRateLimiterStartSweep(
+  intervalMs: number = LOGIN_WINDOW_MS,
+): void {
+  if (loginRateLimiterSweepTimer) {
+    return;
+  }
+  loginRateLimiterSweepTimer = setInterval(() => {
+    loginRateLimiter.sweep();
+  }, intervalMs);
+  loginRateLimiterSweepTimer.unref?.();
+}
 
 export class UsersRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {

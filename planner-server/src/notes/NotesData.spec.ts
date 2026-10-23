@@ -180,3 +180,53 @@ describe("buildListNotesQuery search (q)", () => {
     expect(buildListNotesQuery({ q: "" }, "sqlite").params).toEqual([]);
   });
 });
+
+describe("buildListNotesQuery pagination", () => {
+  it("should append LIMIT and OFFSET with params in order (sqlite)", () => {
+    const { sql, params } = buildListNotesQuery(
+      { projectId: "proj-1", limit: 20, offset: 40 },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM notes WHERE projectId = ? ORDER BY dateCreated DESC LIMIT ? OFFSET ?",
+    );
+    expect(params).toEqual(["proj-1", 20, 40]);
+  });
+
+  it("should append only LIMIT when the offset is zero (sqlite)", () => {
+    const { sql, params } = buildListNotesQuery(
+      { limit: 1000, offset: 0 },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM notes ORDER BY dateCreated DESC LIMIT ?",
+    );
+    expect(params).toEqual([1000]);
+  });
+
+  it("should quote identifiers and keep placeholders (postgres)", () => {
+    const { sql, params } = buildListNotesQuery(
+      { projectId: "proj-1", limit: 20, offset: 40 },
+      "postgres",
+    );
+    expect(sql).toBe(
+      'SELECT * FROM notes WHERE "projectId" = ? ORDER BY "dateCreated" DESC LIMIT ? OFFSET ?',
+    );
+    expect(params).toEqual(["proj-1", 20, 40]);
+  });
+
+  it("should stay unbounded without a limit (backward compatibility)", () => {
+    const { sql, params } = buildListNotesQuery({}, "sqlite");
+    expect(sql).toBe("SELECT * FROM notes ORDER BY dateCreated DESC");
+    expect(params).toEqual([]);
+  });
+
+  it("should ignore a non-positive limit", () => {
+    const { sql, params } = buildListNotesQuery(
+      { limit: 0, offset: 10 },
+      "sqlite",
+    );
+    expect(sql).toBe("SELECT * FROM notes ORDER BY dateCreated DESC");
+    expect(params).toEqual([]);
+  });
+});

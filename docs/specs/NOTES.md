@@ -34,6 +34,10 @@ exactly one project and has the following attributes:
 
 [x] Archived projects (see [PROJECTS.md](PROJECTS.md)) are read-only: notes in them cannot be created or updated (including comments, labels, attachments) and notes cannot be moved into them; deleting a note is still allowed.
 
+## API
+
+- [x] `GET /api/notes` lists notes newest first (`dateCreated` DESC), visibility-scoped for non-admins. Optional composable query parameters: `projectId`, `projectIds` (comma-separated subtree), `q` (case-insensitive substring over title and description), `limit` (default 1000, maximum 1000; a larger, non-positive or non-integer value answers 400) and `offset` (default 0, non-negative integer).
+
 ## Visibility
 
 - [x] Notes inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see notes from public projects or restricted projects they are a member of; admins see all notes.

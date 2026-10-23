@@ -266,6 +266,31 @@ describe("due date reminders (integration)", () => {
     expect(payload.url).toBe("/");
     expect(payload.tag).toBe("task-digest-2026-10-15");
   });
+
+  it("should not remind for a Done task due today", async () => {
+    await insertUser("u-done");
+    await insertProject("p-done");
+    await insertTask("t-done", "p-done", today, "Done");
+    await insertAssignee("t-done", "u-done");
+    await insertSubscription("u-done");
+
+    await NotificationsCheckAndSend(day1);
+
+    expect(callsTo("u-done")).toHaveLength(0);
+  });
+
+  it("should not remind for a task due after the reminder window", async () => {
+    await insertUser("u-future");
+    await insertProject("p-future");
+    // day1 is 2026-10-15: the window ends before 2026-10-17
+    await insertTask("t-future", "p-future", "2026-10-18");
+    await insertAssignee("t-future", "u-future");
+    await insertSubscription("u-future");
+
+    await NotificationsCheckAndSend(day1);
+
+    expect(callsTo("u-future")).toHaveLength(0);
+  });
 });
 
 describe("task update notifications (integration)", () => {

@@ -118,10 +118,13 @@ export function parseDoneSince(value: unknown): string | undefined {
 /** Page size used when the caller does not send an explicit limit. */
 export const TASKS_DEFAULT_LIMIT = 1000;
 
+/** Hard cap on every list endpoint, so a client cannot request the whole table. */
+export const MAX_LIST_LIMIT = 1000;
+
 /**
  * Validates the optional limit query param. Returns the default page size
- * when absent and throws when the value is not a positive integer. Pure so
- * it can be unit-tested without the route layer.
+ * when absent and throws when the value is not an integer between 1 and
+ * MAX_LIST_LIMIT. Pure so it can be unit-tested without the route layer.
  */
 export function parseLimit(value: unknown): number {
   if (value === undefined || value === null || value === "") {
@@ -130,6 +133,11 @@ export function parseLimit(value: unknown): number {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1) {
     throw new Error("Invalid: limit (must be a positive integer)");
+  }
+  if (n > MAX_LIST_LIMIT) {
+    throw new Error(
+      `Invalid: limit (must be an integer between 1 and ${MAX_LIST_LIMIT})`,
+    );
   }
   return n;
 }

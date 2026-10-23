@@ -18,13 +18,43 @@ const logger = console;
 const jobs = new Map<string, cron.ScheduledTask>();
 
 /**
+ * Per-template promise chain serializing refreshes and ticks. A refresh and
+ * a tick of the same template never run concurrently, so a slow refresh
+ * cannot re-register a stale schedule and two ticks cannot both pass the
+ * skip check before an instance exists.
+ */
+const templateChains = new Map<string, Promise<unknown>>();
+
+function serializeTemplateOperation<T>(
+  templateId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = templateChains.get(templateId) ?? Promise.resolve();
+  const next = previous.then(operation, operation);
+  const tail = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  templateChains.set(templateId, tail);
+  tail.then(() => {
+    if (templateChains.get(templateId) === tail) {
+      templateChains.delete(templateId);
+    }
+  });
+  return next;
+}
+
+/**
  * Registers the cron job of one template. Does nothing for templates
- * without a schedule.
+ * without a schedule. Any previous job of the same template is stopped
+ * first, so scheduling is idempotent.
  */
 function scheduleTemplate(template: TaskTemplate): void {
   if (!template.scheduleCron) {
     return;
   }
+  jobs.get(template.id)?.destroy();
+  jobs.delete(template.id);
   const task = cron.schedule(template.scheduleCron, () => {
     createScheduledInstance(template.id).catch((error) =>
       logger.error(
@@ -42,19 +72,20 @@ function scheduleTemplate(template: TaskTemplate): void {
  * (deletes): it only stops the old job.
  */
 export function TaskTemplatesSchedulerRefresh(templateId: string): void {
-  jobs.get(templateId)?.destroy();
-  jobs.delete(templateId);
-  TaskTemplatesGet(templateId)
-    .then((template) => {
-      if (template) {
-        scheduleTemplate(template);
-      }
-    })
-    .catch((error) =>
-      logger.error(
-        `[TaskTemplates] Failed to re-schedule template ${templateId}: ${error.message}`,
-      ),
-    );
+  serializeTemplateOperation(templateId, async () => {
+    jobs.get(templateId)?.destroy();
+    jobs.delete(templateId);
+    // Re-read the template only after the previous operation of this
+    // template finished, so a slow earlier fetch cannot win the race
+    const template = await TaskTemplatesGet(templateId);
+    if (template) {
+      scheduleTemplate(template);
+    }
+  }).catch((error) =>
+    logger.error(
+      `[TaskTemplates] Failed to re-schedule template ${templateId}: ${error.message}`,
+    ),
+  );
 }
 
 /** Schedules every template that has a cron schedule (server startup). */
@@ -76,6 +107,14 @@ export async function TaskTemplatesSchedulerInit(): Promise<void> {
  * the created task id, or null when the tick was skipped.
  */
 export async function createScheduledInstance(
+  templateId: string,
+): Promise<string | null> {
+  return serializeTemplateOperation(templateId, () =>
+    runScheduledInstance(templateId),
+  );
+}
+
+async function runScheduledInstance(
   templateId: string,
 ): Promise<string | null> {
   const template = await TaskTemplatesGet(templateId);
@@ -108,4 +147,11 @@ export async function createScheduledInstance(
 /** Test helper: the currently registered jobs (id -> ScheduledTask). */
 export function TaskTemplatesSchedulerJobs(): Map<string, cron.ScheduledTask> {
   return jobs;
+}
+
+/** Test helper: waits until no serialized template operation is pending. */
+export async function TaskTemplatesSchedulerWaitIdle(): Promise<void> {
+  while (templateChains.size > 0) {
+    await Promise.allSettled(templateChains.values());
+  }
 }

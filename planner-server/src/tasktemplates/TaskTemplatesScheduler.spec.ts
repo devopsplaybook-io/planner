@@ -2,6 +2,7 @@ import {
   TaskTemplatesSchedulerInit,
   TaskTemplatesSchedulerRefresh,
   TaskTemplatesSchedulerJobs,
+  TaskTemplatesSchedulerWaitIdle,
   createScheduledInstance,
 } from "./TaskTemplatesScheduler";
 import {
@@ -215,5 +216,97 @@ describe("createScheduledInstance", () => {
       expect(await createScheduledInstance("t1")).toBe("task-1");
       expect(TaskTemplateRunsGetLast).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("per-template serialization", () => {
+  function deferred<T = unknown>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  }
+
+  it("should not register a stale schedule when two refreshes overlap", async () => {
+    const firstGet = deferred<TaskTemplate | null>();
+    const secondGet = deferred<TaskTemplate | null>();
+    (TaskTemplatesGet as jest.Mock)
+      .mockReturnValueOnce(firstGet.promise)
+      .mockReturnValueOnce(secondGet.promise);
+
+    TaskTemplatesSchedulerRefresh("t1");
+    TaskTemplatesSchedulerRefresh("t1");
+    await flushScheduler();
+    // The second refresh waits for the first one to finish
+    expect(TaskTemplatesGet).toHaveBeenCalledTimes(1);
+
+    firstGet.resolve(makeTemplate({ id: "t1", scheduleCron: "0 9 * * 1" }));
+    await flushScheduler();
+    expect(cron.schedule).toHaveBeenLastCalledWith(
+      "0 9 * * 1",
+      expect.any(Function),
+    );
+    expect(TaskTemplatesGet).toHaveBeenCalledTimes(2);
+
+    secondGet.resolve(makeTemplate({ id: "t1", scheduleCron: "0 10 * * 1" }));
+    await TaskTemplatesSchedulerWaitIdle();
+    expect(cron.schedule).toHaveBeenLastCalledWith(
+      "0 10 * * 1",
+      expect.any(Function),
+    );
+    expect(cron.schedule).toHaveBeenCalledTimes(2);
+  });
+
+  it("should create one instance for two concurrent ticks with the skip rule", async () => {
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(
+      makeTemplate({ id: "t1", skipIfPreviousNotDone: true }),
+    );
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(makeProject());
+    let created = 0;
+    (createInstanceFromTemplate as jest.Mock).mockImplementation(async () => {
+      created++;
+      return { id: `task-${created}` };
+    });
+    (TaskTemplateRunsGetLast as jest.Mock).mockImplementation(async () =>
+      created === 0
+        ? null
+        : {
+            taskId: "task-1",
+            taskStatus: "To Do",
+            dateCreated: "2026-10-01T00:00:00.000Z",
+          },
+    );
+
+    const results = await Promise.all([
+      createScheduledInstance("t1"),
+      createScheduledInstance("t1"),
+    ]);
+    await TaskTemplatesSchedulerWaitIdle();
+
+    expect(createInstanceFromTemplate).toHaveBeenCalledTimes(1);
+    expect(results).toEqual(["task-1", null]);
+    expect(TaskTemplateRunsGetLast).toHaveBeenCalledTimes(2);
+  });
+
+  it("should create on every tick when the skip rule is off", async () => {
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(
+      makeTemplate({ id: "t1", skipIfPreviousNotDone: false }),
+    );
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(makeProject());
+    let created = 0;
+    (createInstanceFromTemplate as jest.Mock).mockImplementation(async () => {
+      created++;
+      return { id: `task-${created}` };
+    });
+
+    const results = await Promise.all([
+      createScheduledInstance("t1"),
+      createScheduledInstance("t1"),
+    ]);
+    await TaskTemplatesSchedulerWaitIdle();
+
+    expect(createInstanceFromTemplate).toHaveBeenCalledTimes(2);
+    expect(results).toEqual(["task-1", "task-2"]);
   });
 });

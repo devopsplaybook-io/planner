@@ -1,5 +1,10 @@
-import { TaskTemplatesAdd, TaskTemplatesUpdate, buildListTemplatesQuery } from "./TaskTemplatesData";
-import { DbUtilsExecSQL } from "../utils/DbUtils";
+import {
+  TaskTemplatesAdd,
+  TaskTemplatesList,
+  TaskTemplatesUpdate,
+  buildListTemplatesQuery,
+} from "./TaskTemplatesData";
+import { DbUtilsExecSQL, DbUtilsQuerySQL } from "../utils/DbUtils";
 import { TaskTemplate } from "../model/TaskTemplate";
 
 jest.mock("../utils/DbUtils", () => ({
@@ -143,5 +148,49 @@ describe("TaskTemplatesAdd / TaskTemplatesUpdate instanceStatus persistence", ()
     const [sql, params] = (DbUtilsExecSQL as jest.Mock).mock.calls[0];
     expect(sql).toContain("instanceStatus");
     expect(params).toContain(null);
+  });
+});
+
+describe("buildListTemplatesQuery pagination", () => {
+  it("should append LIMIT and OFFSET with params in order (sqlite)", () => {
+    const { sql, params } = buildListTemplatesQuery(
+      { projectId: "p1", limit: 20, offset: 40 },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM task_templates WHERE projectId = ? ORDER BY dateCreated DESC LIMIT ? OFFSET ?",
+    );
+    expect(params).toEqual(["p1", 20, 40]);
+  });
+
+  it("should append only LIMIT when the offset is zero", () => {
+    const { sql, params } = buildListTemplatesQuery(
+      { limit: 1000, offset: 0 },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM task_templates ORDER BY dateCreated DESC LIMIT ?",
+    );
+    expect(params).toEqual([1000]);
+  });
+
+  it("should quote identifiers and keep placeholders (postgres)", () => {
+    const { sql, params } = buildListTemplatesQuery(
+      { limit: 20, offset: 40 },
+      "postgres",
+    );
+    expect(sql).toBe(
+      'SELECT * FROM task_templates ORDER BY "dateCreated" DESC LIMIT ? OFFSET ?',
+    );
+    expect(params).toEqual([20, 40]);
+  });
+
+  it("should keep the internal listing unbounded without a limit", async () => {
+    (DbUtilsQuerySQL as jest.Mock).mockClear();
+    await TaskTemplatesList();
+    expect(DbUtilsQuerySQL).toHaveBeenCalledWith(
+      "SELECT * FROM task_templates ORDER BY dateCreated DESC",
+      [],
+    );
   });
 });

@@ -11,7 +11,12 @@ import {
   projectMutationError,
 } from "../projects/ProjectVisibility";
 import { ProjectsDataGet } from "../projects/ProjectsData";
-import { parseProjectIds, validateLabelList } from "../tasks/TasksRoutes";
+import {
+  parseLimit,
+  parseOffset,
+  parseProjectIds,
+  validateLabelList,
+} from "../tasks/TasksRoutes";
 import {
   NotesDataAdd,
   NotesDataDelete,
@@ -54,16 +59,32 @@ export class NotesRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // ==================== LIST ====================
     fastify.get<{
-      Querystring: { projectId?: string; projectIds?: string; q?: string };
+      Querystring: {
+        projectId?: string;
+        projectIds?: string;
+        q?: string;
+        limit?: string;
+        offset?: string;
+      };
     }>("/", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
         return res.status(401).send({ error: "Access Denied" });
       }
+      let limit: number;
+      let offset: number;
+      try {
+        limit = parseLimit(req.query.limit);
+        offset = parseOffset(req.query.offset);
+      } catch (error) {
+        return res.status(400).send({ error: (error as Error).message });
+      }
       const filters: NoteListFilters = {
         projectId: req.query.projectId,
         projectIds: parseProjectIds(req.query.projectIds),
         q: req.query.q?.trim() || undefined,
+        limit,
+        offset,
       };
       if (userSession.role !== "admin") {
         filters.visibleTo = { userId: userSession.userId };

@@ -17,5 +17,8 @@ The application sends Web Push notifications (PWA) to remind users about upcomin
 | [x] Daily digest      | Optional per-user preference: one consolidated notification listing the day's due and overdue tasks instead of one notification per task (Settings → Notifications; applies to every device of the user) |
 | [x] Open task         | Clicking a notification opens (or focuses) the application on the related task                                                           |
 | [x] Cleanup           | Expired push subscriptions are automatically removed when delivery fails                                                                 |
+| [x] Bounded query     | A reminder run only loads tasks whose due date is before local midnight of the day after tomorrow (overdue tasks included, Done tasks excluded), instead of scanning every task with a due date |
+| [x] Batched lookups   | Push subscriptions are loaded once per run and grouped per user instead of being queried inside the per-recipient loop |
+| [x] No overlap        | A reminder run that fires while the previous one is still running is skipped |
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-16_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-23_
