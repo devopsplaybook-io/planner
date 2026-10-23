@@ -107,6 +107,7 @@ GitHub Actions workflows are defined in `.github/workflows/`, reusing shared wor
 - **`main-build.yml`**: On push to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server` and `planner-web`, then builds & pushes multi-arch Docker image to Docker Hub.
 - **`pr-check.yml`**: On PR to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server` and `planner-web`, then builds & pushes a `beta` Docker image.
 - **`npm-upgrade.yml`**: Weekly schedule (Mon 6:00). Runs `npx npm-check-updates -u` on all npm services and creates an upgrade PR.
+- **`postgres-migration-tests.yml`**: On PR to `main` and push to `main`. Replays the complete PostgreSQL migration chain (fresh install + upgrade from a pre-task-template schema) against a `postgres:16-alpine` service container.
 
 Secrets required in GitHub repository:
 
@@ -119,5 +120,5 @@ Secrets required in GitHub repository:
 
 Refer to the **After implementation** workflow above for the standard validation sequence. The project-specific commands for running checks are:
 
-- **Server update**: Run `npm run test`, `npm run build`, and `npm run lint` in `planner-server/`. Also update unit tests: remove unused tests and add new coverage for new code.
+- **Server update**: Run `npm run test`, `npm run build`, and `npm run lint` in `planner-server/`. Also update unit tests: remove unused tests and add new coverage for new code. When touching `sql/postgres/` or `src/DbMigrations.ts`, also run `npm run test:postgres` against a local PostgreSQL 16 (or rely on the `postgres-migration-tests.yml` workflow).
 - **Web update**: Run `npm run test` (Nuxt type-check + Vitest), `npm run lint` and `npm run build` (or `npm run generate`) in `planner-web/`

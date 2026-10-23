@@ -1,4 +1,4 @@
-ALTER TABLE projects ADD COLUMN visibility VARCHAR(20) NOT NULL DEFAULT 'public';
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'public';
 
 CREATE TABLE IF NOT EXISTS project_users (
     "projectId" UUID NOT NULL,

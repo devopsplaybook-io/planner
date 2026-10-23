@@ -1,0 +1,53 @@
+name: PostgreSQL Migration Tests
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: postgres-migrations-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: planner
+          POSTGRES_PASSWORD: planner
+          POSTGRES_DB: planner
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U planner -d planner"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: planner-server
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: planner-server/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run PostgreSQL migration tests
+        run: npm run test:postgres
+        env:
+          TEST_POSTGRES: "1"
+          DATABASE_POSTGRES_HOST: localhost
+          DATABASE_POSTGRES_PORT: "5432"
+          DATABASE_POSTGRES_USER: planner
+          DATABASE_POSTGRES_PASSWORD: planner
+          DATABASE_POSTGRES_DATABASE: planner
