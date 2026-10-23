@@ -34,7 +34,11 @@ import {
   replaceTemplateLabels,
   updateTemplateComment,
 } from "./TaskTemplatesData";
-import { parseProjectIds } from "../tasks/TasksRoutes";
+import {
+  parseProjectIds,
+  validateAssigneeList,
+  validateLabelList,
+} from "../tasks/TasksRoutes";
 
 /**
  * Validates an automation payload: a valid 5-field cron string (or null =
@@ -218,6 +222,22 @@ export class TaskTemplatesRoutes {
         }
         automation = parsed;
       }
+      let assigneeIds: string[] | undefined;
+      if (req.body.assignees !== undefined) {
+        try {
+          assigneeIds = await validateAssigneeList(req.body.assignees);
+        } catch (error) {
+          return res.status(400).send({ error: (error as Error).message });
+        }
+      }
+      let labels: string[] | undefined;
+      if (req.body.labels !== undefined) {
+        try {
+          labels = validateLabelList(req.body.labels);
+        } catch (error) {
+          return res.status(400).send({ error: (error as Error).message });
+        }
+      }
       const template = new TaskTemplate();
       template.projectId = req.body.projectId;
       template.title = req.body.title;
@@ -232,9 +252,9 @@ export class TaskTemplatesRoutes {
         template.addDateToTitle = automation.addDateToTitle;
       if (automation.instanceStatus !== undefined)
         template.instanceStatus = automation.instanceStatus || undefined;
-      if (req.body.assignees)
-        template.assignees = req.body.assignees.map((u) => ({ userId: u }));
-      if (req.body.labels) template.labels = req.body.labels;
+      if (assigneeIds)
+        template.assignees = assigneeIds.map((userId) => ({ userId }));
+      if (labels) template.labels = labels;
       await TaskTemplatesAdd(template);
       TaskTemplatesSchedulerRefresh(template.id);
       return res.status(201).send(template.toTransportJson());
@@ -291,6 +311,22 @@ export class TaskTemplatesRoutes {
       if (guard) {
         return res.status(guard.status).send({ error: guard.error });
       }
+      let assigneeIds: string[] | undefined;
+      if (req.body.assignees !== undefined) {
+        try {
+          assigneeIds = await validateAssigneeList(req.body.assignees);
+        } catch (error) {
+          return res.status(400).send({ error: (error as Error).message });
+        }
+      }
+      let labels: string[] | undefined;
+      if (req.body.labels !== undefined) {
+        try {
+          labels = validateLabelList(req.body.labels);
+        } catch (error) {
+          return res.status(400).send({ error: (error as Error).message });
+        }
+      }
       if (req.body.title) template.title = req.body.title;
       if (req.body.description !== undefined)
         template.description = req.body.description;
@@ -329,15 +365,15 @@ export class TaskTemplatesRoutes {
           template.instanceStatus = undefined;
         }
       }
+      if (assigneeIds)
+        template.assignees = assigneeIds.map((userId) => ({ userId }));
+      if (labels) template.labels = labels;
       await TaskTemplatesUpdate(template);
-      if (Array.isArray(req.body.assignees)) {
-        await replaceTemplateAssignees(
-          template.id,
-          req.body.assignees.filter((u) => typeof u === "string"),
-        );
+      if (assigneeIds) {
+        await replaceTemplateAssignees(template.id, assigneeIds);
       }
-      if (Array.isArray(req.body.labels)) {
-        await replaceTemplateLabels(template.id, req.body.labels);
+      if (labels) {
+        await replaceTemplateLabels(template.id, labels);
       }
       TaskTemplatesSchedulerRefresh(template.id);
       return res.status(201).send(template.toTransportJson());
@@ -522,7 +558,7 @@ export class TaskTemplatesRoutes {
           return res.status(guard.status).send({ error: guard.error });
         }
 
-        const data = await req.file();
+        const data = await req.file({ throwFileSizeLimit: false });
         if (!data) {
           return res.status(400).send({ error: "No file uploaded" });
         }
@@ -541,11 +577,21 @@ export class TaskTemplatesRoutes {
         const filePath = path.join(attachmentDir, savedFileName);
 
         const writeStream = fs.createWriteStream(filePath);
-        await new Promise<void>((resolve, reject) => {
-          data.file.pipe(writeStream);
-          writeStream.on("finish", () => resolve());
-          writeStream.on("error", reject);
-        });
+        try {
+          await new Promise<void>((resolve, reject) => {
+            data.file.on("error", reject);
+            data.file.pipe(writeStream);
+            writeStream.on("finish", () => resolve());
+            writeStream.on("error", reject);
+          });
+        } catch {
+          await fs.remove(filePath).catch(() => undefined);
+          return res.status(400).send({ error: "Invalid file upload" });
+        }
+        if (data.file.truncated) {
+          await fs.remove(filePath).catch(() => undefined);
+          return res.status(413).send({ error: "File too large" });
+        }
 
         await addTemplateAttachment(
           req.params.id,

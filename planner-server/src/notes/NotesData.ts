@@ -85,15 +85,24 @@ export async function NotesDataList(
   return enrichNotes(rows);
 }
 
+/**
+ * Inserts the note and its labels in one transaction: a failing label
+ * leaves no note row behind.
+ */
 export async function NotesDataAdd(note: Note): Promise<void> {
-  await DbUtilsExecSQL(SQL_QUERIES.INSERT_NOTE[DbUtilsGetType()], [
-    note.id,
-    note.projectId,
-    note.title,
-    note.description,
-    note.dateCreated,
-    note.dateUpdated,
-  ]);
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(SQL_QUERIES.INSERT_NOTE[DbUtilsGetType()], [
+      note.id,
+      note.projectId,
+      note.title,
+      note.description,
+      note.dateCreated,
+      note.dateUpdated,
+    ]);
+    for (const label of note.labels) {
+      await addNoteLabel(note.id, label);
+    }
+  });
 }
 
 export async function NotesDataUpdate(note: Note): Promise<void> {

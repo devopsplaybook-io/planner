@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
-import { Readable } from "stream";
+import fastifyMultipart from "@fastify/multipart";
+import { Readable, Writable } from "stream";
 import { NotesRoutes } from "./NotesRoutes";
 import {
   NotesDataAdd,
@@ -8,7 +9,9 @@ import {
   NotesDataGet,
   NotesDataList,
   NotesDataUpdate,
+  addNoteAttachment,
   addNoteComment,
+  addNoteLabel,
   deleteNoteAttachment,
   deleteNoteComment,
   getNoteAttachment,
@@ -195,6 +198,39 @@ describe("NotesRoutes project visibility", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(NotesDataAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it("should trim and de-duplicate the labels given at creation", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: {
+        projectId: publicProject.id,
+        title: "New",
+        labels: [" a ", "a", "b"],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect((NotesDataAdd as jest.Mock).mock.calls[0][0].labels).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(addNoteLabel).not.toHaveBeenCalled();
+  });
+
+  it("should reject invalid labels at creation with 400", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    for (const labels of ["idea", [1], [""], ["x".repeat(101)]]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: { projectId: publicProject.id, title: "New", labels },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain("labels");
+    }
+    expect(NotesDataAdd).not.toHaveBeenCalled();
   });
 
   // ==================== UPDATE ====================
@@ -397,6 +433,37 @@ describe("NotesRoutes project visibility", () => {
     (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
 
     for (const labels of [null, "idea", [1], [{}]]) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/${note.id}/labels`,
+        payload: { labels },
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    expect(replaceNoteLabels).not.toHaveBeenCalled();
+  });
+
+  it("should trim and de-duplicate labels like task labels", async () => {
+    const note = makeNote(publicProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/${note.id}/labels`,
+      payload: { labels: [" idea ", "idea", "draft"] },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(replaceNoteLabels).toHaveBeenCalledWith(note.id, ["idea", "draft"]);
+  });
+
+  it("should answer 400 for empty and too-long note labels", async () => {
+    const note = makeNote(publicProject);
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+
+    for (const labels of [[""], ["  "], ["x".repeat(101)]]) {
       const res = await app.inject({
         method: "POST",
         url: `/${note.id}/labels`,
@@ -925,5 +992,100 @@ describe("NotesRoutes project permission levels", () => {
     (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
     const res = await app.inject({ method: "DELETE", url: `/${note.id}` });
     expect(res.statusCode).toBe(201);
+  });
+});
+
+describe("NotesRoutes attachments", () => {
+  let app: FastifyInstance;
+
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const publicProject = (() => {
+    const project = new Project();
+    project.name = "P";
+    project.visibility = "public";
+    project.userAccess = [];
+    return project;
+  })();
+
+  beforeAll(async () => {
+    app = Fastify();
+    await app.register(fastifyMultipart, { limits: { fileSize: 1024 } });
+    await new NotesRoutes().getRoutes(app);
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (AuthMustBeAuthenticated as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  function upload(note: Note, content: Buffer) {
+    const boundary = "----jestnoteboundary";
+    const head = Buffer.from(
+      `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="file.bin"\r\n' +
+        "Content-Type: application/octet-stream\r\n\r\n",
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+    return app.inject({
+      method: "POST",
+      url: `/${note.id}/attachments`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: Buffer.concat([head, content, tail]),
+    });
+  }
+
+  it("should reject an oversized attachment with 413 and remove the partial file", async () => {
+    const note = new Note();
+    note.projectId = publicProject.id;
+    note.title = "Note";
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.remove.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const res = await upload(note, Buffer.alloc(2048, "a"));
+
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error).toBe("File too large");
+    expect(addNoteAttachment).not.toHaveBeenCalled();
+    expect(mockFs.remove).toHaveBeenCalledWith(
+      expect.stringContaining("/attachments/notes/"),
+    );
+  });
+
+  it("should accept an attachment of exactly the configured limit", async () => {
+    const note = new Note();
+    note.projectId = publicProject.id;
+    note.title = "Note";
+    (NotesDataGet as jest.Mock).mockResolvedValue(note);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const res = await upload(note, Buffer.alloc(1024, "a"));
+
+    expect(res.statusCode).toBe(201);
+    expect(addNoteAttachment).toHaveBeenCalledTimes(1);
   });
 });

@@ -136,28 +136,34 @@ export async function TasksDataList(
   return enrichTasks(rows, fields);
 }
 
+/**
+ * Inserts the task and its children (assignees, labels, dependencies) in
+ * one transaction: a failing child leaves no task row behind.
+ */
 export async function TasksDataAdd(task: Task): Promise<void> {
-  await DbUtilsExecSQL(SQL_QUERIES.INSERT_TASK[DbUtilsGetType()], [
-    task.id,
-    task.projectId,
-    task.title,
-    task.description,
-    task.status,
-    task.priority,
-    task.dueDate || null,
-    JSON.stringify(task.checklist),
-    task.dateCreated,
-    task.dateUpdated,
-  ]);
-  for (const assignee of task.assignees) {
-    await addAssignee(task.id, assignee.userId);
-  }
-  for (const label of task.labels) {
-    await addLabel(task.id, label);
-  }
-  for (const dependency of task.dependencies) {
-    await addDependency(task.id, dependency.taskId);
-  }
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(SQL_QUERIES.INSERT_TASK[DbUtilsGetType()], [
+      task.id,
+      task.projectId,
+      task.title,
+      task.description,
+      task.status,
+      task.priority,
+      task.dueDate || null,
+      JSON.stringify(task.checklist),
+      task.dateCreated,
+      task.dateUpdated,
+    ]);
+    for (const assignee of task.assignees) {
+      await addAssignee(task.id, assignee.userId);
+    }
+    for (const label of task.labels) {
+      await addLabel(task.id, label);
+    }
+    for (const dependency of task.dependencies) {
+      await addDependency(task.id, dependency.taskId);
+    }
+  });
 }
 
 export async function TasksDataUpdate(task: Task): Promise<void> {

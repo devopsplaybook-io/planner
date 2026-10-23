@@ -45,7 +45,9 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 [x] No browser dialogs in template flows: errors surface as an inline dismissible banner and the delete uses the custom confirmation dialog instead of `alert()`/`confirm()`.
 
-[x] Attachments: templates support the same attachment lifecycle as tasks (upload, download through the authenticated blob mechanism, delete); audio attachments play inline.
+[x] Attachments: templates support the same attachment lifecycle as tasks (upload, download through the authenticated blob mechanism, delete); audio attachments play inline. An upload larger than the configured `ATTACHMENT_MAX_SIZE` answers 413, removes the partial file and records no attachment; a file exactly at the limit is accepted.
+
+[x] Labels and assignees: template labels follow the task label rules (trimmed, non-empty, at most 100 characters, de-duplicated, 400 otherwise) on create and update; assignee ids must reference existing users and an unknown user answers 400 before anything is written.
 
 [x] Comments: templates support the same comment lifecycle as tasks (markdown rendering, edit, delete); the write rules are the template's project permission rules (see Visibility below).
 
@@ -84,4 +86,4 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 [x] The migration is transactional per task, isolated (one failing task does not block the others), runs before the scheduler starts, and when no recurring tasks remain it drops the legacy column and records its completion so later startups are no-ops.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-19_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-23_

@@ -176,6 +176,30 @@ describe("UsersRoutes", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("should answer 400 (not 500) when the session body is missing", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const res = await app.inject({ method: "POST", url: "/session" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Missing: Name");
+    expect(UsersDataGetByName).not.toHaveBeenCalled();
+  });
+
+  it("should answer 400 for a malformed JSON session body", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/session",
+      headers: { "content-type": "application/json" },
+      payload: '{"name":',
+    });
+    expect(res.statusCode).toBe(400);
+    expect(UsersDataGetByName).not.toHaveBeenCalled();
+  });
+
   it("should answer 403 for unknown credentials without leaking which part failed", async () => {
     (AuthGetUserSession as jest.Mock).mockResolvedValue({
       isAuthenticated: false,
@@ -322,6 +346,14 @@ describe("UsersRoutes", () => {
     expect(UsersDataAdd).not.toHaveBeenCalled();
   });
 
+  it("should answer 400 (not 500) when the user creation body is missing", async () => {
+    (UsersDataList as jest.Mock).mockResolvedValue([]);
+    const res = await app.inject({ method: "POST", url: "/" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Missing: Name");
+    expect(UsersDataAdd).not.toHaveBeenCalled();
+  });
+
   // ==================== OWN PASSWORD ====================
   it("should answer 401 for the own-password change without a session", async () => {
     (AuthGetUserSession as jest.Mock).mockResolvedValue({
@@ -344,6 +376,14 @@ describe("UsersRoutes", () => {
       payload: { password: "new", passwordOld: "wrong" },
     });
     expect(res.statusCode).toBe(403);
+    expect(UsersDataUpdatePassword).not.toHaveBeenCalled();
+  });
+
+  it("should answer 400 (not 500) when the password change body is missing", async () => {
+    (UsersDataGet as jest.Mock).mockResolvedValue(makeUser());
+    const res = await app.inject({ method: "PUT", url: "/password" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Missing: Password");
     expect(UsersDataUpdatePassword).not.toHaveBeenCalled();
   });
 
@@ -424,6 +464,17 @@ describe("UsersRoutes", () => {
     });
 
     expect(res.statusCode).toBe(201);
+    expect(UsersDataUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("should answer 400 (not 500) when the admin update body is missing", async () => {
+    const user = makeUser({ id: "user-2", role: "user" });
+    (UsersDataGet as jest.Mock).mockResolvedValue(user);
+
+    const res = await app.inject({ method: "PUT", url: "/user-2" });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Missing: body");
     expect(UsersDataUpdateUser).not.toHaveBeenCalled();
   });
 

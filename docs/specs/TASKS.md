@@ -41,6 +41,10 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 
 [x] Dependencies: a task can declare zero or multiple dependencies on other tasks (references, not copies); the list is set at creation with task ids and fully replaceable afterwards; each entry exposes the dependency's current title and status alongside its id; dependencies may cross projects (any task visible to the user, in any status including Done); a task cannot depend on itself; deleting either task removes the link; Planner itself does not enforce any flow from dependencies (informational only — consumers like the LLM agent decide what "all dependencies Done" means).
 
+[x] Assignees: assignee ids given at creation and through the assignees API are trimmed, de-duplicated and must reference an existing user; an unknown user answers 400 and the write persists nothing. A task create (with its assignees, labels and dependencies) is transactional: a failing child row leaves no task behind.
+
+[x] Attachments: an upload larger than the configured `ATTACHMENT_MAX_SIZE` answers 413, removes the partial file and records no attachment; a file exactly at the limit is accepted. Successful uploads keep answering 201.
+
 ## Task Dialog UX
 
 [x] Comment display: comment headers show relative timestamps with the full date as tooltip and an "(edited)" marker for edited comments; comment actions are visible on touch devices; the per-comment Show more/less disclosure exposes its state with `aria-expanded`; overflowing comments also get an icon-only expand/collapse toggle in the comment actions (chevron up/down, `aria-expanded`/`aria-controls`, kept in sync with the bottom disclosure, which stays); rendered markdown links open in a new tab with `rel="noopener noreferrer"`.
@@ -98,4 +102,4 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 - [x] Both label writes require the task to be visible (404 otherwise) and the project `update` permission (403 otherwise), like the other task sub-resources.
 - [x] Quiet mode (`quiet: true`, same permission) skips the "Labels updated" activity entry and the assignee push notification but still touches `dateUpdated` when the label set changes. It is meant for machine-managed labels (the LLM agent's transient `agent:running` state and `model:<model>` provenance) so automation does not flood the update feed or notify assignees.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-20_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-23_

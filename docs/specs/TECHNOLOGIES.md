@@ -22,7 +22,13 @@
 
 - [x] Notes and Tasks can contain attachments
 - [x] There is a maximum size for attachments, configured in megabytes via `ATTACHMENT_MAX_SIZE` (default: 10 MB)
+- [x] An upload above the configured maximum is rejected with 413; the partial file is removed and no attachment row is stored. A file exactly at the maximum is accepted
 - [x] The actual attachment blob is stored on disk and not in the DB. The DB only contains the required metadata
+
+### Configuration and secrets
+
+- [x] `JWT_KEY` is mandatory outside `DEV_MODE`: startup fails with a clear error when it is missing, empty, whitespace-only or the public placeholder `dev`
+- [x] In `DEV_MODE` a missing key is replaced by a generated, per-process strong key (stable across configuration reloads), so tokens can always be signed; an explicitly configured key is kept
 
 ## Web Side
 
@@ -44,4 +50,4 @@
 - [x] A shared attachment-viewer registry (file extension → viewer kind: image / pdf / audio / none) and a shared fullscreen viewer component decide how each attachment renders in the task and note dialogs; new viewer types are added in one place
 - [x] PDF attachments render inline through the bundled pdf.js renderer (pages drawn on canvas fit to the viewer width, scrollable): the browser's built-in PDF viewer cannot render PDFs inside iframes on mobile Chromium, so it is not an option; the pdf.js library and worker are lazy-loaded on first use. Inline PDF responses keep nosniff + the exact application/pdf content type and omit the sandbox CSP
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-20_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-23_
