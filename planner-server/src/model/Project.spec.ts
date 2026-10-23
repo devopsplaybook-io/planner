@@ -79,6 +79,20 @@ describe("Project model", () => {
       expect(Project.fromJson({ name: "n", archived: 1 }).archived).toBe(true);
       expect(Project.fromJson({ name: "n", archived: 0 }).archived).toBe(false);
     });
+
+    it("should default a missing visibility to public", () => {
+      expect(Project.fromJson({ name: "n" }).visibility).toBe("public");
+      expect(Project.fromJson({ name: "n", visibility: null }).visibility).toBe(
+        "public",
+      );
+    });
+
+    it("should preserve empty or unknown stored visibility values", () => {
+      expect(Project.fromJson({ name: "n", visibility: "privat" }).visibility).toBe(
+        "privat",
+      );
+      expect(Project.fromJson({ name: "n", visibility: "" }).visibility).toBe("");
+    });
   });
 
   describe("toJson", () => {

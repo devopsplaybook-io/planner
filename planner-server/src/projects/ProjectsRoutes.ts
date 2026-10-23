@@ -10,7 +10,7 @@ import {
   StatusCatalogEntry,
   StatusesCatalogGet,
 } from "../statuses/StatusesData";
-import { isProjectVisible } from "./ProjectVisibility";
+import { isProjectVisibility, isProjectVisible } from "./ProjectVisibility";
 import {
   ProjectsDataAdd,
   ProjectsDataDelete,
@@ -131,6 +131,12 @@ export class ProjectsRoutes {
       if (!req.body.name) {
         return res.status(400).send({ error: "Missing: Name" });
       }
+      if (
+        req.body.visibility !== undefined &&
+        !isProjectVisibility(req.body.visibility)
+      ) {
+        return res.status(400).send({ error: "Invalid visibility" });
+      }
       const userAccessError = validateUserAccessWrite(req.body.userAccess);
       if (userAccessError) {
         return res.status(400).send({ error: userAccessError });
@@ -193,6 +199,12 @@ export class ProjectsRoutes {
         return res
           .status(400)
           .send({ error: "Archived projects cannot be updated" });
+      }
+      if (
+        req.body.visibility !== undefined &&
+        !isProjectVisibility(req.body.visibility)
+      ) {
+        return res.status(400).send({ error: "Invalid visibility" });
       }
       if (req.body.archived === true && !project.archived) {
         const openTasks = await ProjectsDataCountOpenTasks(project.id);

@@ -6,6 +6,7 @@ import { Config } from "../Config";
 import { DbUtilsQuerySQL, DbUtilsGetType } from "../utils/DbUtils";
 import { formatLocalDate } from "../utils/DateUtils";
 import { buildInPlaceholders } from "../tasks/TasksData";
+import { visibleProjectsCondition } from "../projects/ProjectVisibility";
 
 const logger = console;
 
@@ -302,6 +303,7 @@ async function CollectStats(userId: string): Promise<UserRecommendationStats> {
     userId,
   ]);
   const userName = userRows.length > 0 ? userRows[0].name : "Unknown";
+  const isAdmin = userRows[0]?.role === "admin";
 
   // Check if single user mode
   const userCountRows = await DbUtilsQuerySQL(SQL_QUERIES.COUNT_USERS[dbType]);
@@ -310,16 +312,18 @@ async function CollectStats(userId: string): Promise<UserRecommendationStats> {
 
   // Recommendations only cover the user's own assigned tasks: unassigned or
   // other users' tasks may live in restricted projects the user cannot see.
+  // Non-admins are additionally filtered by project visibility: stale
+  // assignments to restricted projects must not leak into the prompt.
   let assignedTasks: TaskStats[];
   let doneTasks: TaskStats[];
 
   if (singleUserMode) {
     // Single user: treat ALL tasks as theirs, ignore assignment
-    assignedTasks = await getAllTasks(false);
-    doneTasks = await getAllTasks(true);
+    assignedTasks = await getAllTasks(false, userId, isAdmin);
+    doneTasks = await getAllTasks(true, userId, isAdmin);
   } else {
-    assignedTasks = await getTasksForUser(userId, false);
-    doneTasks = await getTasksForUser(userId, true);
+    assignedTasks = await getTasksForUser(userId, false, isAdmin);
+    doneTasks = await getTasksForUser(userId, true, isAdmin);
   }
 
   // Categorize
@@ -387,23 +391,42 @@ async function CollectStats(userId: string): Promise<UserRecommendationStats> {
 async function getTasksForUser(
   userId: string,
   doneOnly: boolean,
+  isAdmin: boolean,
 ): Promise<TaskStats[]> {
   const dbType = DbUtilsGetType();
-  const sql = doneOnly
+  let sql = doneOnly
     ? SQL_QUERIES.TASKS_BY_USER_DONE[dbType]
     : SQL_QUERIES.TASKS_BY_USER_NOT_DONE[dbType];
+  const params: unknown[] = [userId];
 
-  const rows = await DbUtilsQuerySQL(sql, [userId]);
+  if (!isAdmin) {
+    const visibility = visibleProjectsCondition(userId, dbType);
+    sql += ` AND ${visibility.sql}`;
+    params.push(...visibility.params);
+  }
+
+  const rows = await DbUtilsQuerySQL(sql, params);
   return rowsToTaskStats(rows);
 }
 
-async function getAllTasks(doneOnly: boolean): Promise<TaskStats[]> {
+async function getAllTasks(
+  doneOnly: boolean,
+  userId: string,
+  isAdmin: boolean,
+): Promise<TaskStats[]> {
   const dbType = DbUtilsGetType();
-  const sql = doneOnly
+  let sql = doneOnly
     ? SQL_QUERIES.ALL_TASKS_DONE[dbType]
     : SQL_QUERIES.ALL_TASKS_NOT_DONE[dbType];
+  const params: unknown[] = [];
 
-  const rows = await DbUtilsQuerySQL(sql);
+  if (!isAdmin) {
+    const visibility = visibleProjectsCondition(userId, dbType);
+    sql += ` AND ${visibility.sql}`;
+    params.push(...visibility.params);
+  }
+
+  const rows = await DbUtilsQuerySQL(sql, params);
   return rowsToTaskStats(rows);
 }
 
@@ -532,14 +555,14 @@ const SQL_QUERIES = {
     sqlite: "SELECT id, name FROM users",
   },
   GET_USER: {
-    postgres: 'SELECT id, name FROM users WHERE "id" = $1',
-    sqlite: "SELECT id, name FROM users WHERE id = ?",
+    postgres: 'SELECT id, name, role FROM users WHERE "id" = $1',
+    sqlite: "SELECT id, name, role FROM users WHERE id = ?",
   },
   TASKS_BY_USER_NOT_DONE: {
     postgres:
       'SELECT t.id, t."projectId", t.title, t.status, t.priority, t."dueDate", t."dateCreated", t."dateUpdated" ' +
       'FROM tasks t INNER JOIN task_assignees ta ON t.id = ta."taskId" ' +
-      "WHERE ta.\"userId\" = $1 AND t.status != 'Done'",
+      "WHERE ta.\"userId\" = ? AND t.status != 'Done'",
     sqlite:
       "SELECT t.id, t.projectId, t.title, t.status, t.priority, t.dueDate, t.dateCreated, t.dateUpdated " +
       "FROM tasks t INNER JOIN task_assignees ta ON t.id = ta.taskId " +
@@ -549,7 +572,7 @@ const SQL_QUERIES = {
     postgres:
       'SELECT t.id, t."projectId", t.title, t.status, t.priority, t."dueDate", t."dateCreated", t."dateUpdated" ' +
       'FROM tasks t INNER JOIN task_assignees ta ON t.id = ta."taskId" ' +
-      "WHERE ta.\"userId\" = $1 AND t.status = 'Done'",
+      "WHERE ta.\"userId\" = ? AND t.status = 'Done'",
     sqlite:
       "SELECT t.id, t.projectId, t.title, t.status, t.priority, t.dueDate, t.dateCreated, t.dateUpdated " +
       "FROM tasks t INNER JOIN task_assignees ta ON t.id = ta.taskId " +

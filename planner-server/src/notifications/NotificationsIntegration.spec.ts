@@ -11,7 +11,12 @@ import {
 } from "../utils/DbUtils";
 import { RunMigrations } from "../DbMigrations";
 import { UsersDataSetNotificationDigest } from "../users/UsersData";
-import { NotificationsCheckAndSend, NotificationsInit } from "./Notifications";
+import { Task } from "../model/Task";
+import {
+  NotificationsCheckAndSend,
+  NotificationsInit,
+  NotificationsTaskUpdated,
+} from "./Notifications";
 
 /**
  * Integration tests of the due-date reminder pipeline against a real SQLite
@@ -260,5 +265,147 @@ describe("due date reminders (integration)", () => {
     );
     expect(payload.url).toBe("/");
     expect(payload.tag).toBe("task-digest-2026-10-15");
+  });
+});
+
+describe("task update notifications (integration)", () => {
+  const updateDir = path.join(
+    os.tmpdir(),
+    `planner-notifications-update-${Date.now()}`,
+  );
+
+  beforeAll(async () => {
+    await fs.remove(updateDir);
+    await fs.ensureDir(updateDir);
+    const config = new Config();
+    config.DATA_DIR = updateDir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+    await NotificationsInit(config);
+  });
+
+  beforeEach(() => {
+    sendNotificationMock.mockClear();
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(updateDir);
+  });
+
+  function makeTask(
+    id: string,
+    projectId: string,
+    assigneeIds: string[],
+  ): Task {
+    const task = new Task();
+    task.id = id;
+    task.projectId = projectId;
+    task.title = `title-${id}`;
+    task.assignees = assigneeIds.map((userId) => ({ userId }));
+    return task;
+  }
+
+  it("should push a public-project update to its assignee with the unchanged payload", async () => {
+    await insertUser("u-tu-pub");
+    await insertProject("p-tu-pub");
+    await insertSubscription("u-tu-pub");
+
+    await NotificationsTaskUpdated(
+      makeTask("t-tu-pub", "p-tu-pub", ["u-tu-pub"]),
+      "actor-1",
+      "Actor",
+      "Status changed",
+    );
+
+    const calls = callsTo("u-tu-pub");
+    expect(calls).toHaveLength(1);
+    expect(payloadOf(calls[0])).toEqual({
+      title: "Task updated by Actor",
+      body: "title-t-tu-pub — Status changed",
+      url: "/?taskId=t-tu-pub",
+      tag: "task-t-tu-pub-update",
+    });
+  });
+
+  it("should not push a restricted-project update to a non-member assignee", async () => {
+    await insertUser("u-tu-hidden");
+    await insertProject("p-tu-hidden", "restricted");
+    await insertSubscription("u-tu-hidden");
+
+    await NotificationsTaskUpdated(
+      makeTask("t-tu-hidden", "p-tu-hidden", ["u-tu-hidden"]),
+      "actor-1",
+      "Actor",
+      "Status changed",
+    );
+
+    expect(callsTo("u-tu-hidden")).toHaveLength(0);
+  });
+
+  it("should push a restricted-project update to a member assignee", async () => {
+    await insertUser("u-tu-member");
+    await insertProject("p-tu-member", "restricted");
+    await insertProjectUser("p-tu-member", "u-tu-member");
+    await insertSubscription("u-tu-member");
+
+    await NotificationsTaskUpdated(
+      makeTask("t-tu-member", "p-tu-member", ["u-tu-member"]),
+      "actor-1",
+      "Actor",
+      "Status changed",
+    );
+
+    expect(callsTo("u-tu-member")).toHaveLength(1);
+  });
+
+  it("should push a restricted-project update to an admin non-member", async () => {
+    await insertUser("u-tu-admin", "admin");
+    await insertProject("p-tu-admin", "restricted");
+    await insertSubscription("u-tu-admin");
+
+    await NotificationsTaskUpdated(
+      makeTask("t-tu-admin", "p-tu-admin", ["u-tu-admin"]),
+      "actor-1",
+      "Actor",
+      "Status changed",
+    );
+
+    expect(callsTo("u-tu-admin")).toHaveLength(1);
+  });
+
+  it("should never push the update to the actor", async () => {
+    await insertUser("u-tu-actor");
+    await insertProject("p-tu-actor");
+    await insertSubscription("u-tu-actor");
+
+    await NotificationsTaskUpdated(
+      makeTask("t-tu-actor", "p-tu-actor", ["u-tu-actor"]),
+      "u-tu-actor",
+      "Actor",
+      "Status changed",
+    );
+
+    expect(callsTo("u-tu-actor")).toHaveLength(0);
+  });
+
+  it("should not push after the assignee's membership was revoked", async () => {
+    await insertUser("u-tu-revoked");
+    await insertProject("p-tu-revoked", "restricted");
+    await insertProjectUser("p-tu-revoked", "u-tu-revoked");
+    await insertSubscription("u-tu-revoked");
+    await DbUtilsExecSQL(
+      "DELETE FROM project_users WHERE projectId = ? AND userId = ?",
+      ["p-tu-revoked", "u-tu-revoked"],
+    );
+
+    await NotificationsTaskUpdated(
+      makeTask("t-tu-revoked", "p-tu-revoked", ["u-tu-revoked"]),
+      "actor-1",
+      "Actor",
+      "Status changed",
+    );
+
+    expect(callsTo("u-tu-revoked")).toHaveLength(0);
   });
 });

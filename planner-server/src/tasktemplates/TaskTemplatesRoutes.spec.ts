@@ -699,6 +699,7 @@ describe("TaskTemplatesRoutes comments", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().text).toBe("edited");
+    expect(getTemplateComment).toHaveBeenCalledWith("c1", template.id);
   });
 
   it("should reject deleting someone else's comment (non-admin)", async () => {
@@ -716,6 +717,60 @@ describe("TaskTemplatesRoutes comments", () => {
       url: `/${template.id}/comments/c1`,
     });
     expect(res.statusCode).toBe(403);
+    expect(deleteTemplateComment).not.toHaveBeenCalled();
+  });
+
+  it("should answer 404 when a template comment is updated through another template", async () => {
+    const templateWithComment = makeTemplate(allProject);
+    const otherTemplate = makeTemplate(allProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(otherTemplate);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(allProject);
+    (getTemplateComment as jest.Mock).mockImplementation(
+      async (_commentId: string, templateId: string) =>
+        templateId === templateWithComment.id
+          ? {
+              id: "c-a",
+              userId: "user-1",
+              text: "on A",
+              dateCreated: "2026-10-01T00:00:00.000Z",
+            }
+          : null,
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${otherTemplate.id}/comments/c-a`,
+      payload: { text: "hijacked" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe("Comment Not Found");
+    expect(getTemplateComment).toHaveBeenCalledWith("c-a", otherTemplate.id);
+    expect(updateTemplateComment).not.toHaveBeenCalled();
+  });
+
+  it("should answer 404 when a template comment is deleted through another template", async () => {
+    const templateWithComment = makeTemplate(allProject);
+    const otherTemplate = makeTemplate(allProject);
+    (TaskTemplatesGet as jest.Mock).mockResolvedValue(otherTemplate);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(allProject);
+    (getTemplateComment as jest.Mock).mockImplementation(
+      async (_commentId: string, templateId: string) =>
+        templateId === templateWithComment.id
+          ? {
+              id: "c-a",
+              userId: "user-1",
+              text: "on A",
+              dateCreated: "2026-10-01T00:00:00.000Z",
+            }
+          : null,
+    );
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/${otherTemplate.id}/comments/c-a`,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe("Comment Not Found");
     expect(deleteTemplateComment).not.toHaveBeenCalled();
   });
 });

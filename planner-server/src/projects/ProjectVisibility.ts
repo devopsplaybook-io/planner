@@ -30,10 +30,24 @@ const PERMISSION_RANK: Record<ProjectPermission, number> = {
   all: 3,
 };
 
+export const PROJECT_VISIBILITIES = ["public", "restricted"] as const;
+
+export type ProjectVisibility = (typeof PROJECT_VISIBILITIES)[number];
+
+/** Whether a client-supplied value is a supported visibility. */
+export function isProjectVisibility(
+  value: unknown,
+): value is ProjectVisibility {
+  return PROJECT_VISIBILITIES.includes(value as ProjectVisibility);
+}
+
 /**
  * Single source of truth for project visibility: admins see everything,
  * public projects are visible to every authenticated user, and restricted
  * projects are visible only to users added to the project (project_users).
+ * Fails closed: any stored value other than "public" (nullish aside — it only
+ * exists on unloaded objects, the model defaults it) requires membership,
+ * matching every SQL list predicate.
  */
 export function isProjectVisible(
   project: { visibility?: string; userAccess?: unknown },
@@ -42,7 +56,7 @@ export function isProjectVisible(
   if (userSession.role === "admin") {
     return true;
   }
-  if (project.visibility !== "restricted") {
+  if (project.visibility == null || project.visibility === "public") {
     return true;
   }
   return (
@@ -57,7 +71,8 @@ export function isProjectVisible(
  * grant every authenticated user full rights). A missing project behaves
  * like a public one — callers answer 404 for missing projects themselves.
  * Non-members get null (no access at all). Legacy string memberships and
- * entries without a permission mean "all".
+ * entries without a permission mean "all". Unknown stored visibility values
+ * grant nothing beyond membership, mirroring isProjectVisible.
  */
 export function getProjectPermission(
   project: { visibility?: string; userAccess?: unknown } | null | undefined,
@@ -66,7 +81,11 @@ export function getProjectPermission(
   if (userSession.role === "admin") {
     return "all";
   }
-  if (!project || project.visibility !== "restricted") {
+  if (
+    !project ||
+    project.visibility == null ||
+    project.visibility === "public"
+  ) {
     return "all";
   }
   if (!userSession.userId) {

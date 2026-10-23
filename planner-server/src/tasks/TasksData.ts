@@ -266,10 +266,13 @@ export async function deleteComment(commentId: string): Promise<void> {
   ]);
 }
 
-export async function getComment(commentId: string): Promise<TaskComment | null> {
+export async function getComment(
+  commentId: string,
+  taskId: string,
+): Promise<TaskComment | null> {
   const rows = await DbUtilsQuerySQL(
     SQL_QUERIES.GET_COMMENT_BY_ID[DbUtilsGetType()],
-    [commentId],
+    [commentId, taskId],
   );
   if (rows.length === 0) return null;
   return {
@@ -672,9 +675,9 @@ const SQL_QUERIES = {
   },
   GET_COMMENT_BY_ID: {
     postgres:
-      'SELECT tc.*, u."name" AS "userName" FROM task_comments tc LEFT JOIN users u ON tc."userId" = u."id" WHERE tc."id" = $1',
+      'SELECT tc.*, u."name" AS "userName" FROM task_comments tc LEFT JOIN users u ON tc."userId" = u."id" WHERE tc."id" = $1 AND tc."taskId" = $2',
     sqlite:
-      "SELECT tc.*, u.name AS userName FROM task_comments tc LEFT JOIN users u ON tc.userId = u.id WHERE tc.id = ?",
+      "SELECT tc.*, u.name AS userName FROM task_comments tc LEFT JOIN users u ON tc.userId = u.id WHERE tc.id = ? AND tc.taskId = ?",
   },
   UPDATE_COMMENT: {
     postgres:

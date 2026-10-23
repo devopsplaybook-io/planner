@@ -445,7 +445,7 @@ export class TaskTemplatesRoutes {
         if (guard) {
           return res.status(guard.status).send({ error: guard.error });
         }
-        const comment = await getTemplateComment(req.params.commentId);
+        const comment = await getTemplateComment(req.params.commentId, req.params.id);
         if (!comment)
           return res.status(404).send({ error: "Comment Not Found" });
         if (
@@ -483,7 +483,7 @@ export class TaskTemplatesRoutes {
         if (guard) {
           return res.status(guard.status).send({ error: guard.error });
         }
-        const comment = await getTemplateComment(req.params.commentId);
+        const comment = await getTemplateComment(req.params.commentId, req.params.id);
         if (!comment)
           return res.status(404).send({ error: "Comment Not Found" });
         if (
@@ -495,7 +495,7 @@ export class TaskTemplatesRoutes {
         if (!req.body.text)
           return res.status(400).send({ error: "Missing: text" });
         await updateTemplateComment(req.params.commentId, req.body.text);
-        const updated = await getTemplateComment(req.params.commentId);
+        const updated = await getTemplateComment(req.params.commentId, req.params.id);
         return res.status(200).send(updated);
       },
     );

@@ -26,6 +26,7 @@ import {
   addAssignee,
   addComment,
   addTaskAttachment,
+  deleteComment,
   deleteTaskAttachment,
   getComment,
   getTaskAttachment,
@@ -2865,12 +2866,61 @@ describe("TasksRoutes project permission levels", () => {
       payload: { text: "edited" },
     });
     expect(put.statusCode).toBe(200);
+    expect(getComment).toHaveBeenCalledWith("comment-1", task.id);
 
     const del = await app.inject({
       method: "DELETE",
       url: `/${task.id}/comments/comment-1`,
     });
     expect(del.statusCode).toBe(201);
+  });
+
+  it("should answer 404 when a comment is updated through another task", async () => {
+    const project = projectWithLevel("all");
+    const taskWithComment = makeTask(project);
+    const otherTask = makeTask(project);
+    (TasksDataGet as jest.Mock).mockResolvedValue(otherTask);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (getComment as jest.Mock).mockImplementation(
+      async (_commentId: string, taskId: string) =>
+        taskId === taskWithComment.id
+          ? { id: "comment-a", userId: "user-1", text: "on A" }
+          : null,
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${otherTask.id}/comments/comment-a`,
+      payload: { text: "hijacked" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe("Comment Not Found");
+    expect(getComment).toHaveBeenCalledWith("comment-a", otherTask.id);
+    expect(updateComment).not.toHaveBeenCalled();
+    expect(TaskActivityDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should answer 404 when a comment is deleted through another task", async () => {
+    const project = projectWithLevel("all");
+    const taskWithComment = makeTask(project);
+    const otherTask = makeTask(project);
+    (TasksDataGet as jest.Mock).mockResolvedValue(otherTask);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (getComment as jest.Mock).mockImplementation(
+      async (_commentId: string, taskId: string) =>
+        taskId === taskWithComment.id
+          ? { id: "comment-a", userId: "user-1", text: "on A" }
+          : null,
+    );
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/${otherTask.id}/comments/comment-a`,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe("Comment Not Found");
+    expect(deleteComment).not.toHaveBeenCalled();
+    expect(TaskActivityDataAdd).not.toHaveBeenCalled();
   });
 
   it("should reject a view user editing their own comment with 403", async () => {

@@ -72,7 +72,7 @@ export class Project {
     project.description = (json.description as string) || "";
     project.isDefault = json.isDefault === true || json.isDefault === 1;
     project.archived = json.archived === true || json.archived === 1;
-    project.visibility = (json.visibility as string) || "public";
+    project.visibility = (json.visibility ?? "public") as string;
     if (json.userAccess) {
       project.userAccess = normalizeUserAccess(json.userAccess);
     }

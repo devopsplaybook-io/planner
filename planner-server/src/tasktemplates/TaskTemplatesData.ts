@@ -226,10 +226,11 @@ export async function deleteTemplateComment(commentId: string): Promise<void> {
 
 export async function getTemplateComment(
   commentId: string,
+  templateId: string,
 ): Promise<TaskTemplateComment | null> {
   const rows = await DbUtilsQuerySQL(
     SQL_QUERIES.GET_COMMENT_BY_ID[DbUtilsGetType()],
-    [commentId],
+    [commentId, templateId],
   );
   if (rows.length === 0) return null;
   return {
@@ -555,9 +556,9 @@ const SQL_QUERIES = {
   },
   GET_COMMENT_BY_ID: {
     postgres:
-      'SELECT tc.*, u."name" AS "userName" FROM task_template_comments tc LEFT JOIN users u ON tc."userId" = u."id" WHERE tc."id" = $1',
+      'SELECT tc.*, u."name" AS "userName" FROM task_template_comments tc LEFT JOIN users u ON tc."userId" = u."id" WHERE tc."id" = $1 AND tc."templateId" = $2',
     sqlite:
-      "SELECT tc.*, u.name AS userName FROM task_template_comments tc LEFT JOIN users u ON tc.userId = u.id WHERE tc.id = ?",
+      "SELECT tc.*, u.name AS userName FROM task_template_comments tc LEFT JOIN users u ON tc.userId = u.id WHERE tc.id = ? AND tc.templateId = ?",
   },
   UPDATE_COMMENT: {
     postgres:

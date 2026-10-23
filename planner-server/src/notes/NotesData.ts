@@ -149,10 +149,13 @@ export async function deleteNoteComment(commentId: string): Promise<void> {
   ]);
 }
 
-export async function getNoteComment(commentId: string): Promise<NoteComment | null> {
+export async function getNoteComment(
+  commentId: string,
+  noteId: string,
+): Promise<NoteComment | null> {
   const rows = await DbUtilsQuerySQL(
     SQL_QUERIES.GET_NOTE_COMMENT_BY_ID[DbUtilsGetType()],
-    [commentId],
+    [commentId, noteId],
   );
   if (rows.length === 0) return null;
   return {
@@ -401,9 +404,9 @@ const SQL_QUERIES = {
   },
   GET_NOTE_COMMENT_BY_ID: {
     postgres:
-      'SELECT nc.*, u."name" AS "userName" FROM note_comments nc LEFT JOIN users u ON nc."userId" = u."id" WHERE nc."id" = $1',
+      'SELECT nc.*, u."name" AS "userName" FROM note_comments nc LEFT JOIN users u ON nc."userId" = u."id" WHERE nc."id" = $1 AND nc."noteId" = $2',
     sqlite:
-      "SELECT nc.*, u.name AS userName FROM note_comments nc LEFT JOIN users u ON nc.userId = u.id WHERE nc.id = ?",
+      "SELECT nc.*, u.name AS userName FROM note_comments nc LEFT JOIN users u ON nc.userId = u.id WHERE nc.id = ? AND nc.noteId = ?",
   },
   UPDATE_NOTE_COMMENT: {
     postgres:

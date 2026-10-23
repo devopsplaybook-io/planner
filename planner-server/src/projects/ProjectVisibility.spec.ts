@@ -1,6 +1,8 @@
 import {
+  PROJECT_VISIBILITIES,
   getProjectPermission,
   hasProjectPermission,
+  isProjectVisibility,
   isProjectVisible,
   isProjectItemVisible,
   permissionDeniedMessage,
@@ -37,6 +39,51 @@ function makeProject(
   Object.assign(project, overrides);
   return project;
 }
+
+describe("isProjectVisibility", () => {
+  it("should accept only the supported visibility values", () => {
+    expect(PROJECT_VISIBILITIES).toEqual(["public", "restricted"]);
+    expect(isProjectVisibility("public")).toBe(true);
+    expect(isProjectVisibility("restricted")).toBe(true);
+    expect(isProjectVisibility("privat")).toBe(false);
+    expect(isProjectVisibility("")).toBe(false);
+    expect(isProjectVisibility(undefined)).toBe(false);
+    expect(isProjectVisibility(null)).toBe(false);
+  });
+});
+
+describe("unknown stored visibility values fail closed", () => {
+  it("should hide an unknown visibility from non-members and grant no permission", () => {
+    for (const visibility of ["privat", ""]) {
+      const project = makeProject({ visibility, userAccess: [] });
+      expect(isProjectVisible(project, userSession)).toBe(false);
+      expect(getProjectPermission(project, userSession)).toBeNull();
+    }
+  });
+
+  it("should keep an unknown visibility visible to its members with their level", () => {
+    for (const visibility of ["privat", ""]) {
+      const project = makeProject({
+        visibility,
+        userAccess: [{ userId: "user-1", permission: "view" }],
+      });
+      expect(isProjectVisible(project, userSession)).toBe(true);
+      expect(getProjectPermission(project, userSession)).toBe("view");
+    }
+  });
+
+  it("should let admins see a project with an unknown visibility", () => {
+    const project = makeProject({ visibility: "privat", userAccess: [] });
+    expect(isProjectVisible(project, adminSession)).toBe(true);
+    expect(getProjectPermission(project, adminSession)).toBe("all");
+  });
+
+  it("should keep nullish visibility public for unloaded projects", () => {
+    const project = makeProject({ visibility: undefined, userAccess: [] });
+    expect(isProjectVisible(project, userSession)).toBe(true);
+    expect(getProjectPermission(project, userSession)).toBe("all");
+  });
+});
 
 describe("isProjectVisible", () => {
   it("should let admins see any project", () => {
