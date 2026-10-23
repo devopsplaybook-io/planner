@@ -103,6 +103,30 @@ describe("TaskTemplate", () => {
       expect(json.labels).toEqual(template.labels);
     });
 
+    it("should expose attachment metadata without the server file path", () => {
+      const template = new TaskTemplate();
+      template.projectId = "p1";
+      template.title = "T";
+      template.attachments = [
+        {
+          id: "att-1",
+          fileName: "spec.pdf",
+          filePath: "/data/attachments/task-templates/att-1.pdf",
+          dateCreated: "2026-09-01T00:00:00.000Z",
+        },
+      ];
+
+      const json = template.toTransportJson();
+      expect(json.attachments).toEqual([
+        {
+          id: "att-1",
+          fileName: "spec.pdf",
+          dateCreated: "2026-09-01T00:00:00.000Z",
+        },
+      ]);
+      expect(JSON.stringify(json)).not.toContain("/data/attachments");
+    });
+
     it("should expose a null scheduleCron for unscheduled templates", () => {
       const template = new TaskTemplate();
       template.projectId = "p1";

@@ -35,6 +35,7 @@ import {
 } from "./NotesData";
 import * as fs from "fs-extra";
 import * as path from "path";
+import { buildContentDisposition } from "../utils/FileUtils";
 
 /**
  * Loads a note and returns null when it does not exist or sits in a project
@@ -408,7 +409,6 @@ export class NotesRoutes {
         return res.status(201).send({
           id: attachmentId,
           fileName: data.filename,
-          filePath: filePath,
           dateCreated: new Date().toISOString(),
         });
       },
@@ -454,7 +454,7 @@ export class NotesRoutes {
         res.type(mimeTypes[ext] || "application/octet-stream");
         res.header(
           "Content-Disposition",
-          `inline; filename="${attachment.fileName}"`,
+          buildContentDisposition("inline", attachment.fileName),
         );
         // PDFs must not carry this header: a sandbox CSP (or iframe sandbox)
         // blocks the browser's built-in PDF viewer, so the file would never
@@ -468,7 +468,7 @@ export class NotesRoutes {
         res.type("application/octet-stream");
         res.header(
           "Content-Disposition",
-          `attachment; filename="${attachment.fileName}"`,
+          buildContentDisposition("attachment", attachment.fileName),
         );
       }
 

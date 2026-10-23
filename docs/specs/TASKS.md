@@ -43,7 +43,7 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 
 [x] Assignees: assignee ids given at creation and through the assignees API are trimmed, de-duplicated and must reference an existing user; an unknown user answers 400 and the write persists nothing. A task create (with its assignees, labels and dependencies) is transactional: a failing child row leaves no task behind.
 
-[x] Attachments: an upload larger than the configured `ATTACHMENT_MAX_SIZE` answers 413, removes the partial file and records no attachment; a file exactly at the limit is accepted. Successful uploads keep answering 201.
+[x] Attachments: an upload larger than the configured `ATTACHMENT_MAX_SIZE` answers 413, removes the partial file and records no attachment; a file exactly at the limit is accepted. Successful uploads keep answering 201. Attachment payloads (task, clone and upload responses) never expose server file paths; downloads stream by attachment id with an RFC 6266 `Content-Disposition` carrying an ASCII fallback plus a UTF-8 `filename*`, so non-ASCII names download with their exact name.
 
 ## Task Dialog UX
 

@@ -200,6 +200,30 @@ describe("Task model", () => {
       expect(json.dueDate).toBe("2026-07-01");
     });
 
+    it("should expose attachment metadata without the server file path", () => {
+      const task = new Task();
+      task.projectId = "p1";
+      task.title = "Attachments";
+      task.attachments = [
+        {
+          id: "att-1",
+          fileName: "spec.pdf",
+          filePath: "/data/attachments/tasks/att-1.pdf",
+          dateCreated: "2026-09-01T00:00:00.000Z",
+        },
+      ];
+
+      const json = task.toTransportJson();
+      expect(json.attachments).toEqual([
+        {
+          id: "att-1",
+          fileName: "spec.pdf",
+          dateCreated: "2026-09-01T00:00:00.000Z",
+        },
+      ]);
+      expect(JSON.stringify(json)).not.toContain("/data/attachments");
+    });
+
     it("should include dependencies in the sparse fieldsets allowlist", () => {
       const task = new Task();
       task.projectId = "p1";

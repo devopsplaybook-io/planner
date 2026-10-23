@@ -136,7 +136,11 @@ export class TaskTemplate {
       },
       assignees: this.assignees,
       comments: this.comments,
-      attachments: this.attachments,
+      attachments: this.attachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        dateCreated: a.dateCreated,
+      })),
       labels: this.labels,
       dateCreated: this.dateCreated,
       dateUpdated: this.dateUpdated,

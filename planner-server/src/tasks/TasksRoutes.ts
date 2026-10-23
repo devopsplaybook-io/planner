@@ -41,6 +41,7 @@ import {
 } from "./TasksData";
 import * as fs from "fs-extra";
 import * as path from "path";
+import { buildContentDisposition } from "../utils/FileUtils";
 import { buildAttachmentCopyPath, cloneTaskFrom } from "./TasksClone";
 import { TaskImproveText } from "./TaskImprove";
 import { TaskVoiceCommentsEnqueue } from "./TaskVoiceComments";
@@ -1227,7 +1228,6 @@ export class TasksRoutes {
         return res.status(201).send({
           id: attachmentId,
           fileName: data.filename,
-          filePath: filePath,
           dateCreated: new Date().toISOString(),
         });
       },
@@ -1283,7 +1283,7 @@ export class TasksRoutes {
         res.type(mimeTypes[ext] || "application/octet-stream");
         res.header(
           "Content-Disposition",
-          `inline; filename="${attachment.fileName}"`,
+          buildContentDisposition("inline", attachment.fileName),
         );
         // PDFs must not carry this header: a sandbox CSP (or iframe sandbox)
         // blocks the browser's built-in PDF viewer, so the file would never
@@ -1297,7 +1297,7 @@ export class TasksRoutes {
         res.type("application/octet-stream");
         res.header(
           "Content-Disposition",
-          `attachment; filename="${attachment.fileName}"`,
+          buildContentDisposition("attachment", attachment.fileName),
         );
       }
 

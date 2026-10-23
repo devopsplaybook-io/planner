@@ -46,7 +46,7 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 [x] No browser dialogs in template flows: errors surface as an inline dismissible banner and the delete uses the custom confirmation dialog instead of `alert()`/`confirm()`.
 
-[x] Attachments: templates support the same attachment lifecycle as tasks (upload, download through the authenticated blob mechanism, delete); audio attachments play inline. An upload larger than the configured `ATTACHMENT_MAX_SIZE` answers 413, removes the partial file and records no attachment; a file exactly at the limit is accepted.
+[x] Attachments: templates support the same attachment lifecycle as tasks (upload, download through the authenticated blob mechanism, delete); audio attachments play inline. An upload larger than the configured `ATTACHMENT_MAX_SIZE` answers 413, removes the partial file and records no attachment; a file exactly at the limit is accepted. Attachment payloads never expose server file paths; downloads stream by attachment id with an RFC 6266 `Content-Disposition` carrying an ASCII fallback plus a UTF-8 `filename*`, so non-ASCII names download with their exact name.
 
 [x] Labels and assignees: template labels follow the task label rules (trimmed, non-empty, at most 100 characters, de-duplicated, 400 otherwise) on create and update; assignee ids must reference existing users and an unknown user answers 400 before anything is written.
 

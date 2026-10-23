@@ -13,7 +13,9 @@ import {
 } from "./Auth";
 import {
   UserPasswordCheckPassword,
+  UserPasswordCompareDummy,
   UserPasswordSetPassword,
+  UserPasswordValidate,
 } from "./UserPassword";
 import {
   UsersDataAdd,
@@ -41,10 +43,16 @@ jest.mock("./Auth", () => ({
   AuthMustBeAdmin: jest.fn(),
 }));
 
-jest.mock("./UserPassword", () => ({
-  UserPasswordCheckPassword: jest.fn(),
-  UserPasswordSetPassword: jest.fn(),
-}));
+jest.mock("./UserPassword", () => {
+  const actual = jest.requireActual("./UserPassword");
+  return {
+    ...actual,
+    UserPasswordCheckPassword: jest.fn(),
+    UserPasswordCompareDummy: jest.fn(async () => undefined),
+    UserPasswordSetPassword: jest.fn(),
+    UserPasswordValidate: jest.fn(actual.UserPasswordValidate),
+  };
+});
 
 jest.mock("./UsersData", () => ({
   UsersDataAdd: jest.fn(),
@@ -237,6 +245,9 @@ describe("UsersRoutes", () => {
     });
     expect(res.statusCode).toBe(403);
     expect(res.json()).toEqual({ error: "Authentication Failed" });
+    // The miss performs the same bcrypt work as a wrong password
+    expect(UserPasswordCompareDummy).toHaveBeenCalledWith("x");
+    expect(UserPasswordValidate).not.toHaveBeenCalled();
   });
 
   it("should answer 201 with a token on a correct login", async () => {
@@ -256,6 +267,24 @@ describe("UsersRoutes", () => {
     expect(res.statusCode).toBe(201);
     expect(res.json().token).toBe("fake-token");
     expect(res.json().user).toEqual(user.toTransportJson());
+  });
+
+  it("should let a legacy short password log in without policy validation", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const user = makeUser({ id: "user-1", name: "legacy" });
+    (UsersDataGetByName as jest.Mock).mockResolvedValue(user);
+    (UserPasswordCheckPassword as jest.Mock).mockResolvedValue(true);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/session",
+      payload: { name: "legacy", password: "pw" },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(UserPasswordValidate).not.toHaveBeenCalled();
   });
 
   it("should answer 429 with Retry-After after too many failures", async () => {
@@ -344,7 +373,7 @@ describe("UsersRoutes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/",
-      payload: { name: "root", password: "pw" },
+      payload: { name: "root", password: "password123" },
     });
 
     expect(res.statusCode).toBe(201);
@@ -364,7 +393,7 @@ describe("UsersRoutes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/",
-      payload: { name: "newbie", password: "pw" },
+      payload: { name: "newbie", password: "password123" },
     });
 
     expect(res.statusCode).toBe(403);
@@ -379,6 +408,24 @@ describe("UsersRoutes", () => {
     expect(UsersDataAdd).not.toHaveBeenCalled();
   });
 
+  it("should reject a too short password on user creation without writing", async () => {
+    (UsersDataList as jest.Mock).mockResolvedValue([]);
+    (UsersDataGetByName as jest.Mock).mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { name: "shorty", password: "1234567" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe(
+      "Invalid: Password (minimum 8 characters)",
+    );
+    expect(UserPasswordSetPassword).not.toHaveBeenCalled();
+    expect(UsersDataAdd).not.toHaveBeenCalled();
+  });
+
   // ==================== OWN PASSWORD ====================
   it("should answer 401 for the own-password change without a session", async () => {
     (AuthGetUserSession as jest.Mock).mockResolvedValue({
@@ -387,7 +434,7 @@ describe("UsersRoutes", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/password",
-      payload: { password: "new", passwordOld: "old" },
+      payload: { password: "newPassword123", passwordOld: "old" },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -398,7 +445,7 @@ describe("UsersRoutes", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/password",
-      payload: { password: "new", passwordOld: "wrong" },
+      payload: { password: "newPassword123", passwordOld: "wrong" },
     });
     expect(res.statusCode).toBe(403);
     expect(UsersDataUpdatePassword).not.toHaveBeenCalled();
@@ -412,6 +459,40 @@ describe("UsersRoutes", () => {
     expect(UsersDataUpdatePassword).not.toHaveBeenCalled();
   });
 
+  it("should reject a too short new password without checking the old one or writing", async () => {
+    (UsersDataGet as jest.Mock).mockResolvedValue(makeUser());
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/password",
+      payload: { password: "1234567", passwordOld: "old" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe(
+      "Invalid: Password (minimum 8 characters)",
+    );
+    expect(UserPasswordCheckPassword).not.toHaveBeenCalled();
+    expect(UserPasswordSetPassword).not.toHaveBeenCalled();
+    expect(UsersDataUpdatePassword).not.toHaveBeenCalled();
+  });
+
+  it("should still accept a short legacy password as passwordOld", async () => {
+    const user = makeUser({ id: "user-1" });
+    (UsersDataGet as jest.Mock).mockResolvedValue(user);
+    (UserPasswordCheckPassword as jest.Mock).mockResolvedValue(true);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/password",
+      payload: { password: "newPassword123", passwordOld: "pw" },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(UserPasswordCheckPassword).toHaveBeenCalledWith(user, "pw");
+    expect(UsersDataUpdatePassword).toHaveBeenCalledWith(user);
+  });
+
   it("should change the password and revoke every session", async () => {
     const user = makeUser({ id: "user-1" });
     (UsersDataGet as jest.Mock).mockResolvedValue(user);
@@ -420,7 +501,7 @@ describe("UsersRoutes", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/password",
-      payload: { password: "new", passwordOld: "old" },
+      payload: { password: "newPassword123", passwordOld: "old" },
     });
 
     expect(res.statusCode).toBe(201);
@@ -501,6 +582,42 @@ describe("UsersRoutes", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("Missing: body");
     expect(UsersDataUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("should reject a too short password on admin update without writing", async () => {
+    const user = makeUser({ id: "user-2", role: "user" });
+    (UsersDataGet as jest.Mock).mockResolvedValue(user);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/user-2",
+      payload: { role: "admin", password: "1234567" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe(
+      "Invalid: Password (minimum 8 characters)",
+    );
+    // The invalid password rejects the request before the role write
+    expect(user.role).toBe("user");
+    expect(UserPasswordSetPassword).not.toHaveBeenCalled();
+    expect(UsersDataUpdatePassword).not.toHaveBeenCalled();
+    expect(UsersDataUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("should set an admin-updated password when it satisfies the policy", async () => {
+    const user = makeUser({ id: "user-2", role: "user" });
+    (UsersDataGet as jest.Mock).mockResolvedValue(user);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/user-2",
+      payload: { password: "password123" },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(UserPasswordSetPassword).toHaveBeenCalledWith(user, "password123");
+    expect(UsersDataUpdatePassword).toHaveBeenCalledWith(user);
   });
 
   // ==================== ADMIN: DELETE USER ====================

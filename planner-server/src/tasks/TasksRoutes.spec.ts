@@ -1824,6 +1824,75 @@ describe("TasksRoutes project visibility", () => {
     expect(res.headers["content-disposition"]).toContain("attachment");
   });
 
+  it("should encode non-ASCII attachment file names per RFC 6266", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["fake-bytes"]));
+
+    (getTaskAttachment as jest.Mock).mockResolvedValue({
+      id: "att-inline",
+      taskId: task.id,
+      fileName: "Résumé final.png",
+      filePath: "/data/attachments/tasks/att-inline.png",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+    });
+    const inline = await app.inject({
+      method: "GET",
+      url: `/${task.id}/attachments/att-inline?inline=true`,
+    });
+    expect(inline.statusCode).toBe(200);
+    expect(inline.headers["content-disposition"]).toBe(
+      `inline; filename="R_sum_ final.png"; filename*=UTF-8''R%C3%A9sum%C3%A9%20final.png`,
+    );
+
+    (getTaskAttachment as jest.Mock).mockResolvedValue({
+      id: "att-download",
+      taskId: task.id,
+      fileName: "報告書.pdf",
+      filePath: "/data/attachments/tasks/att-download.pdf",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+    });
+    const download = await app.inject({
+      method: "GET",
+      url: `/${task.id}/attachments/att-download`,
+    });
+    expect(download.statusCode).toBe(200);
+    expect(download.headers["content-disposition"]).toBe(
+      `attachment; filename="___.pdf"; filename*=UTF-8''%E5%A0%B1%E5%91%8A%E6%9B%B8.pdf`,
+    );
+  });
+
+  it("should not let CR/LF in a file name inject headers", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.pathExists.mockResolvedValue(true);
+    mockFs.createReadStream.mockReturnValue(Readable.from(["fake-bytes"]));
+    (getTaskAttachment as jest.Mock).mockResolvedValue({
+      id: "att-crlf",
+      taskId: task.id,
+      fileName: "evil\r\nX-Injected: yes.txt",
+      filePath: "/data/attachments/tasks/att-crlf.txt",
+      dateCreated: "2026-09-01T00:00:00.000Z",
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/${task.id}/attachments/att-crlf`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["x-injected"]).toBeUndefined();
+    expect(res.headers["content-disposition"]).not.toContain("\r");
+    expect(res.headers["content-disposition"]).not.toContain("\n");
+  });
+
   it("should serve audio attachments inline with audio content types", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
     const mockFs = require("fs-extra") as any;
@@ -1889,6 +1958,7 @@ describe("TasksRoutes project visibility", () => {
     expect(res.json()).toMatchObject({
       fileName: "voice-message.webm",
     });
+    expect(res.json()).not.toHaveProperty("filePath");
     expect(addTaskAttachment).toHaveBeenCalledTimes(1);
     expect(TaskVoiceCommentsEnqueue).toHaveBeenCalledTimes(1);
     expect(TaskVoiceCommentsEnqueue).toHaveBeenCalledWith(
@@ -1933,6 +2003,7 @@ describe("TasksRoutes project visibility", () => {
 
     expect(res.statusCode).toBe(201);
     expect(res.json().fileName).toBe("notes.pdf");
+    expect(res.json()).not.toHaveProperty("filePath");
     expect(TaskVoiceCommentsEnqueue).not.toHaveBeenCalled();
   });
 
@@ -1997,6 +2068,7 @@ describe("TasksRoutes project visibility", () => {
     });
 
     expect(res.statusCode).toBe(201);
+    expect(res.json()).not.toHaveProperty("filePath");
     expect(addTaskAttachment).toHaveBeenCalledTimes(1);
   });
 
@@ -2080,7 +2152,7 @@ describe("TasksRoutes project visibility", () => {
     const body = res.json();
     expect(body.attachments).toHaveLength(1);
     expect(body.attachments[0].fileName).toBe("spec.pdf");
-    expect(body.attachments[0].filePath).toContain("/data/attachments/tasks/");
+    expect(body.attachments[0].filePath).toBeUndefined();
     expect(addTaskAttachment).toHaveBeenCalledTimes(1);
   });
 

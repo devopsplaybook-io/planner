@@ -19,7 +19,6 @@ export interface Note {
   attachments: {
     id: string;
     fileName: string;
-    filePath: string;
     dateCreated: string;
   }[];
   labels: string[];
