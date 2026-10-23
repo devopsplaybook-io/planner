@@ -5,7 +5,7 @@
 
 CREATE TABLE IF NOT EXISTS task_templates (
     id VARCHAR(50) PRIMARY KEY,
-    "projectId" VARCHAR(50) NOT NULL,
+    "projectId" UUID NOT NULL,
     title VARCHAR(500) NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     priority VARCHAR(20) NOT NULL DEFAULT 'medium',
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS task_templates (
 
 CREATE TABLE IF NOT EXISTS task_template_assignees (
     "templateId" VARCHAR(50) NOT NULL,
-    "userId" VARCHAR(50) NOT NULL,
+    "userId" UUID NOT NULL,
     PRIMARY KEY ("templateId", "userId"),
     FOREIGN KEY ("templateId") REFERENCES task_templates(id) ON DELETE CASCADE,
     FOREIGN KEY ("userId") REFERENCES users(id) ON DELETE CASCADE
