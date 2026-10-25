@@ -137,9 +137,41 @@ watch(
   { immediate: true },
 );
 
+const VIEWER_HISTORY_FLAG = "plannerAttachmentViewer";
+
+// History integration: opening the viewer duplicates the current history
+// entry, so the browser Back button closes the viewer (popstate → close)
+// instead of the dialog behind it. Closing through the UI consumes the
+// duplicated entry; the listener is only active while the viewer is open.
+function onPopstate() {
+  emit("close");
+}
+
+watch(
+  () => props.attachment,
+  (attachment, previous) => {
+    if (attachment) {
+      if (previous) return;
+      // Keep the router's state on the duplicated entry: vue-router reads
+      // position/current from history.state on popstate navigations
+      history.pushState(
+        { ...(history.state ?? {}), [VIEWER_HISTORY_FLAG]: true },
+        "",
+      );
+      window.addEventListener("popstate", onPopstate);
+    } else {
+      window.removeEventListener("popstate", onPopstate);
+      // A Back navigation already consumed the duplicated entry; only go
+      // back when the viewer closed through the UI while still on it
+      if (previous && history.state?.[VIEWER_HISTORY_FLAG]) history.back();
+    }
+  },
+);
+
 onUnmounted(() => {
   renderToken++;
   destroyPdfLoadingTask();
+  window.removeEventListener("popstate", onPopstate);
 });
 
 function download() {
