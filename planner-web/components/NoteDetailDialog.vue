@@ -468,6 +468,9 @@ watch(
     editingCommentId.value = "";
     editingCommentText.value = "";
     dialogError.value = "";
+    // The dialogs stay mounted at app level: a stale fullscreen viewer would
+    // otherwise resurface above the next opened note
+    fullscreenAttachment.value = null;
     if (newId) {
       loading.value = true;
       editing.value = false;

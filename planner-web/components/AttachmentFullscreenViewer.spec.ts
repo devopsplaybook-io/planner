@@ -44,6 +44,68 @@ async function flushAll(times = 6) {
 describe("AttachmentFullscreenViewer", () => {
   beforeEach(() => {
     getDocumentMock.mockReset();
+    // jsdom shares one history across the file: start each test from a
+    // clean, unflagged entry so close-path assertions stay independent
+    history.replaceState(null, "");
+  });
+
+  it("pushes its own history entry when it opens and not again on content switch", async () => {
+    const pushStateSpy = vi
+      .spyOn(history, "pushState")
+      .mockImplementation(() => {});
+    const wrapper = mount(AttachmentFullscreenViewer);
+    await wrapper.setProps({
+      attachment: { fileName: "spec.pdf", url: "blob:planner/spec" },
+    });
+
+    expect(pushStateSpy).toHaveBeenCalledTimes(1);
+    expect(pushStateSpy.mock.calls[0]?.[0]).toHaveProperty(
+      "plannerAttachmentViewer",
+      true,
+    );
+
+    await wrapper.setProps({
+      attachment: { fileName: "photo.png", url: "blob:planner/photo" },
+    });
+    expect(pushStateSpy).toHaveBeenCalledTimes(1);
+    pushStateSpy.mockRestore();
+  });
+
+  it("closes through popstate so the browser Back button only closes the viewer", async () => {
+    const wrapper = mount(AttachmentFullscreenViewer);
+    await wrapper.setProps({
+      attachment: { fileName: "photo.png", url: "blob:planner/photo" },
+    });
+
+    window.dispatchEvent(new Event("popstate"));
+    expect(wrapper.emitted("close")).toHaveLength(1);
+  });
+
+  it("consumes its history entry when it closes through the UI", async () => {
+    history.pushState({ plannerAttachmentViewer: true }, "");
+    const backSpy = vi.spyOn(history, "back").mockImplementation(() => {});
+    const wrapper = mount(AttachmentFullscreenViewer, {
+      props: {
+        attachment: { fileName: "photo.png", url: "blob:planner/photo" },
+      },
+    });
+    await wrapper.setProps({ attachment: undefined });
+
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    backSpy.mockRestore();
+  });
+
+  it("does not consume a history entry when the close came from a Back navigation", async () => {
+    const backSpy = vi.spyOn(history, "back").mockImplementation(() => {});
+    const wrapper = mount(AttachmentFullscreenViewer, {
+      props: {
+        attachment: { fileName: "photo.png", url: "blob:planner/photo" },
+      },
+    });
+    await wrapper.setProps({ attachment: undefined });
+
+    expect(backSpy).not.toHaveBeenCalled();
+    backSpy.mockRestore();
   });
 
   it("renders an image for an image attachment", () => {

@@ -1072,6 +1072,9 @@ watch(
     editingCommentId.value = "";
     editingCommentText.value = "";
     pendingDeleteCommentId.value = "";
+    // The dialogs stay mounted at app level: a stale fullscreen viewer would
+    // otherwise resurface above the next opened task
+    fullscreenAttachment.value = null;
     if (newId) {
       // The advanced menu needs the LLM config; fetch it when opening.
       recommendationStore.fetchConfig();
