@@ -4,6 +4,7 @@ import { Config } from "../Config";
 import { DictationTranscribeAndPolish } from "../dictation/Dictation";
 import { NormalizeLanguage } from "../dictation/DictationRoutes";
 import { addComment, TasksDataGet, TasksDataTouch } from "./TasksData";
+import { recordTaskUpdate } from "./TaskUpdates";
 import { UsersDataGet } from "../users/UsersData";
 
 const logger = console;
@@ -48,19 +49,38 @@ export async function TaskVoiceCommentsInit(configIn: Config): Promise<void> {
   }
 }
 
+export interface TaskVoiceCommentsEnqueueResult {
+  queued: boolean;
+  rateLimited: boolean;
+}
+
 /**
  * Schedules a background transcription for an audio attachment uploaded to a
  * task. Fire-and-forget and never throws: the upload is already done and
  * must never be impacted by the voice comment feature. A no-op whenever the
- * feature is not enabled or STT is not configured.
+ * feature is not enabled or STT is not configured. The hourly rate-limit
+ * slot is consumed here, synchronously, so the caller can report a skipped
+ * transcription in the upload response.
  */
-export function TaskVoiceCommentsEnqueue(request: TaskVoiceCommentRequest): void {
+export function TaskVoiceCommentsEnqueue(
+  request: TaskVoiceCommentRequest,
+): TaskVoiceCommentsEnqueueResult {
   try {
-    if (!config || !config.DICTATION_ENABLED || !config.IsDictationSttConfigured()) {
-      return;
+    if (
+      !config ||
+      !config.DICTATION_ENABLED ||
+      !config.IsDictationSttConfigured()
+    ) {
+      return { queued: false, rateLimited: false };
     }
     if (!request.mimeType || !request.mimeType.startsWith("audio/")) {
-      return;
+      return { queued: false, rateLimited: false };
+    }
+    if (!consumeRateLimitSlot(request.userId)) {
+      logger.warn(
+        "[VoiceComments] Hourly transcription limit reached; skipping transcription",
+      );
+      return { queued: false, rateLimited: true };
     }
     // Per-user FIFO queue: one transcription at a time, later uploads queue
     // behind the running one so every voice message gets its transcript
@@ -80,10 +100,12 @@ export function TaskVoiceCommentsEnqueue(request: TaskVoiceCommentRequest): void
         userQueues.delete(request.userId);
       }
     });
+    return { queued: true, rateLimited: false };
   } catch (error) {
     logger.error(
       `[VoiceComments] Failed to enqueue a voice comment job: ${(error as Error).message}`,
     );
+    return { queued: false, rateLimited: false };
   }
 }
 
@@ -139,12 +161,6 @@ function consumeRateLimitSlot(userId: string): boolean {
 async function runVoiceJob(request: TaskVoiceCommentRequest): Promise<void> {
   const jobId = uuidv4();
   try {
-    if (!config || !consumeRateLimitSlot(request.userId)) {
-      logger.warn(
-        `[VoiceComments] Hourly transcription limit reached; skipping job ${jobId}`,
-      );
-      return;
-    }
     const task = await TasksDataGet(request.taskId);
     if (!task) {
       logger.info(
@@ -160,7 +176,7 @@ async function runVoiceJob(request: TaskVoiceCommentRequest): Promise<void> {
     }
     const language = NormalizeLanguage(
       request.requestedLanguage,
-      config.DICTATION_LANGUAGE,
+      config?.DICTATION_LANGUAGE || "",
     );
     const { polishedText } = await DictationTranscribeAndPolish(
       request.filePath,
@@ -182,6 +198,8 @@ async function runVoiceJob(request: TaskVoiceCommentRequest): Promise<void> {
       dateCreated: new Date().toISOString(),
     });
     await TasksDataTouch(request.taskId);
+    // Same activity entry and assignee push as a comment posted normally
+    await recordTaskUpdate(request.taskId, request.userId, "New comment");
     logger.info(`[VoiceComments] Job ${jobId} done`);
   } catch (error) {
     // Never rethrow: the upload succeeded independently and the audio

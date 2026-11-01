@@ -1930,6 +1930,10 @@ describe("TasksRoutes project visibility", () => {
     const task = makeTask(publicProject);
     (TasksDataGet as jest.Mock).mockResolvedValue(task);
     (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (TaskVoiceCommentsEnqueue as jest.Mock).mockReturnValue({
+      queued: true,
+      rateLimited: false,
+    });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
     const mockFs = require("fs-extra") as any;
     mockFs.ensureDir.mockResolvedValue(undefined);
@@ -1959,6 +1963,7 @@ describe("TasksRoutes project visibility", () => {
       fileName: "voice-message.webm",
     });
     expect(res.json()).not.toHaveProperty("filePath");
+    expect(res.json()).not.toHaveProperty("voiceTranscriptionSkipped");
     expect(addTaskAttachment).toHaveBeenCalledTimes(1);
     expect(TaskVoiceCommentsEnqueue).toHaveBeenCalledTimes(1);
     expect(TaskVoiceCommentsEnqueue).toHaveBeenCalledWith(
@@ -1971,6 +1976,47 @@ describe("TasksRoutes project visibility", () => {
         requestedLanguage: "fr",
       }),
     );
+  });
+
+  it("should report a skipped transcription on a rate-limited voice upload", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    (TaskVoiceCommentsEnqueue as jest.Mock).mockReturnValue({
+      queued: false,
+      rateLimited: true,
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const boundary = "----jestformboundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="voice-message.webm"',
+      "Content-Type: audio/webm",
+      "",
+      "fake-audio-bytes",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/attachments`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({
+      fileName: "voice-message.webm",
+      voiceTranscriptionSkipped: true,
+    });
+    // The audio attachment is stored even when the transcript is skipped
+    expect(addTaskAttachment).toHaveBeenCalledTimes(1);
   });
 
   it("should not enqueue a voice comment job for non-audio attachments", async () => {

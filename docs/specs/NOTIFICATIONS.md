@@ -10,7 +10,7 @@ The application sends Web Push notifications (PWA) to remind users about upcomin
 | [x] Day of            | A "Task due today" notification is sent on the day of a task's due date                                                                  |
 | [x] Overdue           | A "Task overdue" notification is sent while a task is past its due date, at most once per day per task                                   |
 | [x] Notification time | Reminders are sent from a configured hour of the day onwards (default 9:00)                                                              |
-| [x] Timezone          | "Today", "tomorrow" and the notification hour are evaluated in a configurable timezone (server timezone when none is set)                |
+| [x] Timezone          | "Today", "tomorrow" and the notification hour are evaluated in a configurable timezone (server timezone when none is set); the hour never comes from the server clock, so users east or west of the server are notified from their own configured hour (tests cover both directions) |
 | [x] No duplicates     | Each reminder is sent at most once per task, due date, and reminder kind; nothing is consumed while no device is subscribed              |
 | [x] Completed tasks   | Tasks with the final status ("Done") do not trigger notifications                                                                        |
 | [x] Audience          | Reminders go only to the assignees of the task, filtered by project visibility: admins see every project, public projects reach every authenticated user, restricted projects only their members; tasks without assignees remind nobody |
@@ -21,4 +21,4 @@ The application sends Web Push notifications (PWA) to remind users about upcomin
 | [x] Batched lookups   | Push subscriptions are loaded once per run and grouped per user instead of being queried inside the per-recipient loop |
 | [x] No overlap        | A reminder run that fires while the previous one is still running is skipped |
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-23_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_

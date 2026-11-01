@@ -599,6 +599,13 @@
               </template>
             </div>
           </div>
+          <p
+            v-if="voiceTranscriptionNotice"
+            class="voice-transcription-notice"
+            role="status"
+          >
+            {{ voiceTranscriptionNotice }}
+          </p>
           <form class="add-comment" @submit.prevent="addComment">
             <CommentComposer
               v-model="newComment"
@@ -759,6 +766,7 @@ const cancelDialogEl = useModalDialog(() => showCancelConfirm.value);
 const cancelling = ref(false);
 const uploading = ref(false);
 const uploadingVoice = ref(false);
+const voiceTranscriptionNotice = ref("");
 const deletingAttachmentId = ref("");
 const fileInput = ref(null);
 const newChecklistText = ref("");
@@ -1069,6 +1077,7 @@ watch(
       highlightTimer = null;
     }
     dialogError.value = "";
+    voiceTranscriptionNotice.value = "";
     editingCommentId.value = "";
     editingCommentText.value = "";
     pendingDeleteCommentId.value = "";
@@ -1626,19 +1635,24 @@ async function uploadAttachment() {
 
 // Voice comment recorded in the add-comment composer: upload it as a
 // regular audio attachment (the server transcribes it in the background
-// when STT is configured). A failed upload surfaces in the banner; the
-// background transcription itself is silent.
+// when STT is configured). A failed upload surfaces in the banner; a
+// transcription skipped because the hourly limit is reached is reported
+// inline instead of silently dropping the transcript.
 async function onVoiceRecorded({ blob, mimeType }) {
   if (!props.taskId) return;
   dialogError.value = "";
+  voiceTranscriptionNotice.value = "";
   uploadingVoice.value = true;
   try {
     const file = new File([blob], `${voiceMessageBaseName()}${fileExtensionForMimeType(mimeType)}`, {
       type: mimeType,
     });
-    await tasksStore.uploadAttachment(props.taskId, file, {
+    const attachment = await tasksStore.uploadAttachment(props.taskId, file, {
       language: dictationStore.language,
     });
+    voiceTranscriptionNotice.value = attachment?.voiceTranscriptionSkipped
+      ? "Voice message uploaded, but transcription was skipped because the hourly voice limit was reached."
+      : "";
   } catch (e) {
     setDialogError(e, "Failed to upload voice message");
   } finally {
@@ -1975,6 +1989,12 @@ section h4 {
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--space-xs);
+}
+
+.voice-transcription-notice {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
 }
 
 .add-comment-actions {

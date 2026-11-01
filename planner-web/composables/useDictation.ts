@@ -8,8 +8,11 @@ export interface RecordingResult {
 
 interface UseDictationOptions {
   maxDurationSeconds?: number;
-  /** Called when the recording is automatically stopped at the max duration. */
-  onAutoStop?: () => void;
+  /**
+   * Called when the recording is automatically stopped at the max duration,
+   * with the captured audio so the caller can still submit it.
+   */
+  onAutoStop?: (recording: RecordingResult | null) => void | Promise<void>;
 }
 
 /**
@@ -49,6 +52,7 @@ export function useDictation(options: UseDictationOptions = {}) {
   let mimeType = "";
   let chunks: Blob[] = [];
   let stopPromise: Promise<RecordingResult> | null = null;
+  let stopInFlight: Promise<RecordingResult | null> | null = null;
 
   function isSupported(): boolean {
     return isVoiceRecordingSupported();
@@ -166,8 +170,12 @@ export function useDictation(options: UseDictationOptions = {}) {
     timerInterval = setInterval(() => {
       elapsedSeconds.value += 1;
       if (elapsedSeconds.value >= maxDurationSeconds) {
-        void stop();
-        options.onAutoStop?.();
+        // Auto-stop must hand the captured audio over: the caller submits it
+        // exactly like a manual stop instead of losing the recording.
+        void (async () => {
+          const recording = await stop();
+          await options.onAutoStop?.(recording);
+        })().catch(() => undefined);
       }
     }, 1000);
     return true;
@@ -175,29 +183,56 @@ export function useDictation(options: UseDictationOptions = {}) {
 
   /**
    * Stops recording and resolves with the captured audio, or null when
-   * nothing was recording.
+   * nothing was recording. The recorder is stopped before the microphone is
+   * released so the tail of the audio is not truncated; concurrent calls
+   * share the same in-flight stop.
    */
   async function stop(): Promise<RecordingResult | null> {
+    if (stopInFlight) {
+      return stopInFlight;
+    }
     if (!isRecording.value || !mediaRecorder) {
       return null;
     }
-    const pending = stopPromise;
-    cleanup();
-    if (mediaRecorder.state !== "inactive") {
-      mediaRecorder.stop();
-    }
     const recorder = mediaRecorder;
-    mediaRecorder = null;
-    const result = await pending;
-    recorder.ondataavailable = null;
-    recorder.onstop = null;
-    return result;
+    const pending = stopPromise;
+    stopTimer();
+    stopInFlight = (async () => {
+      try {
+        if (recorder.state !== "inactive") {
+          recorder.stop();
+        }
+        const result = pending ? await pending : null;
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+        mediaRecorder = null;
+        return result;
+      } finally {
+        cleanup();
+        stopInFlight = null;
+      }
+    })();
+    return stopInFlight;
   }
 
-  /** Stops recording and discards the captured audio. */
-  function cancel(): void {
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      mediaRecorder.stop();
+  /**
+   * Stops recording and discards the captured audio. A pending stop is
+   * settled first so it never hangs; the caller gets no recording.
+   */
+  async function cancel(): Promise<void> {
+    const recorder = mediaRecorder;
+    const pending = stopPromise;
+    stopTimer();
+    // A stop already in flight has stopped the recorder itself
+    if (!stopInFlight && recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+    if (pending) {
+      await pending.catch(() => undefined);
+    }
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
     }
     mediaRecorder = null;
     chunks = [];

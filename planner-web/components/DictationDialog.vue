@@ -30,7 +30,7 @@
           <button
             type="button"
             :disabled="isRecording"
-            @click="finishRecording"
+            @click="finishRecording()"
           >
             <i class="bi bi-check2" /> Use recording
           </button>
@@ -246,7 +246,7 @@ const {
   cancel: cancelRecording,
 } = useDictation({
   maxDurationSeconds: DICTATION_MAX_DURATION_SECONDS,
-  onAutoStop: () => finishRecording(),
+  onAutoStop: (recording) => finishRecording(recording),
 });
 
 let pollingTimer = null;
@@ -342,11 +342,12 @@ async function stopRecording() {
   await finishRecording();
 }
 
-async function finishRecording() {
-  if (!isRecording.value) {
-    return;
-  }
-  const recording = await stopRecordingInternal();
+async function finishRecording(preStopped = null) {
+  // The auto-stop path has already stopped the recorder and hands the audio
+  // over; a manual stop still has to stop it here.
+  const recording =
+    preStopped ??
+    (isRecording.value ? await stopRecordingInternal() : null);
   if (!recording) {
     return;
   }
@@ -397,7 +398,7 @@ function onDialogClosed() {
   // the dialog resumes polling when reopened
   stopPolling();
   if (isRecording.value) {
-    cancelRecording();
+    void cancelRecording();
   }
   emit("close");
 }

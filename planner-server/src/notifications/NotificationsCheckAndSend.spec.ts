@@ -126,6 +126,50 @@ describe("NotificationsCheckAndSend overlap guard", () => {
   });
 });
 
+describe("NotificationsCheckAndSend timezone", () => {
+  async function initWithTimezone(timezone: string): Promise<void> {
+    const config = new Config();
+    config.WEB_PUSH_ENABLED = true;
+    config.WEB_PUSH_VAPID_PUBLIC_KEY = "test-public-key";
+    config.WEB_PUSH_VAPID_PRIVATE_KEY = "test-private-key";
+    config.WEB_PUSH_NOTIFY_HOUR = 9;
+    config.WEB_PUSH_TIMEZONE = timezone;
+    await NotificationsInit(config);
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuerySQL.mockResolvedValue([]);
+    mockListSubscriptions.mockResolvedValue([]);
+  });
+
+  it("should use the configured hour for users east of the server", async () => {
+    await initWithTimezone("Asia/Tokyo");
+
+    // 2026-10-15T00:30:00Z = 09:30 JST: the reminder run proceeds
+    await NotificationsCheckAndSend(new Date("2026-10-15T00:30:00Z"));
+    expect(mockQuerySQL).toHaveBeenCalledTimes(1);
+
+    // 2026-10-14T23:30:00Z = 08:30 JST: before the notification hour
+    mockQuerySQL.mockClear();
+    await NotificationsCheckAndSend(new Date("2026-10-14T23:30:00Z"));
+    expect(mockQuerySQL).not.toHaveBeenCalled();
+  });
+
+  it("should use the configured hour for users west of the server", async () => {
+    await initWithTimezone("America/Los_Angeles");
+
+    // 2026-10-15T16:30:00Z = 09:30 PDT: the reminder run proceeds
+    await NotificationsCheckAndSend(new Date("2026-10-15T16:30:00Z"));
+    expect(mockQuerySQL).toHaveBeenCalledTimes(1);
+
+    // 2026-10-15T15:30:00Z = 08:30 PDT: before the notification hour
+    mockQuerySQL.mockClear();
+    await NotificationsCheckAndSend(new Date("2026-10-15T15:30:00Z"));
+    expect(mockQuerySQL).not.toHaveBeenCalled();
+  });
+});
+
 describe("NotificationsCheckAndSend subscription batching", () => {
   beforeAll(async () => {
     await initNotifications();

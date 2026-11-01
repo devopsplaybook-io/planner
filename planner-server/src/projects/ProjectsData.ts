@@ -63,16 +63,32 @@ export async function ProjectsDataAdd(project: Project): Promise<void> {
   }
 }
 
-export async function ProjectsDataUpdate(project: Project): Promise<void> {
-  await DbUtilsExecSQL(SQL_QUERIES.UPDATE_PROJECT[DbUtilsGetType()], [
-    project.name,
-    project.description,
-    project.isDefault ? 1 : 0,
-    project.archived ? 1 : 0,
-    project.visibility,
-    JSON.stringify(project.statuses),
-    project.id,
-  ]);
+/**
+ * Updates the project and, when `replaceUserAccess` is provided, replaces its
+ * whole access list in one transaction: a failure leaves the previous list
+ * and project untouched.
+ */
+export async function ProjectsDataUpdate(
+  project: Project,
+  replaceUserAccess?: ProjectUserAccess[],
+): Promise<void> {
+  await DbUtilsTransaction(async () => {
+    await DbUtilsExecSQL(SQL_QUERIES.UPDATE_PROJECT[DbUtilsGetType()], [
+      project.name,
+      project.description,
+      project.isDefault ? 1 : 0,
+      project.archived ? 1 : 0,
+      project.visibility,
+      JSON.stringify(project.statuses),
+      project.id,
+    ]);
+    if (replaceUserAccess) {
+      await clearProjectUsers(project.id);
+      for (const entry of replaceUserAccess) {
+        await addProjectUser(project.id, entry.userId, entry.permission);
+      }
+    }
+  });
 }
 
 /**

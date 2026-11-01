@@ -18,8 +18,6 @@ import {
   ProjectsDataList,
   ProjectsDataUpdate,
   ProjectsDataCountOpenTasks,
-  clearProjectUsers,
-  addProjectUser,
 } from "./ProjectsData";
 import { TaskTemplatesListIdsByProject } from "../tasktemplates/TaskTemplatesData";
 import { TaskTemplatesSchedulerRefresh } from "../tasktemplates/TaskTemplatesScheduler";
@@ -237,21 +235,16 @@ export class ProjectsRoutes {
       if (req.body.visibility) {
         project.visibility = req.body.visibility;
       }
+      let replaceUserAccess: ProjectUserAccess[] | undefined;
       if (req.body.userAccess) {
         const userAccessError = validateUserAccessWrite(req.body.userAccess);
         if (userAccessError) {
           return res.status(400).send({ error: userAccessError });
         }
-        const access: ProjectUserAccess[] = normalizeUserAccess(
-          req.body.userAccess,
-        );
-        await clearProjectUsers(project.id);
-        for (const entry of access) {
-          await addProjectUser(project.id, entry.userId, entry.permission);
-        }
-        project.userAccess = access;
+        replaceUserAccess = normalizeUserAccess(req.body.userAccess);
+        project.userAccess = replaceUserAccess;
       }
-      await ProjectsDataUpdate(project);
+      await ProjectsDataUpdate(project, replaceUserAccess);
       return res.status(201).send(project.toTransportJson());
     });
 

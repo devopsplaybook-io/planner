@@ -9,7 +9,6 @@ import {
   AuthRateLimitKey,
 } from "../users/Auth";
 import { UsersDataGet } from "../users/UsersData";
-import { NotificationsTaskUpdated } from "../notifications/Notifications";
 import {
   hasProjectPermission,
   isProjectItemVisible,
@@ -45,59 +44,11 @@ import { buildContentDisposition } from "../utils/FileUtils";
 import { buildAttachmentCopyPath, cloneTaskFrom } from "./TasksClone";
 import { TaskImproveText } from "./TaskImprove";
 import { TaskVoiceCommentsEnqueue } from "./TaskVoiceComments";
+import { recordTaskUpdate } from "./TaskUpdates";
 import {
-  TaskActivityDataAdd,
   TaskActivityDataList,
   TaskActivityListFilters,
 } from "./TaskActivityData";
-
-/**
- * Fire-and-forget push notification to the task assignees (excluding the
- * actor) that the task changed. Never awaited and never throws: a
- * notification problem must not slow down or fail the mutation.
- */
-function notifyAssignees(
-  taskId: string,
-  actorUserId: string,
-  summary: string,
-): void {
-  (async () => {
-    const task = await TasksDataGet(taskId);
-    if (!task) {
-      return;
-    }
-    const actor = await UsersDataGet(actorUserId);
-    await NotificationsTaskUpdated(
-      task,
-      actorUserId,
-      actor?.name || "",
-      summary,
-    );
-  })().catch(() => {
-    // Notification failures are logged inside NotificationsTaskUpdated
-  });
-}
-
-/**
- * Records a task mutation in the Update Feed (a single awaited insert, so
- * the entry exists when the client refetches) then pushes the notification
- * to the assignees. The feed entry is auxiliary: a failure to record it is
- * logged and never fails the mutation itself.
- */
-async function recordTaskUpdate(
-  taskId: string,
-  actorUserId: string,
-  summary: string,
-): Promise<void> {
-  try {
-    await TaskActivityDataAdd(taskId, actorUserId, summary);
-  } catch (error) {
-    console.error(
-      `[Tasks] Failed to record task activity: ${(error as Error).message}`,
-    );
-  }
-  notifyAssignees(taskId, actorUserId, summary);
-}
 
 /**
  * Validates the optional doneSince query param (ISO 8601 timestamp).
@@ -1211,24 +1162,28 @@ export class TasksRoutes {
 
         // Voice comments: an audio attachment may be a recorded voice
         // message — schedule a background transcription that posts the
-        // transcript as a comment. Fire-and-forget: never touches the
-        // upload response, a no-op when the feature is not enabled.
-        if (data.mimetype.startsWith("audio/")) {
-          TaskVoiceCommentsEnqueue({
-            taskId: req.params.id,
-            userId: userSession.userId,
-            userName: userSession.userName,
-            fileName: data.filename,
-            filePath,
-            mimeType: data.mimetype,
-            requestedLanguage: req.query.language,
-          });
-        }
+        // transcript as a comment. Fire-and-forget: a no-op when the feature
+        // is not enabled. A rate-limited upload is stored either way; the
+        // response tells the client the transcript was skipped.
+        const transcription = data.mimetype.startsWith("audio/")
+          ? TaskVoiceCommentsEnqueue({
+              taskId: req.params.id,
+              userId: userSession.userId,
+              userName: userSession.userName,
+              fileName: data.filename,
+              filePath,
+              mimeType: data.mimetype,
+              requestedLanguage: req.query.language,
+            })
+          : null;
 
         return res.status(201).send({
           id: attachmentId,
           fileName: data.filename,
           dateCreated: new Date().toISOString(),
+          ...(transcription?.rateLimited
+            ? { voiceTranscriptionSkipped: true }
+            : {}),
         });
       },
     );
