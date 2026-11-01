@@ -134,7 +134,9 @@
       <section v-if="recentlyDone.length > 0">
         <h2>
           <i class="bi bi-check-circle" /> Recently Done
-          <span class="section-hint">last {{ DONE_WINDOW_DAYS }} days</span>
+          <span class="section-hint"
+            >last {{ DONE_WINDOW_DAYS }} days · 5 most recent</span
+          >
         </h2>
         <div class="task-list">
           <TaskCard
@@ -192,20 +194,12 @@ const dashboardData = ref({
   overdue: [],
   upcoming: [],
   noDate: [],
+  recentlyDone: [],
 });
 
-// Like the kanban board: all Done tasks updated within the last 30 days.
-// The server (doneSince) already limits Done tasks to the window, so a
-// client-side status filter is enough.
-const recentlyDone = computed(() =>
-  tasksStore.tasks
-    .filter((t) => t.status === "Done")
-    .sort(
-      (a, b) =>
-        new Date(b.dateUpdated || b.dateCreated) -
-        new Date(a.dateUpdated || a.dateCreated),
-    ),
-);
+// The server returns the most recently updated Done tasks of the last 30
+// days (LIMIT 5) with the dashboard payload; no separate task-list fetch.
+const recentlyDone = computed(() => dashboardData.value.recentlyDone ?? []);
 
 function renderRecommendationMarkdown(text) {
   if (!text) return "";
@@ -295,18 +289,7 @@ async function fetchDashboard({ silent = false } = {}) {
     if (selectedLabels.value.length) {
       params.labels = selectedLabels.value.join(",");
     }
-    const doneSince = new Date(
-      Date.now() - DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    const [dashboard] = await Promise.all([
-      tasksStore.fetchDashboard(params),
-      tasksStore.fetchAll(undefined, {
-        doneSince,
-        projectIds,
-        labels: selectedLabels.value,
-      }),
-    ]);
-    dashboardData.value = dashboard;
+    dashboardData.value = await tasksStore.fetchDashboard(params);
   } catch {
     // Handle error silently
   } finally {
