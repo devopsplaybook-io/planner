@@ -34,6 +34,7 @@ import {
   TaskTemplatesAdd,
   TaskTemplatesDelete,
   TaskTemplatesGet,
+  TaskTemplatesList,
   addTemplateAttachment,
   addTemplateComment,
   TaskTemplateRunsAdd,
@@ -1341,5 +1342,65 @@ describe("dashboard label filter AND semantics (integration)", () => {
       "t-and-both",
       "t-and-one",
     ]);
+  });
+});
+
+describe("malformed stored checklists (integration)", () => {
+  beforeAll(async () => {
+    await fs.remove(dir);
+    await fs.ensureDir(dir);
+    const config = new Config();
+    config.DATA_DIR = dir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(dir);
+  });
+
+  it("should list tasks and templates with a malformed checklist without throwing", async () => {
+    await insertProject("p-bad-checklist");
+    await DbUtilsExecSQL(
+      "INSERT INTO tasks (id, projectId, title, description, status, priority, checklist, dateCreated, dateUpdated) VALUES (?,?,?,?,?,?,?,?,?)",
+      [
+        "t-bad-checklist",
+        "p-bad-checklist",
+        "Task",
+        "",
+        "To Do",
+        "medium",
+        "{not json",
+        now,
+        now,
+      ],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO task_templates (id, projectId, title, description, priority, checklist, scheduleCron, skipIfPreviousNotDone, addDateToTitle, dateCreated, dateUpdated) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      [
+        "tt-bad-checklist",
+        "p-bad-checklist",
+        "Template",
+        "",
+        "medium",
+        "{not json",
+        null,
+        0,
+        0,
+        now,
+        now,
+      ],
+    );
+
+    const tasks = await TasksDataList({ projectId: "p-bad-checklist" });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].checklist).toEqual([]);
+
+    const templates = await TaskTemplatesList({
+      projectId: "p-bad-checklist",
+    });
+    expect(templates).toHaveLength(1);
+    expect(templates[0].checklist).toEqual([]);
   });
 });
