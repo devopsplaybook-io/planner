@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import Fastify from "fastify";
 import { FastifyInstance } from "fastify";
-import { LoginRateLimiter, UsersRoutes } from "./UsersRoutes";
+import {
+  CALENDAR_ICS_MAX_EVENTS,
+  LoginRateLimiter,
+  UsersRoutes,
+} from "./UsersRoutes";
 import { ApiKey } from "../model/ApiKey";
 import { Task } from "../model/Task";
 import { User } from "../model/User";
@@ -892,6 +896,8 @@ describe("UsersRoutes", () => {
     expect(filters.visibleTo).toEqual({ userId: "user-1" });
     expect(filters.hasDueDate).toBe(true);
     expect(filters.doneSince).toBeDefined();
+    expect(filters.limit).toBe(CALENDAR_ICS_MAX_EVENTS);
+    expect(filters.orderBy).toBe("dueDate");
   });
 
   it("should not restrict the task list for admin users", async () => {
@@ -904,5 +910,7 @@ describe("UsersRoutes", () => {
     const filters = (TasksDataList as jest.Mock).mock.calls[0][0];
     expect(filters.visibleTo).toBeUndefined();
     expect(filters.hasDueDate).toBe(true);
+    expect(filters.limit).toBe(CALENDAR_ICS_MAX_EVENTS);
+    expect(filters.orderBy).toBe("dueDate");
   });
 });

@@ -65,10 +65,13 @@ export class TaskTemplate {
     }
     if (json.checklist) {
       try {
-        template.checklist =
+        const parsed =
           typeof json.checklist === "string"
             ? JSON.parse(json.checklist as string)
-            : (json.checklist as ChecklistItem[]);
+            : json.checklist;
+        template.checklist = Array.isArray(parsed)
+          ? (parsed as ChecklistItem[])
+          : [];
       } catch {
         template.checklist = [];
       }

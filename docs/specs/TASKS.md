@@ -74,6 +74,8 @@ Tasks that used to repeat are now created from task templates (see [TASK_TEMPLAT
 
 [x] PDF attachments: PDF files open in a fullscreen inline PDF viewer from the task dialog attachments section (click to open; click-outside or the close button to dismiss) through the same generic viewer mechanism as images and audio; the authenticated blob mechanism keeps the JWT out of attachment URLs. The pages render fit to the viewer width on canvas through the bundled pdf.js renderer and scroll vertically (the browser's built-in viewer cannot render PDFs inside iframes on mobile Chromium); a download button in the viewer downloads the file under its original name.
 
+[x] Attachment previews load lazily: an image/PDF/audio preview is fetched only when its row becomes visible in the attachments section, not when the task dialog opens. The preview download is capped at 5 MB per file (aborted as soon as it exceeds the cap, with a final size re-check); larger files show a hint in the dialog and keep the regular download link, and the dialog states the cap. Previews still go through the authenticated blob mechanism, so the JWT never appears in an attachment URL.
+
 ## Visibility
 
 - [x] Tasks inherit the visibility of their project (see [PROJECTS.md](PROJECTS.md)): non-admin users can only list and see tasks from public projects or restricted projects they are a member of; admins see all tasks.

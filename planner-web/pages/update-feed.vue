@@ -190,6 +190,10 @@ async function fetchFeed({ silent = false } = {}) {
   }
 }
 
+// Offset pagination is required by the `/tasks/activity` API: the next page
+// starts at offset = entries.length. Activity arriving between two pages
+// shifts the window, so a page can repeat or skip entries. The periodic
+// silent refresh replaces the whole list from offset 0 and reconciles it.
 async function loadMore() {
   if (loading.value || loadingMore.value || refreshing.value) return;
   loadingMore.value = true;

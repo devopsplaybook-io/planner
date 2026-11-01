@@ -24,6 +24,26 @@ describe("TaskTemplate", () => {
       expect(template.dateUpdated).toBeTruthy();
     });
 
+    it("should default a malformed checklist string to an empty list", () => {
+      const template = TaskTemplate.fromJson({
+        projectId: "p1",
+        title: "Bad checklist",
+        checklist: "{not json",
+      });
+      expect(template.checklist).toEqual([]);
+    });
+
+    it("should default parsed non-array checklists to an empty list", () => {
+      for (const checklist of ["null", "{}", "42", '"text"']) {
+        const template = TaskTemplate.fromJson({
+          projectId: "p1",
+          title: "Bad checklist",
+          checklist,
+        });
+        expect(template.checklist).toEqual([]);
+      }
+    });
+
     it("should parse the flags from sqlite integers (0/1)", () => {
       const template = TaskTemplate.fromJson({
         projectId: "p1",
@@ -37,8 +57,7 @@ describe("TaskTemplate", () => {
 
     it("should parse the flags from postgres booleans", () => {
       const template = TaskTemplate.fromJson({
-        projectId: "p1",
-        title: "T",
+        projectId: "p1",        title: "T",
         skipIfPreviousNotDone: true,
         addDateToTitle: true,
       });

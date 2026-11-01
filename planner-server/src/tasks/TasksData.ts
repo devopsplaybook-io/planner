@@ -1,7 +1,6 @@
 import {
   Task,
   TaskComment,
-  ChecklistItem,
   TaskDependency,
 } from "../model/Task";
 import {
@@ -42,6 +41,8 @@ export interface TaskListFilters {
   /** Maximum number of rows returned (pagination). */
   limit?: number;
   offset?: number;
+  /** Result ordering; defaults to dateCreated DESC. */
+  orderBy?: "dateCreated" | "dueDate";
 }
 
 /**
@@ -121,8 +122,12 @@ export function buildListTasksQuery(
       params.push(filters.offset);
     }
   }
+  const orderClause =
+    filters.orderBy === "dueDate"
+      ? ` ORDER BY ${quote("dueDate")} ASC`
+      : ` ORDER BY ${quote("dateCreated")} DESC`;
   return {
-    sql: `SELECT * FROM tasks${whereClause} ORDER BY ${quote("dateCreated")} DESC${limitClause}`,
+    sql: `SELECT * FROM tasks${whereClause}${orderClause}${limitClause}`,
     params,
   };
 }
@@ -487,10 +492,6 @@ async function enrichTasks(
 ): Promise<Task[]> {
   const tasks = rows.map((row) => {
     const task = Task.fromJson(row);
-    task.checklist =
-      typeof row.checklist === "string"
-        ? JSON.parse(row.checklist as string)
-        : (row.checklist as ChecklistItem[]) || [];
     task.assignees = [];
     task.comments = [];
     task.attachments = [];

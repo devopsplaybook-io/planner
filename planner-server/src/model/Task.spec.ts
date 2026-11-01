@@ -70,6 +70,26 @@ describe("Task model", () => {
       expect(Task.fromJson(null)).toBeNull();
     });
 
+    it("should default a malformed checklist string to an empty list", () => {
+      const task = Task.fromJson({
+        projectId: "p1",
+        title: "Bad checklist",
+        checklist: "{not json",
+      });
+      expect(task.checklist).toEqual([]);
+    });
+
+    it("should default parsed non-array checklists to an empty list", () => {
+      for (const checklist of ["null", "{}", "42", '"text"']) {
+        const task = Task.fromJson({
+          projectId: "p1",
+          title: "Bad checklist",
+          checklist,
+        });
+        expect(task.checklist).toEqual([]);
+      }
+    });
+
     it("should restore dateCreated and dateUpdated from the row", () => {
       const task = Task.fromJson({
         projectId: "p1",

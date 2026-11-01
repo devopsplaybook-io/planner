@@ -65,6 +65,27 @@ describe("buildListTasksQuery", () => {
     // Param order must match placeholder order: projectId, status, doneSince
     expect(params).toEqual(["proj-1", "Done", "2026-08-14T00:00:00.000Z"]);
   });
+
+  it("should order by dueDate ascending when requested (sqlite)", () => {
+    const { sql, params } = buildListTasksQuery(
+      { hasDueDate: true, orderBy: "dueDate", limit: 1000 },
+      "sqlite",
+    );
+    expect(sql).toBe(
+      "SELECT * FROM tasks WHERE dueDate IS NOT NULL ORDER BY dueDate ASC LIMIT ?",
+    );
+    expect(params).toEqual([1000]);
+  });
+
+  it("should quote identifiers when ordering by dueDate (postgres)", () => {
+    const { sql } = buildListTasksQuery(
+      { hasDueDate: true, orderBy: "dueDate" },
+      "postgres",
+    );
+    expect(sql).toBe(
+      'SELECT * FROM tasks WHERE "dueDate" IS NOT NULL ORDER BY "dueDate" ASC',
+    );
+  });
 });
 
 describe("buildListTasksQuery projectIds (subtree)", () => {

@@ -83,10 +83,13 @@ export class Task {
     }
     if (json.checklist) {
       try {
-        task.checklist =
+        const parsed =
           typeof json.checklist === "string"
             ? JSON.parse(json.checklist as string)
-            : (json.checklist as ChecklistItem[]);
+            : json.checklist;
+        task.checklist = Array.isArray(parsed)
+          ? (parsed as ChecklistItem[])
+          : [];
       } catch {
         task.checklist = [];
       }

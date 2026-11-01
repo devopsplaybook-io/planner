@@ -384,6 +384,28 @@ describe("task update notifications (integration)", () => {
     expect(callsTo("u-tu-member")).toHaveLength(1);
   });
 
+  it("should resolve visibility per assignee when a task has several (batched)", async () => {
+    await insertUser("u-tu-batch-member");
+    await insertUser("u-tu-batch-outsider");
+    await insertProject("p-tu-batch", "restricted");
+    await insertProjectUser("p-tu-batch", "u-tu-batch-member");
+    await insertSubscription("u-tu-batch-member");
+    await insertSubscription("u-tu-batch-outsider");
+
+    await NotificationsTaskUpdated(
+      makeTask("t-tu-batch", "p-tu-batch", [
+        "u-tu-batch-member",
+        "u-tu-batch-outsider",
+      ]),
+      "actor-1",
+      "Actor",
+      "Status changed",
+    );
+
+    expect(callsTo("u-tu-batch-member")).toHaveLength(1);
+    expect(callsTo("u-tu-batch-outsider")).toHaveLength(0);
+  });
+
   it("should push a restricted-project update to an admin non-member", async () => {
     await insertUser("u-tu-admin", "admin");
     await insertProject("p-tu-admin", "restricted");

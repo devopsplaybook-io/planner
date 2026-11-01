@@ -38,6 +38,11 @@ const LOGIN_MAX_FAILURES = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 /** Done tasks stay in the feed for this long after their last update. */
 const CALENDAR_DONE_WINDOW_DAYS = 30;
+/**
+ * The calendar feed keeps only the tasks with the nearest due dates; large
+ * accounts receive a truncated feed instead of an unbounded response.
+ */
+export const CALENDAR_ICS_MAX_EVENTS = 1000;
 
 /**
  * Failed-login limiter, keyed by client IP + user name. Deliberately not a
@@ -477,6 +482,8 @@ export class UsersRoutes {
           Date.now() - CALENDAR_DONE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
         ).toISOString(),
         hasDueDate: true,
+        limit: CALENDAR_ICS_MAX_EVENTS,
+        orderBy: "dueDate",
       };
       // Admins see everything; other users only get tasks from projects
       // they can see (same enforcement as the task list endpoint).

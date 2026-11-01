@@ -123,6 +123,12 @@ export const useTasksStore = defineStore("tasks", {
       return res.data;
     },
 
+    /**
+     * One page of the update feed. Pagination is offset-based (required by
+     * the API): the caller passes offset = number of entries already loaded,
+     * so activity arriving between two pages can shift the window and cause
+     * a duplicate or skipped entry; a refresh from offset 0 reconciles it.
+     */
     async fetchUpdateFeed(params?: { limit?: number; offset?: number }) {
       const query: Record<string, string> = {};
       if (params?.limit !== undefined) {

@@ -1,5 +1,4 @@
 import { TaskTemplate, TaskTemplateComment } from "../model/TaskTemplate";
-import { ChecklistItem } from "../model/Task";
 import {
   DbUtilsExecSQL,
   DbUtilsQuerySQL,
@@ -402,10 +401,6 @@ async function enrichTemplates(
 ): Promise<TaskTemplate[]> {
   const templates = rows.map((row) => {
     const template = TaskTemplate.fromJson(row);
-    template.checklist =
-      typeof row.checklist === "string"
-        ? JSON.parse(row.checklist as string)
-        : (row.checklist as ChecklistItem[]) || [];
     template.assignees = [];
     template.comments = [];
     template.attachments = [];

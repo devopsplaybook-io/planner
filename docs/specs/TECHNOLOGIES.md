@@ -53,6 +53,7 @@
 - [x] Attachments can be downloaded from Tasks and Notes
 - [x] Only users with permission to view the Note or Task can download the attachment
 - [x] If the attachment is a picture, it is displayed in the UI. The max width should be the width of the viewport
+- [x] Inline previews (image / PDF / audio) load lazily when their row becomes visible and are capped at 5 MB per file: the fetch aborts once the downloaded size exceeds the cap (final `blob.size` re-check) and larger files show a hint with the download link instead
 - [x] A shared attachment-viewer registry (file extension → viewer kind: image / pdf / audio / none) and a shared fullscreen viewer component decide how each attachment renders in the task and note dialogs; new viewer types are added in one place
 - [x] PDF attachments render inline through the bundled pdf.js renderer (pages drawn on canvas fit to the viewer width, scrollable): the browser's built-in PDF viewer cannot render PDFs inside iframes on mobile Chromium, so it is not an option; the pdf.js library and worker are lazy-loaded on first use. Inline PDF responses keep nosniff + the exact application/pdf content type and omit the sandbox CSP
 

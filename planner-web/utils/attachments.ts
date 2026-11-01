@@ -84,6 +84,50 @@ export async function fetchAttachmentObjectUrl(
 }
 
 /**
+ * Per-file cap for inline attachment previews. Larger files are not
+ * downloaded for preview; the UI offers the download instead.
+ */
+export const PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
+
+export type AttachmentPreviewResult =
+  | { status: "ready"; url: string }
+  | { status: "too-large" };
+
+/**
+ * Fetches an attachment for inline preview, aborting as soon as the
+ * transferred size exceeds `maxBytes` (and re-checking the final blob size),
+ * so a large file is never fully downloaded just to be previewed. Returns
+ * `too-large` without creating an object URL in that case.
+ */
+export async function fetchAttachmentPreview(
+  url: string,
+  maxBytes = PREVIEW_MAX_BYTES,
+): Promise<AttachmentPreviewResult> {
+  const controller = new AbortController();
+  try {
+    const res = await api.get(url, {
+      responseType: "blob",
+      signal: controller.signal,
+      onDownloadProgress: (event) => {
+        if (event.loaded > maxBytes) {
+          controller.abort();
+        }
+      },
+    });
+    const blob: Blob = res.data;
+    if (blob.size > maxBytes) {
+      return { status: "too-large" };
+    }
+    return { status: "ready", url: URL.createObjectURL(blob) };
+  } catch (err) {
+    if (controller.signal.aborted) {
+      return { status: "too-large" };
+    }
+    throw err;
+  }
+}
+
+/**
  * Triggers a browser download of an already-fetched object URL; the caller
  * owns the URL's lifetime.
  */
