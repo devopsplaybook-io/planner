@@ -69,7 +69,6 @@ const isSetup = ref(false);
 const checkingInit = ref(true);
 
 onMounted(async () => {
-  await authStore.init();
   if (authStore.isAuthenticated) {
     router.push("/");
     return;

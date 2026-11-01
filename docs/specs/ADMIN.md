@@ -4,6 +4,7 @@ The admin tabs live in the Settings page (see [USER_INTERFACE.md](USER_INTERFACE
 
 - [x] The admin tabs are accessible only to users with the admin role and present one tab per configuration type; they are hidden from non-admin users, who only see the Profile tab in Settings (server-side admin authorization is unchanged).
 - [x] Users tab: user management (create users, change roles, delete users, manage API keys).
+- [x] The Users tab surfaces failures (create, role change, delete, API-key generation/regeneration/deletion) in inline dismissible banners and asks for API-key regeneration and deletion with the custom confirmation dialog; it never uses browser `alert()`/`confirm()`.
 
 ## Projects tab
 
@@ -21,7 +22,7 @@ Projects are created and managed by admins in the Settings admin tabs (see [PROJ
 
 - [x] The projects tab lists projects as an indented tree on all viewports: a project that has sub-projects is followed by a nested, indented group of its sub-projects (one indent step per level; sub-project cards show their leaf name with the full path as tooltip), archived projects remain at the end of the list, and orphaned projects (missing parent path) render at the root with a warning.
 - [x] The create dialog and the project name edit normalize the entered name as specified in [PROJECTS.md](PROJECTS.md) and show a live "will be saved as &hellip;" preview; a duplicate normalized name (case-insensitive) is rejected before submitting.
-- [x] When saving visibility or status-selection changes for a project that has sub-projects, the dialog asks "Apply to all sub-projects?"; on confirm the changed parts are propagated to each sub-project and partial failures are surfaced (e.g. "7 of 8 sub-projects updated: School is archived").
+- [x] When saving visibility or status-selection changes for a project that has sub-projects, the dialog asks "Apply to all sub-projects?"; on confirm the changed parts are propagated to each sub-project and partial failures are surfaced in the dialog's inline dismissible banner (e.g. "7 of 8 sub-projects updated: School is archived").
 - [x] Renaming a project that has sub-projects offers the rename cascade to its descendants and is blocked while any affected sub-project is archived (see [PROJECTS.md](PROJECTS.md)).
 - [x] Deleting a project is blocked while it still has sub-projects (see [PROJECTS.md](PROJECTS.md)).
 
@@ -57,4 +58,4 @@ Cleanup rules let admins automatically delete old data per project: Done tasks, 
 - [x] Saving the rules asks for confirmation with a dialog that spells out what will be enabled per project.
 - [x] A failure to remove an attachment file keeps the attachment row so the next run retries it; failures never crash the background job.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-17_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_

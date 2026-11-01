@@ -15,10 +15,18 @@ spec:
       labels:
         app: planner
     spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - image: planner
           name: planner
           imagePullPolicy: Always
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
           env:
             # Required: the server refuses to start without a strong JWT_KEY
             - name: JWT_KEY

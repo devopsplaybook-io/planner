@@ -1,19 +1,12 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
-import { jwtDecode } from "jwt-decode";
 import api from "../utils/api";
+import { isTokenExpired } from "../utils/jwt";
 
 export interface UserSession {
   isAuthenticated: boolean;
   userId?: string;
   userName?: string;
   role?: "admin" | "user";
-}
-
-interface JwtPayload {
-  exp: number;
-  userId: string;
-  userName: string;
-  role: "admin" | "user";
 }
 
 export const useAuthStore = defineStore("auth", {
@@ -27,7 +20,7 @@ export const useAuthStore = defineStore("auth", {
   }),
 
   getters: {
-    isAuthenticated: (state) => !!state.token,
+    isAuthenticated: (state) => !!state.token && !isTokenExpired(state.token),
     isAdmin: (state) => state.user?.role === "admin",
     currentUser: (state) => state.user,
   },
@@ -35,24 +28,23 @@ export const useAuthStore = defineStore("auth", {
   actions: {
     async init() {
       const token = localStorage.getItem("token");
-      if (token) {
-        try {
-          const decoded = jwtDecode<JwtPayload>(token);
-          if (decoded.exp * 1000 > Date.now()) {
-            this.token = token;
-            // Verify with server
-            try {
-              const res = await api.post("/users/session", {});
-              this.user = res.data.user;
-              localStorage.setItem("user", JSON.stringify(this.user));
-            } catch {
-              // Token invalid on server side
-              this.logout();
-            }
-          } else {
-            this.logout();
-          }
-        } catch {
+      if (!token || isTokenExpired(token)) {
+        this.logout();
+        this.initialized = true;
+        return;
+      }
+      this.token = token;
+      // Verify with the server once per app start. A network or server
+      // error keeps the locally valid session so the installed PWA still
+      // opens offline; only an explicit rejection ends it.
+      try {
+        const res = await api.post("/users/session", {});
+        this.user = res.data.user;
+        localStorage.setItem("user", JSON.stringify(this.user));
+      } catch (e) {
+        const status = (e as { response?: { status?: number } })?.response
+          ?.status;
+        if (status === 400 || status === 401 || status === 403) {
           this.logout();
         }
       }
