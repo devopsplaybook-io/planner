@@ -12,7 +12,8 @@ Each view provides a different perspective on the same task data.
   - [x] The overdue tasks (due date strictly before today)
   - [x] The upcoming tasks (due today or within the next 1 month)
   - [x] Tasks without dates, ordered by priority
-  - [x] The tasks marked as Done within the past 30 days (same window as the Kanban board)
+  - [x] The tasks marked as Done within the past 30 days (same window as the Kanban board); this section shows the 5 most recently updated Done tasks, returned by the server with the dashboard payload
+- [x] A dashboard refresh performs a single `/views/dashboard` request (no full task-list download); the server computes the four sections with concurrent queries
 - [x] The overdue and upcoming day boundaries are evaluated in the server timezone (the container's `TZ`): a task due today is upcoming and becomes overdue only from the next day, in line with the due-date urgency shown in the task dialog and the reminder rules
 - [x] The dashboard can be filtered by project or labels. By default all projects are displayed; the label filter selects one or more existing labels (autocomplete from the labels in use) and only tasks carrying every selected label are shown (AND semantics, matching `GET /api/tasks`) — the filter applies to every section, including Recently Done
 - [x] The dashboard label filter is stored in the URL as `?labels=<name>,<name>`: the selection is restored on reload and browser navigation, and a filtered view (for example an `agent:running` view) is bookmarkable and shareable; machine labels stay selectable in this filter
@@ -37,7 +38,7 @@ Each view provides a different perspective on the same task data.
 - [x] The page shows a loading indicator while fetching and an empty state when there are no updates
 - [x] Entries are grouped per calendar day in the user's timezone: each group has a day header ("Today", "Yesterday", otherwise the full localized date), newest day first and newest entries first within a day
 - [x] Consecutive entries made by the same user on the same task at the same displayed relative time are collapsed into a single card that lists one summary line per change; an update by a different user or on a different task in between keeps the following entries separate, and grouping never crosses a day header (computed client-side)
-- [x] Older pages load automatically with infinite scroll as the user nears the bottom of the feed (offset-based pagination, 50 entries per page); a manual "Load more" retry is shown if loading a page fails
+- [x] Older pages load automatically with infinite scroll as the user nears the bottom of the feed (offset-based pagination, 50 entries per page); a manual "Load more" retry is shown if loading a page fails. Because the API is offset-based, activity arriving between two pages can shift the window and produce a duplicate or skipped entry; the periodic silent refresh reloads the list from the start and reconciles it (known limitation, not a contract change)
 - [x] The layout is responsive (single-column list on mobile)
 
 ### Calendar View
@@ -59,4 +60,4 @@ Each view provides a different perspective on the same task data.
 - [x] Each kanban column has a max-height of 90% of the board height; the task list inside the column scrolls with an internal vertical scrollbar while the column header stays visible; on mobile (viewport ≤ 767px) the column minimum height is increased to 300px
 - [x] Tasks in each column are ordered by last update date, newest first (the most recently updated task appears at the top of its column).
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-21_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_
