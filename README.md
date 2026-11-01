@@ -161,6 +161,7 @@ Planner exposes a subscribable ICS calendar feed of your task due dates at `GET 
 - **Authentication**: the feed uses your per-user API key, sent either via the `x-api-key` header or via the `?apiKey=` query parameter (calendar clients cannot send custom headers).
 - **The feed URL contains your API key — treat it like a password.** Regenerating the key (Settings → Profile) revokes every calendar subscribed with the previous URL.
 - **Visibility**: you only get tasks from projects you can see (admins see everything); Done tasks stay in the feed for 30 days after their last update, matching the dashboard.
+- **Size limit**: the feed is bounded to the 1000 tasks with the nearest due dates, so accounts with very many due tasks receive a truncated (nearest-first) feed instead of an unbounded response.
 - **Events**: all-day events covering the due date, with a stable identity so clients update existing events in place; the title carries `Project path / Task title`.
 
 ## Development
