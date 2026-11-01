@@ -8,7 +8,7 @@ on:
 
 jobs:
   merge-build:
-    uses: devopsplaybook-io/common-utils/.github/workflows/reusable-merge-build.yml@main
+    uses: devopsplaybook-io/common-utils/.github/workflows/reusable-merge-build.yml@2acc1feec73663cdddf4075de4189f58a4d44eb9
     with:
       node_app_directories: '["planner-server","planner-web"]'
     secrets:

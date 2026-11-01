@@ -9,6 +9,7 @@ import {
   NotificationsDataAddSubscription,
   NotificationsDataDeleteSubscription,
 } from "./NotificationsData";
+import { NotificationsEndpointNormalize } from "./NotificationsEndpoint";
 
 export class NotificationsRoutes {
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
@@ -48,14 +49,16 @@ export class NotificationsRoutes {
       ) {
         return res.status(400).send({ error: "Missing: endpoint or keys" });
       }
-      await NotificationsDataAddSubscription(
-        userSession.userId,
-        req.body.endpoint,
-        {
-          p256dh: req.body.keys.p256dh,
-          auth: req.body.keys.auth,
-        },
-      );
+      const endpoint = NotificationsEndpointNormalize(req.body.endpoint);
+      if (!endpoint) {
+        return res
+          .status(400)
+          .send({ error: "Invalid: endpoint (must be a public HTTPS URL)" });
+      }
+      await NotificationsDataAddSubscription(userSession.userId, endpoint, {
+        p256dh: req.body.keys.p256dh,
+        auth: req.body.keys.auth,
+      });
       return res.status(201).send({});
     });
 

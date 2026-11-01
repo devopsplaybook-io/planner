@@ -4,6 +4,10 @@ import { NotificationsRoutes } from "./NotificationsRoutes";
 import { User } from "../model/User";
 import { AuthGetUserSession } from "../users/Auth";
 import { UsersDataGet, UsersDataSetNotificationDigest } from "../users/UsersData";
+import { NotificationsIsEnabled } from "./Notifications";
+import {
+  NotificationsDataAddSubscription,
+} from "./NotificationsData";
 
 jest.mock("../users/Auth", () => ({
   AuthGetUserSession: jest.fn(),
@@ -128,6 +132,120 @@ describe("NotificationsRoutes preferences", () => {
     expect(UsersDataSetNotificationDigest).toHaveBeenCalledWith(
       "user-1",
       true,
+    );
+  });
+});
+
+describe("NotificationsRoutes subscriptions", () => {
+  let app: FastifyInstance;
+
+  const userSession = {
+    isAuthenticated: true,
+    userId: "user-1",
+    userName: "User",
+    role: "user" as const,
+  };
+
+  const validPayload = {
+    endpoint: "https://fcm.googleapis.com/fcm/send/abc123",
+    keys: { p256dh: "p256dh-key", auth: "auth-key" },
+  };
+
+  beforeAll(async () => {
+    app = Fastify();
+    await new NotificationsRoutes().getRoutes(app);
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AuthGetUserSession as jest.Mock).mockResolvedValue(userSession);
+    (NotificationsIsEnabled as jest.Mock).mockReturnValue(true);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("should answer 401 when unauthenticated", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/subscriptions",
+      payload: validPayload,
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(NotificationsDataAddSubscription).not.toHaveBeenCalled();
+  });
+
+  it("should answer 400 when notifications are disabled", async () => {
+    (NotificationsIsEnabled as jest.Mock).mockReturnValue(false);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/subscriptions",
+      payload: validPayload,
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(NotificationsDataAddSubscription).not.toHaveBeenCalled();
+  });
+
+  it("should answer 400 when the endpoint or keys are missing", async () => {
+    for (const payload of [
+      {},
+      { endpoint: validPayload.endpoint },
+      { endpoint: validPayload.endpoint, keys: { p256dh: "x" } },
+      { keys: validPayload.keys },
+    ]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/subscriptions",
+        payload,
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    expect(NotificationsDataAddSubscription).not.toHaveBeenCalled();
+  });
+
+  it("should reject malformed and non-public endpoints without storing them", async () => {
+    for (const endpoint of [
+      "not a url",
+      "http://push.example.com/sub",
+      "https://localhost/sub",
+      "https://127.0.0.1/sub",
+      "https://[::1]/sub",
+      "https://user:pass@push.example.com/sub",
+    ]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/subscriptions",
+        payload: { ...validPayload, endpoint },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe(
+        "Invalid: endpoint (must be a public HTTPS URL)",
+      );
+    }
+    expect(NotificationsDataAddSubscription).not.toHaveBeenCalled();
+  });
+
+  it("should store a valid HTTPS endpoint", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/subscriptions",
+      payload: { ...validPayload, endpoint: `  ${validPayload.endpoint}  ` },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(NotificationsDataAddSubscription).toHaveBeenCalledWith(
+      "user-1",
+      validPayload.endpoint,
+      validPayload.keys,
     );
   });
 });

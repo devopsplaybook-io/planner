@@ -200,6 +200,30 @@ export function DbUtilsGetType(): "sqlite" | "postgres" {
 }
 
 /**
+ * True when an insert/update failed because it violated a unique constraint
+ * (PostgreSQL 23505, SQLite SQLITE_CONSTRAINT_UNIQUE): callers turn the race
+ * between a pre-check and the write into a 409 instead of a 500.
+ */
+export function DbUtilsIsUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  if (code === "23505") {
+    return true;
+  }
+  if (
+    typeof code === "string" &&
+    code.startsWith("SQLITE_CONSTRAINT_UNIQUE")
+  ) {
+    return true;
+  }
+  return (
+    typeof message === "string" && message.includes("UNIQUE constraint failed")
+  );
+}
+
+/**
  * Number of SQL statements executed since the last reset. Used by
  * integration tests to pin query-count budgets (N+1 regressions).
  */

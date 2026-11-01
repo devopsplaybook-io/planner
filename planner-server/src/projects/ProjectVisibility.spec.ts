@@ -165,20 +165,20 @@ describe("getProjectPermission", () => {
     expect(getProjectPermission(project, userSession)).toBe("all");
   });
 
-  it("should fall back to all for an entry without a permission", () => {
+  it("should fail closed to view for an entry without a permission", () => {
     const project = makeProject({
       visibility: "restricted",
       userAccess: [{ userId: "user-1" }],
     });
-    expect(getProjectPermission(project, userSession)).toBe("all");
+    expect(getProjectPermission(project, userSession)).toBe("view");
   });
 
-  it("should fall back to all for an unknown permission value", () => {
+  it("should fail closed to view for an unknown permission value", () => {
     const project = makeProject({
       visibility: "restricted",
       userAccess: [{ userId: "user-1", permission: "bogus" }],
     });
-    expect(getProjectPermission(project, userSession)).toBe("all");
+    expect(getProjectPermission(project, userSession)).toBe("view");
   });
 
   it("should return null for a non-member of a restricted project", () => {

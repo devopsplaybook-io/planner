@@ -136,6 +136,8 @@ describe("RunMigrations (fresh database)", () => {
     expect(indexes).toContain("idx_task_dependencies_dependsOnTaskId");
     expect(indexes).toContain("idx_task_templates_projectId");
     expect(indexes).toContain("idx_task_template_runs_templateId");
+    expect(indexes).toContain("idx_users_name");
+    expect(indexes).toContain("idx_settings_category");
   });
 
   it("should enable foreign key enforcement and WAL mode", async () => {
@@ -175,6 +177,10 @@ describe("RunMigrations (fresh database)", () => {
     expect(applied.filter((f: string) => f === "init-0015.sql")).toHaveLength(1);
     expect(applied).toContain("init-0020.sql");
     expect(applied.filter((f: string) => f === "init-0020.sql")).toHaveLength(1);
+    expect(applied).toContain("init-0024.sql");
+    expect(applied.filter((f: string) => f === "init-0024.sql")).toHaveLength(1);
+    expect(applied).toContain("init-0025.sql");
+    expect(applied.filter((f: string) => f === "init-0025.sql")).toHaveLength(1);
   });
 
   it("should add the permission column with an all default", async () => {
@@ -247,6 +253,24 @@ describe("RunMigrations (legacy database upgrade)", () => {
     await DbUtilsExecSQL(
       "INSERT INTO users (id, name, passwordEncrypted, role, dateCreated) VALUES (?,?,?,?,?)",
       ["u1", "User", "x", "admin", now],
+    );
+    // Duplicate usernames and settings categories written before the unique
+    // indexes existed
+    await DbUtilsExecSQL(
+      "INSERT INTO users (id, name, passwordEncrypted, role, dateCreated) VALUES (?,?,?,?,?)",
+      ["u-dup-1", "Dup", "x", "user", now],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO users (id, name, passwordEncrypted, role, dateCreated) VALUES (?,?,?,?,?)",
+      ["u-dup-2", "Dup", "x", "user", now],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO settings (category, content) VALUES (?,?)",
+      ["legacy-settings", '{"first":true}'],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO settings (category, content) VALUES (?,?)",
+      ["legacy-settings", '{"second":true}'],
     );
     await DbUtilsExecSQL(
       "INSERT INTO projects (id, name, description, isDefault, statuses, dateCreated, visibility) VALUES (?,?,?,?,?,?,?)",
@@ -363,7 +387,7 @@ describe("RunMigrations (legacy database upgrade)", () => {
     expect(rows[0].permission).toBe("all");
   });
 
-  it("should preserve the task columns through the table rebuild", async () => {
+  it("should keep every task column through the table rebuild", async () => {
     const columns = (
       await DbUtilsQuerySQL("PRAGMA table_info(tasks)")
     ).map((c) => c.name as string);
@@ -377,6 +401,39 @@ describe("RunMigrations (legacy database upgrade)", () => {
     ]) {
       expect(columns).toContain(column);
     }
+  });
+
+  it("should rename duplicate usernames and enforce the unique index", async () => {
+    const users = await DbUtilsQuerySQL(
+      "SELECT id, name FROM users WHERE name LIKE 'Dup%' ORDER BY id",
+    );
+    expect(users).toEqual([
+      { id: "u-dup-1", name: "Dup" },
+      { id: "u-dup-2", name: "Dup#u-dup-2" },
+    ]);
+
+    await expect(
+      DbUtilsExecSQL(
+        "INSERT INTO users (id, name, passwordEncrypted, role, dateCreated) VALUES (?,?,?,?,?)",
+        ["u-dup-3", "Dup", "x", "user", now],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("should keep one settings row per category and enforce the unique index", async () => {
+    const rows = await DbUtilsQuerySQL(
+      "SELECT category, content FROM settings WHERE category = 'legacy-settings'",
+    );
+    expect(rows).toEqual([
+      { category: "legacy-settings", content: '{"second":true}' },
+    ]);
+
+    await expect(
+      DbUtilsExecSQL("INSERT INTO settings (category, content) VALUES (?,?)", [
+        "legacy-settings",
+        '{"third":true}',
+      ]),
+    ).rejects.toThrow();
   });
 
   it("should attach cascading foreign keys after the rebuild", async () => {

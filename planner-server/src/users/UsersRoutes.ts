@@ -22,6 +22,7 @@ import {
   UsersDataUpdatePassword,
   UsersDataUpdateUser,
 } from "./UsersData";
+import { DbUtilsIsUniqueViolation } from "../utils/DbUtils";
 import {
   ApiKeysDataAdd,
   ApiKeysDataDeleteByUserId,
@@ -249,7 +250,7 @@ export class UsersRoutes {
         return res.status(400).send({ error: passwordError });
       }
       if (await UsersDataGetByName(req.body.name)) {
-        return res.status(400).send({ error: "Username Already Exists" });
+        return res.status(409).send({ error: "Username Already Exists" });
       }
 
       const newUser = new User();
@@ -260,7 +261,16 @@ export class UsersRoutes {
           : "user"
         : "admin";
       await UserPasswordSetPassword(newUser, req.body.password);
-      await UsersDataAdd(newUser);
+      try {
+        await UsersDataAdd(newUser);
+      } catch (error) {
+        // The unique index settles the race between the check above and the
+        // insert (including the concurrent first-user bootstrap)
+        if (DbUtilsIsUniqueViolation(error)) {
+          return res.status(409).send({ error: "Username Already Exists" });
+        }
+        throw error;
+      }
       return res.status(201).send({ user: newUser.toTransportJson() });
     });
 

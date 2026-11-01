@@ -426,6 +426,57 @@ describe("UsersRoutes", () => {
     expect(UsersDataAdd).not.toHaveBeenCalled();
   });
 
+  it("should answer 409 when the username already exists", async () => {
+    (UsersDataList as jest.Mock).mockResolvedValue([]);
+    (UsersDataGetByName as jest.Mock).mockResolvedValue(
+      makeUser({ id: "u1", name: "taken" }),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { name: "taken", password: "password123" },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("Username Already Exists");
+    expect(UsersDataAdd).not.toHaveBeenCalled();
+  });
+
+  it("should answer 409 when the insert loses the unique-name race", async () => {
+    (UsersDataList as jest.Mock).mockResolvedValue([]);
+    (UsersDataGetByName as jest.Mock).mockResolvedValue(null);
+    (UsersDataAdd as jest.Mock).mockRejectedValueOnce({
+      code: "SQLITE_CONSTRAINT_UNIQUE",
+      message: "UNIQUE constraint failed: users.name",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { name: "racy", password: "password123" },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("Username Already Exists");
+  });
+
+  it("should rethrow other database errors on user creation", async () => {
+    (UsersDataList as jest.Mock).mockResolvedValue([]);
+    (UsersDataGetByName as jest.Mock).mockResolvedValue(null);
+    (UsersDataAdd as jest.Mock).mockRejectedValueOnce(
+      new Error("database is locked"),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      payload: { name: "broken", password: "password123" },
+    });
+
+    expect(res.statusCode).toBe(500);
+  });
+
   // ==================== OWN PASSWORD ====================
   it("should answer 401 for the own-password change without a session", async () => {
     (AuthGetUserSession as jest.Mock).mockResolvedValue({

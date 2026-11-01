@@ -161,6 +161,14 @@ describePostgres("RunMigrations (PostgreSQL)", () => {
     ]) {
       expect(await hasPrimaryKey(table)).toBe(true);
     }
+
+    const indexes = (
+      await DbUtilsQuerySQL(
+        "SELECT indexname FROM pg_indexes WHERE schemaname = 'public'",
+      )
+    ).map((r) => r.indexname as string);
+    expect(indexes).toContain("idx_users_name");
+    expect(indexes).toContain("idx_settings_category");
   });
 
   it("should replay the whole chain again when the metadata record is lost", async () => {
@@ -206,6 +214,20 @@ describePostgres("RunMigrations (PostgreSQL)", () => {
       `INSERT INTO tasks (id, "projectId", title, description, status, priority, checklist, "dateCreated", "dateUpdated") VALUES (?,?,?,?,?,?,?,?,?)`,
       [taskId, projectId, "T", "", "To Do", "medium", "[]", now, now],
     );
+    // Duplicate username and duplicate settings row written before the unique
+    // indexes existed
+    await DbUtilsExecSQL(
+      `INSERT INTO users (id, name, "passwordEncrypted", role, "dateCreated") VALUES (?,?,?,?,?)`,
+      ["44444444-4444-4444-8444-444444444444", "User", "x", "user", now],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO settings (category, content) VALUES (?,?)",
+      ["legacy-settings", '{"first":true}'],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO settings (category, content) VALUES (?,?)",
+      ["legacy-settings", '{"second":true}'],
+    );
 
     await RunMigrations();
 
@@ -244,6 +266,40 @@ describePostgres("RunMigrations (PostgreSQL)", () => {
         `INSERT INTO task_templates (id, "projectId", title, "dateCreated", "dateUpdated") VALUES (?,?,?,?,?)`,
         ["tpl-orphan", "00000000-0000-0000-0000-000000000000", "Orphan", now, now],
       ),
+    ).rejects.toThrow();
+
+    const dupUsers = await DbUtilsQuerySQL(
+      `SELECT id, name FROM users WHERE name LIKE 'User%' ORDER BY id`,
+    );
+    expect(dupUsers).toEqual([
+      { id: userId, name: "User" },
+      {
+        id: "44444444-4444-4444-8444-444444444444",
+        name: "User#44444444-4444-4444-8444-444444444444",
+      },
+    ]);
+    await expect(
+      DbUtilsExecSQL(
+        `INSERT INTO users (id, name, "passwordEncrypted", role, "dateCreated") VALUES (?,?,?,?,?)`,
+        [
+          "55555555-5555-4555-8555-555555555555",
+          "User",
+          "x",
+          "user",
+          now,
+        ],
+      ),
+    ).rejects.toThrow();
+
+    const settingsRows = await DbUtilsQuerySQL(
+      "SELECT content FROM settings WHERE category = 'legacy-settings'",
+    );
+    expect(settingsRows).toHaveLength(1);
+    await expect(
+      DbUtilsExecSQL("INSERT INTO settings (category, content) VALUES (?,?)", [
+        "legacy-settings",
+        '{"third":true}',
+      ]),
     ).rejects.toThrow();
 
     expect(await columnType("task_templates", "instanceStatus")).toBe(

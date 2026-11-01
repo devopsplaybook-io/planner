@@ -10,6 +10,9 @@
     "typecheck": "nuxt typecheck",
     "test": "nuxt typecheck && vitest run"
   },
+  "overrides": {
+    "follow-redirects": "^1.16.2"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@nuxt/eslint-config": "^1.17.0",

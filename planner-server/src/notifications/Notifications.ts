@@ -15,6 +15,7 @@ import {
   NotificationsDataLogSent,
   type PushSubscriptionRecord,
 } from "./NotificationsData";
+import { NotificationsEndpointNormalize } from "./NotificationsEndpoint";
 
 const logger = console;
 
@@ -503,6 +504,15 @@ async function sendPushToSubscription(
   subscription: PushSubscriptionRecord,
   payload: string,
 ): Promise<void> {
+  // Re-validate before every send: rows written before the endpoint
+  // validation existed (or corrupted afterwards) must never be called
+  if (!NotificationsEndpointNormalize(subscription.endpoint)) {
+    logger.error(
+      "[Notifications] Dropping subscription with an invalid endpoint",
+    );
+    await NotificationsDataDeleteSubscriptionByEndpoint(subscription.endpoint);
+    return;
+  }
   try {
     await webpush.sendNotification(
       { endpoint: subscription.endpoint, keys: subscription.keys },

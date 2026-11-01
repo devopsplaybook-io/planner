@@ -1,6 +1,7 @@
 import { Config } from "../Config";
 import { DbUtilsQuerySQL } from "../utils/DbUtils";
 import {
+  NotificationsDataDeleteSubscriptionByEndpoint,
   NotificationsDataListAssigneesByTaskIds,
   NotificationsDataListSubscriptions,
   NotificationsDataListSubscriptionsByUser,
@@ -223,6 +224,85 @@ describe("NotificationsCheckAndSend subscription batching", () => {
     );
     expect(webpush.sendNotification.mock.calls[1][0].endpoint).toBe(
       "https://push.example/u2",
+    );
+  });
+});
+
+describe("NotificationsCheckAndSend endpoint validation", () => {
+  const mockDeleteByEndpoint =
+    NotificationsDataDeleteSubscriptionByEndpoint as jest.Mock;
+
+  beforeAll(async () => {
+    await initNotifications();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuerySQL.mockResolvedValue([
+      {
+        id: "t1",
+        title: "Task one",
+        status: "To Do",
+        dueDate: "2026-10-15",
+        projectId: "p1",
+      },
+    ]);
+    mockListAssignees.mockResolvedValue(new Map([["t1", ["u1", "u2"]]]));
+    mockLogSent.mockResolvedValue(true);
+    mockUsersDataList.mockResolvedValue([
+      { id: "u1", role: "admin" },
+      { id: "u2", role: "admin" },
+    ]);
+    mockDigestOptIn.mockResolvedValue([]);
+    mockListSubscriptionsByUser.mockResolvedValue([]);
+  });
+
+  it("should delete invalid stored endpoints and never call them", async () => {
+    const webpush = jest.requireMock("web-push");
+    mockListSubscriptions.mockResolvedValue([
+      {
+        userId: "u1",
+        endpoint: "http://127.0.0.1/legacy",
+        keys: { p256dh: "k", auth: "a" },
+        dateCreated: "2026-10-15T00:00:00.000Z",
+      },
+      {
+        userId: "u2",
+        endpoint: "https://push.example/u2",
+        keys: { p256dh: "k", auth: "a" },
+        dateCreated: "2026-10-15T00:00:00.000Z",
+      },
+    ]);
+
+    await NotificationsCheckAndSend(now);
+
+    expect(mockDeleteByEndpoint).toHaveBeenCalledWith(
+      "http://127.0.0.1/legacy",
+    );
+    expect(webpush.sendNotification).toHaveBeenCalledTimes(1);
+    expect(webpush.sendNotification.mock.calls[0][0].endpoint).toBe(
+      "https://push.example/u2",
+    );
+  });
+
+  it("should clean up a subscription when delivery answers 410", async () => {
+    const webpush = jest.requireMock("web-push");
+    webpush.sendNotification.mockRejectedValueOnce(
+      Object.assign(new Error("Gone"), { statusCode: 410 }),
+    );
+    mockListSubscriptions.mockResolvedValue([
+      {
+        userId: "u1",
+        endpoint: "https://push.example/u1",
+        keys: { p256dh: "k", auth: "a" },
+        dateCreated: "2026-10-15T00:00:00.000Z",
+      },
+    ]);
+
+    await NotificationsCheckAndSend(now);
+
+    expect(mockDeleteByEndpoint).toHaveBeenCalledWith(
+      "https://push.example/u1",
     );
   });
 });
