@@ -401,10 +401,15 @@
               {{ task.attachments.length }}
             </span>
           </summary>
+          <p v-if="hasAttachments" class="attachment-preview-hint">
+            Previews load on demand, up to {{ PREVIEW_MAX_MB }} MB per file;
+            larger files download instead.
+          </p>
           <div v-if="hasAttachments" class="attachments">
             <div
               v-for="att in task.attachments"
               :key="att.id"
+              :ref="(el) => setAttachmentRowRef(att.id, el)"
               class="attachment-item"
             >
               <div class="attachment-info">
@@ -450,6 +455,25 @@
                 >
                   <i class="bi bi-paperclip" /> {{ att.fileName }}
                 </a>
+                <p
+                  v-if="attachmentPreviewStates[att.id] === 'loading'"
+                  class="attachment-preview-status"
+                >
+                  Loading preview…
+                </p>
+                <p
+                  v-else-if="attachmentPreviewStates[att.id] === 'too-large'"
+                  class="attachment-preview-status"
+                >
+                  Preview unavailable (over {{ PREVIEW_MAX_MB }} MB) — download
+                  to open
+                </p>
+                <p
+                  v-else-if="attachmentPreviewStates[att.id] === 'error'"
+                  class="attachment-preview-status"
+                >
+                  Preview unavailable — download to open
+                </p>
               </div>
               <button
                 class="secondary small-btn"
@@ -717,11 +741,12 @@ import {
 import api from "../utils/api";
 import {
   downloadAttachment as downloadAttachmentFile,
-  fetchAttachmentObjectUrl,
+  fetchAttachmentPreview,
   getAttachmentViewerKind,
   isAudioFile,
   isImageFile,
   isPdfFile,
+  PREVIEW_MAX_BYTES,
 } from "../utils/attachments";
 import { fileExtensionForMimeType } from "../utils/dictationMime";
 import { displayName } from "../utils/projectHierarchy";
@@ -787,10 +812,31 @@ const editForm = ref({
   projectId: "",
 });
 const fullscreenAttachment = ref(null);
-// att.id -> blob object URL for inline previews (image / pdf). Attachments
-// are fetched with the Bearer header; the JWT never appears in an attachment
-// URL.
+// att.id -> blob object URL for inline previews (image / pdf / audio).
+// Attachments are fetched with the Bearer header; the JWT never appears in an
+// attachment URL.
 const attachmentUrls = ref({});
+// att.id -> preview state for lazily loaded previews ("loading" |
+// "too-large" | "error"); previewable rows without an entry are idle
+const attachmentPreviewStates = ref({});
+const PREVIEW_MAX_MB = PREVIEW_MAX_BYTES / (1024 * 1024);
+// Rows currently rendered; the IntersectionObserver fetches a preview only
+// when its row becomes visible. Undefined in environments without
+// IntersectionObserver (tests), where previews load immediately.
+const attachmentRowEls = new Map();
+const attachmentObserver =
+  typeof IntersectionObserver !== "undefined"
+    ? new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            attachmentObserver.unobserve(entry.target);
+            loadAttachmentPreviewById(entry.target.dataset.attachmentId);
+          }
+        },
+        { rootMargin: "100px" },
+      )
+    : null;
 const users = ref([]);
 // Long descriptions collapse behind a "Show more/less" disclosure in view
 // mode; Edit mode always shows the full text (the textarea is untouched).
@@ -1186,9 +1232,9 @@ watch(
   },
 );
 
-// Fetch image previews, PDF viewers and audio players as blobs whenever the
-// attachment list changes (dialog open, upload, delete) and drop object URLs
-// for gone attachments
+// Prune previews when the attachment list changes (dialog open, upload,
+// delete): drop object URLs and states of gone attachments. Previews are
+// fetched lazily per visible row, not here.
 watch(
   () => task.value?.attachments,
   async (attachments) => {
@@ -1202,20 +1248,86 @@ watch(
       }
     }
     attachmentUrls.value = nextUrls;
-    for (const att of attachments || []) {
-      const needsUrl = getAttachmentViewerKind(att.fileName) !== null;
-      if (!needsUrl || attachmentUrls.value[att.id]) continue;
-      try {
-        attachmentUrls.value[att.id] = await fetchAttachmentObjectUrl(
-          `/tasks/${task.value.id}/attachments/${att.id}?inline=true`,
-        );
-      } catch {
-        // No preview available (e.g. removed meanwhile); the file link remains
+    const nextStates = {};
+    for (const [id, state] of Object.entries(attachmentPreviewStates.value)) {
+      if (validIds.has(id)) {
+        nextStates[id] = state;
+      }
+    }
+    attachmentPreviewStates.value = nextStates;
+    await nextTick();
+    if (attachmentObserver) {
+      // Rows may have been re-created for the new list; observe them again
+      for (const el of attachmentRowEls.values()) {
+        attachmentObserver.observe(el);
+      }
+    } else {
+      for (const att of attachments || []) {
+        loadAttachmentPreview(att);
       }
     }
   },
   { immediate: true },
 );
+
+// Called by the v-for :ref on each row: observe it (lazy) or load right away
+// when IntersectionObserver is unavailable
+function setAttachmentRowRef(id, el) {
+  const prev = attachmentRowEls.get(id);
+  if (prev && prev !== el) {
+    if (attachmentObserver) attachmentObserver.unobserve(prev);
+    attachmentRowEls.delete(id);
+  }
+  if (!el) {
+    attachmentRowEls.delete(id);
+    return;
+  }
+  el.dataset.attachmentId = id;
+  attachmentRowEls.set(id, el);
+  if (attachmentObserver) {
+    attachmentObserver.observe(el);
+  } else {
+    loadAttachmentPreviewById(id);
+  }
+}
+
+function loadAttachmentPreviewById(id) {
+  const att = (task.value?.attachments || []).find((a) => a.id === id);
+  loadAttachmentPreview(att);
+}
+
+async function loadAttachmentPreview(att) {
+  if (!att) return;
+  if (getAttachmentViewerKind(att.fileName) === null) return;
+  if (attachmentUrls.value[att.id]) return;
+  if (attachmentPreviewStates.value[att.id]) return;
+  const taskId = task.value?.id;
+  if (!taskId) return;
+  attachmentPreviewStates.value[att.id] = "loading";
+  try {
+    const result = await fetchAttachmentPreview(
+      `/tasks/${taskId}/attachments/${att.id}?inline=true`,
+    );
+    // A task switch while loading must not attach a stale preview
+    if (task.value?.id !== taskId) {
+      if (result.status === "ready") URL.revokeObjectURL(result.url);
+      return;
+    }
+    if (result.status === "ready") {
+      attachmentUrls.value[att.id] = result.url;
+      attachmentPreviewStates.value = Object.fromEntries(
+        Object.entries(attachmentPreviewStates.value).filter(
+          ([id]) => id !== att.id,
+        ),
+      );
+    } else {
+      attachmentPreviewStates.value[att.id] = "too-large";
+    }
+  } catch {
+    if (task.value?.id !== taskId) return;
+    attachmentPreviewStates.value[att.id] = "error";
+  }
+}
 
 function setCommentBodyRef(commentId, el) {
   if (el) {
@@ -1255,6 +1367,8 @@ onBeforeUnmount(() => {
   commentResizeObserver.disconnect();
   if (highlightTimer) clearTimeout(highlightTimer);
   if (dependencySearchTimer) clearTimeout(dependencySearchTimer);
+  if (attachmentObserver) attachmentObserver.disconnect();
+  attachmentRowEls.clear();
   for (const url of Object.values(attachmentUrls.value)) {
     URL.revokeObjectURL(url);
   }
@@ -2207,6 +2321,17 @@ section h4 {
   padding: var(--space-xs) var(--space-sm);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
+}
+
+.attachment-preview-hint,
+.attachment-preview-status {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.attachment-preview-hint {
+  margin-bottom: var(--space-xs);
 }
 
 .attachment-link {

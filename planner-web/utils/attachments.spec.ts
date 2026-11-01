@@ -4,10 +4,12 @@ import api from "./api";
 import {
   downloadAttachment,
   fetchAttachmentObjectUrl,
+  fetchAttachmentPreview,
   getAttachmentViewerKind,
   isAudioFile,
   isImageFile,
   isPdfFile,
+  PREVIEW_MAX_BYTES,
 } from "./attachments";
 
 vi.mock("./api", () => ({
@@ -126,6 +128,71 @@ describe("fetchAttachmentObjectUrl", () => {
     await expect(
       fetchAttachmentObjectUrl("/tasks/task-1/attachments/att-1"),
     ).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("fetchAttachmentPreview", () => {
+  beforeEach(() => {
+    mockedGet.mockReset();
+    vi.restoreAllMocks();
+  });
+
+  it("returns a ready object URL when the blob is within the cap", async () => {
+    const blob = new Blob(["img-bytes"], { type: "image/png" });
+    mockedGet.mockResolvedValue({ data: blob });
+    const createObjectUrl = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:planner/preview");
+
+    const result = await fetchAttachmentPreview(
+      "/tasks/task-1/attachments/att-1?inline=true",
+    );
+
+    expect(result).toEqual({ status: "ready", url: "blob:planner/preview" });
+    expect(createObjectUrl).toHaveBeenCalledWith(blob);
+    const config = mockedGet.mock.calls[0]![1];
+    expect(config.responseType).toBe("blob");
+    expect(config.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("returns too-large without creating an object URL for a bigger blob", async () => {
+    const blob = new Blob(["0123456789abc"]);
+    mockedGet.mockResolvedValue({ data: blob });
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL");
+
+    const result = await fetchAttachmentPreview(
+      "/tasks/task-1/attachments/att-1",
+      10,
+    );
+
+    expect(result).toEqual({ status: "too-large" });
+    expect(createObjectUrl).not.toHaveBeenCalled();
+  });
+
+  it("aborts the download once the transferred size exceeds the cap", async () => {
+    mockedGet.mockImplementation((_url, config) => {
+      config.onDownloadProgress?.({ loaded: 11 });
+      expect(config.signal.aborted).toBe(true);
+      return Promise.reject(new Error("canceled"));
+    });
+
+    const result = await fetchAttachmentPreview(
+      "/tasks/task-1/attachments/att-1",
+      10,
+    );
+
+    expect(result).toEqual({ status: "too-large" });
+  });
+
+  it("propagates non-abort failures", async () => {
+    mockedGet.mockRejectedValue(new Error("Unauthorized"));
+    await expect(
+      fetchAttachmentPreview("/tasks/task-1/attachments/att-1"),
+    ).rejects.toThrow("Unauthorized");
+  });
+
+  it("defaults the cap to PREVIEW_MAX_BYTES", () => {
+    expect(PREVIEW_MAX_BYTES).toBe(5 * 1024 * 1024);
   });
 });
 
