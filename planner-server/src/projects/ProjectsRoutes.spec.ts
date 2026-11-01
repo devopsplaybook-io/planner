@@ -14,8 +14,6 @@ import {
   ProjectsDataList,
   ProjectsDataUpdate,
   ProjectsDataCountOpenTasks,
-  clearProjectUsers,
-  addProjectUser,
 } from "./ProjectsData";
 import { AuthGetUserSession, AuthMustBeAdmin } from "../users/Auth";
 import { Project } from "../model/Project";
@@ -27,8 +25,6 @@ jest.mock("./ProjectsData", () => ({
   ProjectsDataList: jest.fn(),
   ProjectsDataUpdate: jest.fn(),
   ProjectsDataCountOpenTasks: jest.fn(),
-  clearProjectUsers: jest.fn(),
-  addProjectUser: jest.fn(),
 }));
 
 jest.mock("../tasktemplates/TaskTemplatesData", () => ({
@@ -346,10 +342,10 @@ describe("ProjectsRoutes admin enforcement", () => {
     expect(res.statusCode).toBe(201);
     expect(project.name).toBe("Renamed");
     expect(project.visibility).toBe("restricted");
-    expect(clearProjectUsers).toHaveBeenCalledWith(project.id);
-    expect(addProjectUser).toHaveBeenCalledWith(project.id, "user-1", "all");
     expect(project.userAccess).toEqual([{ userId: "user-1", permission: "all" }]);
-    expect(ProjectsDataUpdate).toHaveBeenCalledWith(project);
+    expect(ProjectsDataUpdate).toHaveBeenCalledWith(project, [
+      { userId: "user-1", permission: "all" },
+    ]);
   });
 
   it("should store the per-user permission levels on update", async () => {
@@ -370,9 +366,10 @@ describe("ProjectsRoutes admin enforcement", () => {
       },
     });
     expect(res.statusCode).toBe(201);
-    expect(clearProjectUsers).toHaveBeenCalledWith(project.id);
-    expect(addProjectUser).toHaveBeenCalledWith(project.id, "user-1", "view");
-    expect(addProjectUser).toHaveBeenCalledWith(project.id, "user-2", "comment");
+    expect(ProjectsDataUpdate).toHaveBeenCalledWith(project, [
+      { userId: "user-1", permission: "view" },
+      { userId: "user-2", permission: "comment" },
+    ]);
     expect(res.json().userAccess).toEqual([
       { userId: "user-1", permission: "view" },
       { userId: "user-2", permission: "comment" },
@@ -394,9 +391,30 @@ describe("ProjectsRoutes admin enforcement", () => {
     expect(res.json().error).toBe(
       "Invalid: userAccess (unknown permission 'sudo')",
     );
-    expect(clearProjectUsers).not.toHaveBeenCalled();
-    expect(addProjectUser).not.toHaveBeenCalled();
     expect(ProjectsDataUpdate).not.toHaveBeenCalled();
+  });
+
+  it("should not answer 201 when the transactional update fails", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const project = new Project();
+    project.name = "Old Name";
+    project.userAccess = [{ userId: "user-1", permission: "all" }];
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
+    (ProjectsDataUpdate as jest.Mock).mockRejectedValueOnce(
+      new Error("FOREIGN KEY constraint failed"),
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: `/${project.id}`,
+      payload: {
+        visibility: "restricted",
+        userAccess: [{ userId: "ghost", permission: "view" }],
+      },
+    });
+    expect(res.statusCode).not.toBe(201);
+    expect(ProjectsDataUpdate).toHaveBeenCalledWith(project, [
+      { userId: "ghost", permission: "view" },
+    ]);
   });
 
   it("should return 404 when an admin updates a missing project", async () => {
@@ -477,7 +495,7 @@ describe("ProjectsRoutes admin enforcement", () => {
     expect(res.statusCode).toBe(201);
     expect(project.archived).toBe(true);
     expect(res.json().archived).toBe(true);
-    expect(ProjectsDataUpdate).toHaveBeenCalledWith(project);
+    expect(ProjectsDataUpdate).toHaveBeenCalledWith(project, undefined);
   });
 
   it("should allow un-archiving a project", async () => {
@@ -519,7 +537,6 @@ describe("ProjectsRoutes admin enforcement", () => {
       expect(res.statusCode).toBe(400);
       expect(res.json().error).toBe("Archived projects cannot be updated");
     }
-    expect(clearProjectUsers).not.toHaveBeenCalled();
     expect(ProjectsDataUpdate).not.toHaveBeenCalled();
   });
 

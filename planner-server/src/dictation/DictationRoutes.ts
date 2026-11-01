@@ -58,6 +58,14 @@ export class DictationRoutes {
         }
         const userSession = await AuthGetUserSession(req);
 
+        // Fail fast instead of accepting a job that can never be processed
+        if (
+          !this.config.DICTATION_ENABLED ||
+          !this.config.IsDictationSttConfigured()
+        ) {
+          return res.status(404).send({ error: "Dictation Not Available" });
+        }
+
         const inFlightJobId = DictationGetInFlightJobId(userSession.userId);
         if (inFlightJobId) {
           return res.status(409).send({

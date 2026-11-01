@@ -86,6 +86,11 @@ describe("DictationRoutes", () => {
 
   beforeAll(async () => {
     config = new Config();
+    config.DICTATION_ENABLED = true;
+    config.STT_MODE = "external";
+    config.STT_API_URL = "https://stt.test";
+    config.STT_API_KEY = "stt-key";
+    config.STT_MODEL = "whisper-test";
     config.RATE_LIMIT_DICTATION_MAX = 100;
     app = Fastify();
     await app.register(fastifyMultipart, {
@@ -118,6 +123,39 @@ describe("DictationRoutes", () => {
     const res = await app.inject({ method: "POST", url: "/", payload: {} });
     expect(res.statusCode).toBe(401);
     expect(DictationStartJob).not.toHaveBeenCalled();
+  });
+
+  it("should answer 404 when dictation is disabled", async () => {
+    config.DICTATION_ENABLED = false;
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: {},
+      });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: "Dictation Not Available" });
+      expect(DictationGetInFlightJobId).not.toHaveBeenCalled();
+      expect(DictationStartJob).not.toHaveBeenCalled();
+    } finally {
+      config.DICTATION_ENABLED = true;
+    }
+  });
+
+  it("should answer 404 when STT is not configured", async () => {
+    config.STT_API_URL = "";
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/",
+        payload: {},
+      });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: "Dictation Not Available" });
+      expect(DictationStartJob).not.toHaveBeenCalled();
+    } finally {
+      config.STT_API_URL = "https://stt.test";
+    }
   });
 
   it("should accept an audio upload with 202 and start a job", async () => {
@@ -266,6 +304,11 @@ describe("DictationRoutes rate limiting", () => {
   it("should answer 429 once the hourly dictation budget is exhausted", async () => {
     const app = Fastify();
     const config = new Config();
+    config.DICTATION_ENABLED = true;
+    config.STT_MODE = "external";
+    config.STT_API_URL = "https://stt.test";
+    config.STT_API_KEY = "stt-key";
+    config.STT_MODEL = "whisper-test";
     config.RATE_LIMIT_DICTATION_MAX = 2;
     await app.register(fastifyMultipart, {
       limits: { fileSize: config.ATTACHMENT_MAX_SIZE * 1024 * 1024 },

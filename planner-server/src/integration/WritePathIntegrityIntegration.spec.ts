@@ -6,6 +6,7 @@ import {
   DbUtilsExecSQL,
   DbUtilsInit,
   DbUtilsQuerySQL,
+  DbUtilsTransaction,
 } from "../utils/DbUtils";
 import { RunMigrations } from "../DbMigrations";
 import { Config } from "../Config";
@@ -15,11 +16,19 @@ import { TaskTemplate } from "../model/TaskTemplate";
 import { TasksDataAdd } from "../tasks/TasksData";
 import { NotesDataAdd } from "../notes/NotesData";
 import { TaskTemplatesAdd } from "../tasktemplates/TaskTemplatesData";
+import { createInstanceFromTemplate } from "../tasktemplates/TaskTemplatesInstance";
+import {
+  ProjectsDataGet,
+  ProjectsDataUpdate,
+  addProjectUser,
+  getProjectUsers,
+} from "../projects/ProjectsData";
 
 /**
- * Real-database proof of the write-path integrity fixes (M1): parent and
- * child rows are inserted atomically, so a failing child leaves no partial
- * parent behind, and the transaction queue is released after a failure.
+ * Real-database proof of the write-path integrity fixes: parent and child
+ * rows are inserted atomically, plain statements never run inside an open
+ * transaction, and the project access / template instance rewrites are
+ * all-or-nothing.
  */
 
 const dir = path.join(
@@ -50,6 +59,11 @@ async function countRows(table: string, column: string, value: string) {
   return Number(rows[0].c);
 }
 
+async function countAllRows(table: string) {
+  const rows = await DbUtilsQuerySQL(`SELECT COUNT(*) AS c FROM ${table}`);
+  return Number(rows[0].c);
+}
+
 function makeTask(projectId: string): Task {
   const task = new Task();
   task.projectId = projectId;
@@ -67,8 +81,10 @@ describe("write path integrity (integration)", () => {
     await RunMigrations();
 
     await insertProject("p-integrity");
+    await insertProject("p-access");
     await insertUser("u-integrity");
     await insertUser("u-integrity-2");
+    await insertUser("u-access");
   });
 
   afterAll(async () => {
@@ -160,5 +176,163 @@ describe("write path integrity (integration)", () => {
     expect(await countRows("task_assignees", "taskId", task.id)).toBe(2);
     expect(await countRows("task_labels", "taskId", task.id)).toBe(2);
     expect(await countRows("task_dependencies", "taskId", task.id)).toBe(1);
+  });
+
+  // ==================== M2: statement isolation ====================
+
+  it("should join a nested transaction and roll back together", async () => {
+    const task = makeTask("p-integrity");
+
+    await expect(
+      DbUtilsTransaction(async () => {
+        // Nested call joins the outer transaction instead of deadlocking
+        await DbUtilsTransaction(async () => {
+          await TasksDataAdd(task);
+        });
+        expect(await countRows("tasks", "id", task.id)).toBe(1);
+        throw new Error("abort outer");
+      }),
+    ).rejects.toThrow("abort outer");
+
+    expect(await countRows("tasks", "id", task.id)).toBe(0);
+  });
+
+  it("should not run a plain statement inside an open transaction", async () => {
+    let releaseGate: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    let transactionReady: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      transactionReady = resolve;
+    });
+
+    const transaction = DbUtilsTransaction(async () => {
+      await insertUser("u-inside-tx");
+      transactionReady();
+      await gate;
+      throw new Error("rollback");
+    });
+    await ready;
+
+    let plainInsertDone = false;
+    const plainInsert = DbUtilsExecSQL(
+      "INSERT INTO users (id, name, passwordEncrypted, role, dateCreated, tokenVersion) VALUES (?,?,?,?,?,0)",
+      ["u-plain-outside", "user-plain", "x", "user", now],
+    ).then((changes) => {
+      plainInsertDone = true;
+      return changes;
+    });
+
+    // Give the queued statement time to run if it were not serialized
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(plainInsertDone).toBe(false);
+
+    releaseGate();
+    await expect(transaction).rejects.toThrow("rollback");
+    await plainInsert;
+
+    expect(await countRows("users", "id", "u-inside-tx")).toBe(0);
+    expect(await countRows("users", "id", "u-plain-outside")).toBe(1);
+  });
+
+  // ==================== M3: transactional access rewrite ====================
+
+  it("should keep the previous access list when a replacement fails", async () => {
+    await addProjectUser("p-access", "u-access", "view");
+    const failing = await ProjectsDataGet("p-access");
+    failing.name = "Renamed";
+
+    await expect(
+      ProjectsDataUpdate(failing, [
+        { userId: "u-access", permission: "view" },
+        { userId: "ghost", permission: "view" },
+      ]),
+    ).rejects.toThrow();
+
+    const unchanged = await ProjectsDataGet("p-access");
+    expect(unchanged.name).toBe("project-p-access");
+    expect(await getProjectUsers("p-access")).toEqual([
+      { userId: "u-access", permission: "view" },
+    ]);
+
+    const updated = await ProjectsDataGet("p-access");
+    updated.name = "Renamed";
+    await ProjectsDataUpdate(updated, [
+      { userId: "u-access", permission: "comment" },
+    ]);
+
+    expect((await ProjectsDataGet("p-access")).name).toBe("Renamed");
+    expect(await getProjectUsers("p-access")).toEqual([
+      { userId: "u-access", permission: "comment" },
+    ]);
+  });
+
+  // ==================== M4: atomic template instance ====================
+
+  it("should create a template instance with its attachment and run together", async () => {
+    const attachmentDir = path.join(dir, "attachments", "template-ok");
+    await fs.ensureDir(attachmentDir);
+    const sourcePath = path.join(attachmentDir, "source.txt");
+    await fs.writeFile(sourcePath, "attachment content");
+
+    const template = new TaskTemplate();
+    template.projectId = "p-integrity";
+    template.title = "Template with attachment";
+    template.attachments = [
+      {
+        id: "att-source",
+        fileName: "source.txt",
+        filePath: sourcePath,
+        dateCreated: now,
+      },
+    ];
+    await TaskTemplatesAdd(template);
+
+    const project = await ProjectsDataGet("p-integrity");
+    const task = await createInstanceFromTemplate(template, project);
+
+    expect(await countRows("tasks", "id", task.id)).toBe(1);
+    expect(await countRows("task_attachments", "taskId", task.id)).toBe(1);
+    expect(
+      await countRows("task_template_runs", "templateId", template.id),
+    ).toBe(1);
+    expect(task.attachments).toHaveLength(1);
+    expect(await fs.readdir(attachmentDir)).toHaveLength(2);
+  });
+
+  it("should roll the instance back and remove copies when the run fails", async () => {
+    const attachmentDir = path.join(dir, "attachments", "template-fail");
+    await fs.ensureDir(attachmentDir);
+    const sourcePath = path.join(attachmentDir, "only-source.txt");
+    await fs.writeFile(sourcePath, "attachment content");
+
+    // Never persisted: the run insert violates the templateId foreign key
+    const template = new TaskTemplate();
+    template.projectId = "p-integrity";
+    template.title = "Unpersisted template";
+    template.attachments = [
+      {
+        id: "att-source",
+        fileName: "only-source.txt",
+        filePath: sourcePath,
+        dateCreated: now,
+      },
+    ];
+
+    const project = await ProjectsDataGet("p-integrity");
+    const tasksBefore = await countRows("tasks", "projectId", "p-integrity");
+    const attachmentsBefore = await countAllRows("task_attachments");
+
+    await expect(createInstanceFromTemplate(template, project)).rejects.toThrow();
+
+    expect(await countRows("tasks", "projectId", "p-integrity")).toBe(
+      tasksBefore,
+    );
+    expect(await countAllRows("task_attachments")).toBe(attachmentsBefore);
+    expect(
+      await countRows("task_template_runs", "templateId", template.id),
+    ).toBe(0);
+    expect(await fs.readdir(attachmentDir)).toEqual(["only-source.txt"]);
   });
 });

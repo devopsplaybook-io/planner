@@ -104,7 +104,8 @@ const mode = ref("write");
 const { textarea, input, triggerResize } = useTextareaAutosize();
 
 // Voice recording shares the dictation dialog's recorder composable; the
-// composer stays decoupled from the task APIs: it only emits the result
+// composer stays decoupled from the task APIs: it only emits the result.
+// Auto-stop at the max duration emits the captured audio like a manual stop.
 const {
   isRecording: isVoiceRecording,
   elapsedSeconds: voiceElapsedSeconds,
@@ -112,7 +113,20 @@ const {
   start: startVoiceRecordingInternal,
   stop: stopVoiceRecordingInternal,
   cancel: cancelVoiceRecordingInternal,
-} = useDictation();
+} = useDictation({
+  onAutoStop: (recording) => emitVoiceRecording(recording),
+});
+
+// A timer race between the auto-stop and a manual stop must not emit twice
+let voiceEmitted = false;
+
+function emitVoiceRecording(recording) {
+  if (!recording || voiceEmitted) {
+    return;
+  }
+  voiceEmitted = true;
+  emit("voice", recording);
+}
 
 // MediaRecorder APIs are probed once; SSR is disabled in this app
 const voiceSupported = isVoiceRecordingSupported();
@@ -127,18 +141,17 @@ const formattedVoiceElapsed = computed(() => {
 });
 
 async function startVoiceRecording() {
+  voiceEmitted = false;
   await startVoiceRecordingInternal();
 }
 
 async function stopVoiceRecording() {
   const recording = await stopVoiceRecordingInternal();
-  if (recording) {
-    emit("voice", recording);
-  }
+  emitVoiceRecording(recording);
 }
 
 function cancelVoiceRecording() {
-  cancelVoiceRecordingInternal();
+  void cancelVoiceRecordingInternal();
 }
 
 // External value changes (draft restore, clear on send) flow into the

@@ -59,6 +59,7 @@ The **Automation** section is specific to templates (tasks do not have it):
 [x] Template attachment files are copied into the instance (each instance owns its copy, so deleting one never affects the other); template comments are not copied.
 
 [x] Every instance creation (scheduled or manual) is recorded in the template's run history with the created task id; the run's status reflects the task's current status (used by the skip rule); run history survives the deletion of the instance task.
+[x] Instance creation is all-or-nothing: the task, its copied attachment rows and the run-history record commit in one transaction, and a failure removes the files already copied, so a failed creation leaves no task, no attachment row and no run record behind.
 
 [x] Scheduled ticks skip templates whose project is missing or archived; a failed tick never crashes the scheduler.
 
@@ -87,4 +88,4 @@ The **Automation** section is specific to templates (tasks do not have it):
 
 [x] The migration is transactional per task, isolated (one failing task does not block the others), runs before the scheduler starts, and when no recurring tasks remain it drops the legacy column and records its completion so later startups are no-ops.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-23_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_

@@ -12,6 +12,7 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 - [x] Speech-to-text uses any OpenAI-compatible transcription endpoint, configured with a base URL, an API key and a model name.
 - [x] `POST /api/dictation` accepts an authenticated multipart audio upload:
   - [x] Only audio MIME types are accepted and oversized uploads are rejected.
+  - [x] When dictation is disabled or STT is not configured, the endpoint answers 404 (`Dictation Not Available`) instead of accepting a job that could never be processed.
   - [x] The endpoint is rate-limited per user.
   - [x] It returns 202 with a job id and processes the dictation in the background; only one job may run at a time per user.
   - [x] The audio is deleted immediately after transcription — no audio is ever persisted or logged.
@@ -36,7 +37,7 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 ### Web
 
 - [x] A global dictation button in the navigation opens the dictation dialog (hidden when the feature is disabled, disabled with a tooltip when STT is not configured or the app is offline).
-- [x] The dialog records the user's voice in the browser (MediaRecorder, elapsed timer, visible recording state, auto-stop at the maximum duration).
+- [x] The dialog records the user's voice in the browser (MediaRecorder, elapsed timer, visible recording state, auto-stop at the maximum duration); reaching the maximum duration stops the recording and submits the captured audio exactly like a manual stop (never discarded), and the recorder is stopped before the microphone is released so the end of the audio is not truncated.
 - [x] The dialog shows progressive processing stages (transcribing, improving text, finding actions) and resumes polling when closed and reopened mid-processing.
 - [x] The review step shows the polished text (editable) and the raw transcript (collapsible), plus action proposal cards (include checkbox, editable title and text).
 - [x] Task proposal cards offer a project selector (active projects only, shared project selection component) and a status selector listing the selected project's statuses; changing the project resets an incompatible status to the target project's first status; note proposals and "Save as note" keep using the default project.
@@ -46,10 +47,11 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 
 ### Voice comments on tasks
 
-- [x] The task comment composer offers a record-voice button when dictation is enabled and STT is configured (shared availability logic with the dictation dialog); recording state with elapsed time, stop and cancel, auto-stop at the maximum duration, and microphone errors surfaced inline.
+- [x] The task comment composer offers a record-voice button when dictation is enabled and STT is configured (shared availability logic with the dictation dialog); recording state with elapsed time, stop and cancel, auto-stop at the maximum duration (which uploads the recording), and microphone errors surfaced inline. Cancelling discards the audio, settles any stop already in flight and leaves no pending stop behind; stopping and cancelling are idempotent.
 - [x] A finished recording uploads through the authenticated task attachment API with the user's dictation language; the audio file itself is kept as a regular task attachment (the voice message the user keeps).
 - [x] When an audio attachment is uploaded to a task and dictation is enabled with STT configured, the server transcribes it in the background reusing the dictation STT and polish stages (no action proposals); the transcript is posted as a task comment attributed to the uploading user and referencing the voice message file name.
 - [x] Voice transcriptions run one at a time per user (later uploads queue) and share the dictation hourly rate limit; the in-memory job state is never persisted (a restart mid-transcription loses only the transcript, never the audio).
+- [x] The hourly rate-limit slot is consumed when the upload is accepted, so a skipped transcription is reported to the user: the audio is still stored, and the upload response carries `voiceTranscriptionSkipped: true`, which the task dialog surfaces as an inline notice ("transcription was skipped because the hourly voice limit was reached").
 - [x] Transcription failures never fail the upload and are surfaced silently (generic log line only); transcript and audio content are never logged, and the audio attachment is never deleted by the transcription.
 - [x] Audio attachments play through an inline audio player in the task dialog and the server serves audio files inline with proper audio content types.
 - [x] Without dictation enabled or STT configured, nothing changes: no record button in the composer and no background transcription.
@@ -57,4 +59,4 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 
 ## Implementation Status
 
-`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-10-17
+`[x]` = Done &ensp; `[~]` = Partial &ensp; `[ ]` = Not Started &ensp; | &ensp; Last spec review: 2026-11-01

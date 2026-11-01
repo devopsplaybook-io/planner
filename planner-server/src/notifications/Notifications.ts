@@ -90,7 +90,12 @@ export async function NotificationsCheckAndSend(
   if (!NotificationsIsEnabled()) {
     return;
   }
-  if (now.getHours() < config.WEB_PUSH_NOTIFY_HOUR) {
+  // Cheap pre-filter only: the configured timezone decides the hour, never
+  // the server clock (getTaskNotificationKind remains the authority)
+  if (
+    getZonedParts(now, config.WEB_PUSH_TIMEZONE).hour <
+    config.WEB_PUSH_NOTIFY_HOUR
+  ) {
     return;
   }
   if (checkAndSendInFlight) {

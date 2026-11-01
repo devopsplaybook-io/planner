@@ -113,7 +113,7 @@ describe("useDictation", () => {
     expect(track.stopped).toBe(true);
   });
 
-  it("should auto-stop at the maximum duration", async () => {
+  it("should auto-stop at the maximum duration and hand the audio over", async () => {
     stubMedia();
     const onAutoStop = vi.fn();
     const dictation = useDictation({ maxDurationSeconds: 5, onAutoStop });
@@ -121,9 +121,81 @@ describe("useDictation", () => {
 
     await vi.advanceTimersByTimeAsync(5000);
 
-    expect(onAutoStop).toHaveBeenCalled();
+    expect(onAutoStop).toHaveBeenCalledTimes(1);
+    const recording = onAutoStop.mock.calls[0]![0] as {
+      blob: Blob;
+      mimeType: string;
+    } | null;
+    expect(recording).not.toBeNull();
+    expect(recording!.mimeType).toBe("audio/webm;codecs=opus");
+    expect(recording!.blob).toBeInstanceOf(Blob);
     expect(dictation.isRecording.value).toBe(false);
     expect(dictation.elapsedSeconds.value).toBe(5);
+  });
+
+  it("should stop the recorder before releasing the microphone", async () => {
+    const { track } = stubMedia();
+    const dictation = useDictation();
+    await dictation.start();
+    const recorder = FakeMediaRecorder.instances[0]!;
+    // Like a real MediaRecorder, onstop fires on a later task
+    recorder.stop = () => {
+      setTimeout(() => {
+        recorder.state = "inactive";
+        recorder.onstop?.();
+      }, 10);
+    };
+
+    const pending = dictation.stop();
+    expect(track.stopped).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await pending).not.toBeNull();
+    expect(track.stopped).toBe(true);
+  });
+
+  it("should share one stop between concurrent calls", async () => {
+    stubMedia();
+    const dictation = useDictation();
+    await dictation.start();
+    const recorder = FakeMediaRecorder.instances[0]!;
+    const stopSpy = vi.spyOn(recorder, "stop");
+
+    const first = dictation.stop();
+    const second = dictation.stop();
+    const [firstRecording, secondRecording] = await Promise.all([
+      first,
+      second,
+    ]);
+
+    expect(firstRecording).not.toBeNull();
+    expect(secondRecording).toBe(firstRecording);
+    expect(stopSpy).toHaveBeenCalledTimes(1);
+
+    // The state is settled afterwards: another stop has nothing to return
+    expect(await dictation.stop()).toBeNull();
+  });
+
+  it("should settle a pending stop when cancel is called", async () => {
+    stubMedia();
+    const dictation = useDictation();
+    await dictation.start();
+    const recorder = FakeMediaRecorder.instances[0]!;
+    recorder.stop = () => {
+      setTimeout(() => {
+        recorder.state = "inactive";
+        recorder.onstop?.();
+      }, 10);
+    };
+
+    const stopPromise = dictation.stop();
+    const cancelPromise = dictation.cancel();
+    await vi.advanceTimersByTimeAsync(10);
+
+    await expect(stopPromise).resolves.not.toBeNull();
+    await expect(cancelPromise).resolves.toBeUndefined();
+    expect(await dictation.stop()).toBeNull();
+    expect(dictation.isRecording.value).toBe(false);
   });
 
   it("should discard the audio on cancel", async () => {
@@ -131,7 +203,7 @@ describe("useDictation", () => {
     const dictation = useDictation();
     await dictation.start();
 
-    dictation.cancel();
+    await dictation.cancel();
 
     expect(dictation.isRecording.value).toBe(false);
     expect(track.stopped).toBe(true);

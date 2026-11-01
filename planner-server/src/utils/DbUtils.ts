@@ -63,12 +63,44 @@ function getPostgresClient(): any {
 }
 
 /**
+ * Serializes access to the single SQLite connection: transactions and plain
+ * statements queue up behind each other so a statement from another request
+ * can never execute inside an open transaction. Work that already belongs to
+ * the active transaction (recognized through AsyncLocalStorage) runs directly
+ * because it owns the queue until the transaction settles.
+ */
+async function runSerialized<T>(fn: () => Promise<T> | T): Promise<T> {
+  if (transactionStorage.getStore()) {
+    return fn();
+  }
+  const previous = sqliteQueue;
+  let release: () => void = () => {};
+  sqliteQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
+let sqliteQueue: Promise<void> = Promise.resolve();
+
+/**
  * Runs fn inside a database transaction. All DbUtilsExecSQL/DbUtilsQuerySQL
  * calls made from within fn join the same transaction (on PostgreSQL through
- * a dedicated pooled client; on SQLite BEGIN/COMMIT on the single connection,
- * serialized so concurrent callers cannot interleave).
+ * a dedicated pooled client; on SQLite BEGIN/COMMIT on the single connection).
+ * Nested calls join the transaction already open in the async context instead
+ * of starting another one. On SQLite every plain statement is serialized
+ * against open transactions, so it can never be committed or rolled back with
+ * one by accident.
  */
 export async function DbUtilsTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  if (transactionStorage.getStore()) {
+    return fn();
+  }
   if (databaseType === "postgres") {
     const client = await database.connect();
     try {
@@ -88,29 +120,19 @@ export async function DbUtilsTransaction<T>(fn: () => Promise<T>): Promise<T> {
     }
   }
 
-  // Serialize SQLite transactions: one connection, no interleaving
-  const previous = sqliteTransactionQueue;
-  let release: () => void = () => {};
-  sqliteTransactionQueue = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await previous;
-  try {
+  // The open transaction holds the queue: its statements run directly
+  return runSerialized(async () => {
     database.exec("BEGIN");
     try {
-      const result = await fn();
+      const result = await transactionStorage.run({ pgClient: null }, fn);
       database.exec("COMMIT");
       return result;
     } catch (error) {
       database.exec("ROLLBACK");
       throw error;
     }
-  } finally {
-    release();
-  }
+  });
 }
-
-let sqliteTransactionQueue: Promise<void> = Promise.resolve();
 
 export function DbUtilsExecSQL(
   sql: string,
@@ -132,9 +154,11 @@ export function DbUtilsExecSQL(
       );
     });
   } else {
-    const stmt = database.prepare(sql);
-    const result = stmt.run(...params);
-    return Promise.resolve(result.changes);
+    return runSerialized(async () => {
+      const stmt = database.prepare(sql);
+      const result = stmt.run(...params);
+      return result.changes;
+    });
   }
 }
 
@@ -164,9 +188,10 @@ export function DbUtilsQuerySQL(
       );
     });
   } else {
-    const stmt = database.prepare(sql);
-    const rows = stmt.all(...params);
-    return Promise.resolve(rows);
+    return runSerialized(async () => {
+      const stmt = database.prepare(sql);
+      return stmt.all(...params);
+    });
   }
 }
 

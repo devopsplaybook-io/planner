@@ -11,6 +11,9 @@ jest.mock("../users/UsersData", () => ({
 jest.mock("../dictation/Dictation", () => ({
   DictationTranscribeAndPolish: jest.fn(),
 }));
+jest.mock("./TaskUpdates", () => ({
+  recordTaskUpdate: jest.fn(),
+}));
 jest.mock("fs-extra");
 
 const mockPathExists = (fs as any).pathExists as jest.Mock;
@@ -27,12 +30,14 @@ import {
 import { DictationTranscribeAndPolish } from "../dictation/Dictation";
 import { UsersDataGet } from "../users/UsersData";
 import { TasksDataGet, addComment, TasksDataTouch } from "./TasksData";
+import { recordTaskUpdate } from "./TaskUpdates";
 
 const mockTranscribeAndPolish = DictationTranscribeAndPolish as jest.Mock;
 const mockTasksDataGet = TasksDataGet as jest.Mock;
 const mockAddComment = addComment as jest.Mock;
 const mockTasksDataTouch = TasksDataTouch as jest.Mock;
 const mockUsersDataGet = UsersDataGet as jest.Mock;
+const mockRecordTaskUpdate = recordTaskUpdate as jest.Mock;
 
 function deferred<T = unknown>() {
   let resolve!: (value: T) => void;
@@ -81,7 +86,10 @@ describe("TaskVoiceComments", () => {
 
   // Runs before any other test: the module state is still uninitialized
   it("should be a no-op before initialization", async () => {
-    TaskVoiceCommentsEnqueue(voiceRequest());
+    expect(TaskVoiceCommentsEnqueue(voiceRequest())).toEqual({
+      queued: false,
+      rateLimited: false,
+    });
     await flush();
     expect(mockTranscribeAndPolish).not.toHaveBeenCalled();
     expect(mockAddComment).not.toHaveBeenCalled();
@@ -119,6 +127,12 @@ describe("TaskVoiceComments", () => {
       expect(comment.id).toBeDefined();
       expect(comment.dateCreated).toBeDefined();
       expect(mockTasksDataTouch).toHaveBeenCalledWith("task-1");
+      // Same activity entry and assignee push as a normally posted comment
+      expect(mockRecordTaskUpdate).toHaveBeenCalledWith(
+        "task-1",
+        "user-1",
+        "New comment",
+      );
     });
 
     it("should resolve the user name from the data layer when not provided", async () => {
@@ -270,14 +284,27 @@ describe("TaskVoiceComments", () => {
       expect(mockAddComment).toHaveBeenCalledTimes(2);
     });
 
-    it("should skip transcriptions beyond the hourly rate limit", async () => {
+    it("should report and skip transcriptions beyond the hourly rate limit", async () => {
       const config = enabledConfig();
       config.RATE_LIMIT_DICTATION_MAX = 2;
       await TaskVoiceCommentsInit(config);
 
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "rate-user", fileName: "1.webm" }));
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "rate-user", fileName: "2.webm" }));
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "rate-user", fileName: "3.webm" }));
+      expect(
+        TaskVoiceCommentsEnqueue(
+          voiceRequest({ userId: "rate-user", fileName: "1.webm" }),
+        ),
+      ).toEqual({ queued: true, rateLimited: false });
+      expect(
+        TaskVoiceCommentsEnqueue(
+          voiceRequest({ userId: "rate-user", fileName: "2.webm" }),
+        ),
+      ).toEqual({ queued: true, rateLimited: false });
+      // The slot is consumed at enqueue time so the caller can report the skip
+      expect(
+        TaskVoiceCommentsEnqueue(
+          voiceRequest({ userId: "rate-user", fileName: "3.webm" }),
+        ),
+      ).toEqual({ queued: false, rateLimited: true });
       await flush();
 
       expect(mockTranscribeAndPolish).toHaveBeenCalledTimes(2);

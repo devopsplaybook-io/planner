@@ -7,6 +7,7 @@ Projects are the top-level organizational unit.
 - [x] The project dialog opens in display mode: it shows the project name, description and a read-only summary (visibility, status count, active/archived state); nothing can be changed until an admin switches it to Edit mode.
 - [x] All project changes (name, description, visibility and user access, status selection, Active/Archived switch) are made in the dialog's Edit mode and saved together with one Save; Cancel discards all edits and returns to display mode.
 - [x] If the save is rejected (e.g. archiving while tasks are not Done, status rules), the error is shown inline and the dialog stays in Edit mode with the entered values.
+- [x] A save that replaces the user access list is atomic: the project fields and the whole access list commit together, so a failure leaves the previous access list and project unchanged.
 - [x] Delete: the project dialog offers an advanced menu with Delete (admins only, not for the default project); delete is no longer a standalone button.
 
 ## Visibility
@@ -73,4 +74,4 @@ Projects form a hierarchy through their names: a name containing `/` nests the p
 - [x] Whether the default project should be barred from being renamed into a sub-project path (e.g. `X/Default`) is not decided.
   - [NEEDS CLARIFICATION: the current assumption is no special-casing &mdash; the default project can live anywhere in the tree.]
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-21_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_

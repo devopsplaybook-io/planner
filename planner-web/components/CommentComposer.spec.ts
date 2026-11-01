@@ -132,6 +132,23 @@ describe("CommentComposer voice recording", () => {
     expect(wrapper.find(".composer-voice-status").exists()).toBe(false);
   });
 
+  it("should emit the recording once when the max duration auto-stops it", async () => {
+    stubMedia();
+    const wrapper = mountComposer({ allowVoice: true });
+
+    await wrapper.find(".composer-voice-btn").trigger("click");
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(120000);
+    await flushPromises();
+
+    const emitted = wrapper.emitted("voice");
+    expect(emitted).toHaveLength(1);
+    const result = emitted![0]![0] as { blob: Blob; mimeType: string };
+    expect(result.blob).toBeInstanceOf(Blob);
+    expect(result.mimeType).toBe("audio/webm;codecs=opus");
+    expect(wrapper.find(".composer-voice-status").exists()).toBe(false);
+  });
+
   it("should not emit voice on cancel", async () => {
     stubMedia();
     const wrapper = mountComposer({ allowVoice: true });

@@ -6,6 +6,8 @@ import { TaskTemplate } from "../model/TaskTemplate";
 import { Project } from "../model/Project";
 import { TasksDataAdd, addTaskAttachment } from "../tasks/TasksData";
 import { TaskTemplateRunsAdd } from "./TaskTemplatesData";
+import { DbUtilsTransaction } from "../utils/DbUtils";
+import { removeFilesQuietly } from "../utils/FileUtils";
 
 /**
  * "YYYY.MN.DD" title suffix of instances created from a template when
@@ -69,8 +71,10 @@ export function buildTemplateAttachmentCopyPath(
 
 /**
  * Creates the task instance of a template (used by the manual
- * create-instance route and by the scheduler): builds the task, inserts it,
- * copies the template's attachment files to the task and records the run.
+ * create-instance route and by the scheduler): builds the task, copies the
+ * template's attachment files to the task, then inserts the task, its
+ * attachment rows and the run record in one transaction. All-or-nothing: a
+ * failure rolls the rows back and removes the copied files.
  */
 export async function createInstanceFromTemplate(
   template: TaskTemplate,
@@ -79,27 +83,49 @@ export async function createInstanceFromTemplate(
   const task = buildTaskFromTemplate(template, project, {
     addDateSuffix: template.addDateToTitle,
   });
-  await TasksDataAdd(task);
-  for (const attachment of template.attachments || []) {
-    if (!(await fs.pathExists(attachment.filePath))) {
-      continue;
+  const copies: { attachmentId: string; fileName: string; copyPath: string }[] =
+    [];
+  const copiedPaths: string[] = [];
+  try {
+    for (const attachment of template.attachments || []) {
+      if (!(await fs.pathExists(attachment.filePath))) {
+        continue;
+      }
+      const attachmentId = uuidv4();
+      const copyPath = buildTemplateAttachmentCopyPath(
+        attachment.filePath,
+        attachmentId,
+      );
+      await fs.copy(attachment.filePath, copyPath);
+      copiedPaths.push(copyPath);
+      copies.push({ attachmentId, fileName: attachment.fileName, copyPath });
     }
-    const attachmentId = uuidv4();
-    const copyPath = buildTemplateAttachmentCopyPath(
-      attachment.filePath,
-      attachmentId,
-    );
-    await fs.copy(attachment.filePath, copyPath);
-    await addTaskAttachment(task.id, attachment.fileName, copyPath, attachmentId);
-    task.attachments.push({
-      id: attachmentId,
-      fileName: attachment.fileName,
-      filePath: copyPath,
-      dateCreated: new Date().toISOString(),
+    await DbUtilsTransaction(async () => {
+      await TasksDataAdd(task);
+      for (const copy of copies) {
+        await addTaskAttachment(
+          task.id,
+          copy.fileName,
+          copy.copyPath,
+          copy.attachmentId,
+        );
+      }
+      await TaskTemplateRunsAdd(template.id, task.id);
     });
+    const dateCreated = new Date().toISOString();
+    for (const copy of copies) {
+      task.attachments.push({
+        id: copy.attachmentId,
+        fileName: copy.fileName,
+        filePath: copy.copyPath,
+        dateCreated,
+      });
+    }
+    return task;
+  } catch (error) {
+    await removeFilesQuietly(copiedPaths);
+    throw error;
   }
-  await TaskTemplateRunsAdd(template.id, task.id);
-  return task;
 }
 
 /**
