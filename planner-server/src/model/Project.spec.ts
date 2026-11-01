@@ -155,12 +155,12 @@ describe("Project model", () => {
       expect(normalizePermission("view")).toBe("view");
     });
 
-    it("should fall back to all for missing or unknown values", () => {
-      expect(normalizePermission(undefined)).toBe("all");
-      expect(normalizePermission(null)).toBe("all");
-      expect(normalizePermission("")).toBe("all");
-      expect(normalizePermission("bogus")).toBe("all");
-      expect(normalizePermission(42)).toBe("all");
+    it("should fall back to view (fail closed) for missing or unknown values", () => {
+      expect(normalizePermission(undefined)).toBe("view");
+      expect(normalizePermission(null)).toBe("view");
+      expect(normalizePermission("")).toBe("view");
+      expect(normalizePermission("bogus")).toBe("view");
+      expect(normalizePermission(42)).toBe("view");
     });
   });
 
@@ -181,8 +181,8 @@ describe("Project model", () => {
         ]),
       ).toEqual([
         { userId: "user-1", permission: "view" },
-        { userId: "user-2", permission: "all" },
-        { userId: "user-3", permission: "all" },
+        { userId: "user-2", permission: "view" },
+        { userId: "user-3", permission: "view" },
       ]);
     });
 

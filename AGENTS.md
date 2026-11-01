@@ -92,7 +92,7 @@ planner/
 ### Proxy (`planner-proxy/`)
 
 - **Traefik v2.9.6** for local development reverse proxy
-- Routes: web UI on port 3000, API on port 8080, proxy listens on port 9999
+- Routes: web UI on port 3000, API on port 8080, proxy listens on port 9008
 - Only used in development; production uses the all-in-one container
 
 ### Docker
@@ -106,7 +106,6 @@ GitHub Actions workflows are defined in `.github/workflows/`, reusing shared wor
 
 - **`main-build.yml`**: On push to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server` and `planner-web`, then builds & pushes multi-arch Docker image to Docker Hub.
 - **`pr-check.yml`**: On PR to `main`. Runs `npm run build`, `npm run lint`, `npm run test` on `planner-server` and `planner-web`, then builds & pushes a `beta` Docker image.
-- **`npm-upgrade.yml`**: Weekly schedule (Mon 6:00). Runs `npx npm-check-updates -u` on all npm services and creates an upgrade PR.
 - **`postgres-migration-tests.yml`**: On PR to `main` and push to `main`. Replays the complete PostgreSQL migration chain (fresh install + upgrade from a pre-task-template schema) against a `postgres:16-alpine` service container.
 
 Secrets required in GitHub repository:

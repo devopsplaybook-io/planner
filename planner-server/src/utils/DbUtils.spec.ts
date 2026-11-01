@@ -1,6 +1,7 @@
 import {
   convertToPostgresPlaceholders,
   DbUtilsGetType,
+  DbUtilsIsUniqueViolation,
 } from "../utils/DbUtils";
 
 describe("DbUtils", () => {
@@ -33,6 +34,33 @@ describe("DbUtils", () => {
   describe("DbUtilsGetType", () => {
     it("should default to 'sqlite'", () => {
       expect(DbUtilsGetType()).toBe("sqlite");
+    });
+  });
+
+  describe("DbUtilsIsUniqueViolation", () => {
+    it("should detect PostgreSQL unique violations", () => {
+      expect(DbUtilsIsUniqueViolation({ code: "23505" })).toBe(true);
+    });
+
+    it("should detect SQLite unique constraint errors", () => {
+      expect(
+        DbUtilsIsUniqueViolation({ code: "SQLITE_CONSTRAINT_UNIQUE" }),
+      ).toBe(true);
+      expect(
+        DbUtilsIsUniqueViolation({
+          code: "SQLITE_CONSTRAINT",
+          message: "UNIQUE constraint failed: users.name",
+        }),
+      ).toBe(true);
+    });
+
+    it("should ignore unrelated errors", () => {
+      expect(DbUtilsIsUniqueViolation({ code: "SQLITE_BUSY" })).toBe(false);
+      expect(DbUtilsIsUniqueViolation(new Error("boom"))).toBe(false);
+      expect(DbUtilsIsUniqueViolation(null)).toBe(false);
+      expect(DbUtilsIsUniqueViolation(undefined)).toBe(false);
+      expect(DbUtilsIsUniqueViolation({})).toBe(false);
+      expect(DbUtilsIsUniqueViolation("23505")).toBe(false);
     });
   });
 });

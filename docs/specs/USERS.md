@@ -4,6 +4,7 @@
 
 - [x] The first user to register is automatically granted the **admin** role.
 - [x] Subsequent users can be added by the admin and should not be able to register themselves.
+- [x] Usernames are unique at the database level (unique index on `users.name`): a duplicate answers 409 `Username Already Exists`, also when two requests race between the pre-check and the insert (e.g. concurrent first-user bootstraps). Usernames stay case-sensitive. Duplicates written before the constraint are de-duplicated during the upgrade by renaming the newer rows to `<name>#<id>` (the oldest row keeps the name).
 
 ## Request validation
 
@@ -25,4 +26,4 @@
 - [x] Each event's SUMMARY carries `Project path / Task title` (project hierarchy is encoded in the project name); the event UID is stable so calendar clients update events in place.
 - [x] Settings → Profile has a "Calendar feed" section with the subscribe URL in https and webcal variants, copy buttons, and API key regeneration (regenerating invalidates previously subscribed URLs).
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-23_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_

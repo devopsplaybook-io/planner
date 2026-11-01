@@ -21,13 +21,14 @@ export interface ProjectUserAccess {
 }
 
 /**
- * Tolerant permission parsing: one of the four levels, "all" for anything
- * else (legacy rows, missing values, junk from old clients).
+ * Permission parsing: one of the four levels, "view" for anything else
+ * (missing values, junk from old clients). Unknown values fail closed so a
+ * corrupt row can never grant more than read-only access.
  */
 export function normalizePermission(value: unknown): ProjectPermission {
   return PROJECT_PERMISSIONS.includes(value as ProjectPermission)
     ? (value as ProjectPermission)
-    : "all";
+    : "view";
 }
 
 /**

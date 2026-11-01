@@ -39,6 +39,7 @@ import { TaskTemplatesSchedulerInit } from "./tasktemplates/TaskTemplatesSchedul
 import { TaskTemplatesBackfillFromRecurrence } from "./tasktemplates/TaskTemplatesBackfill";
 import { StandardLogger, StandardTracer } from "@devopsplaybook.io/otel-utils";
 import { StandardTracerFastifyRegisterHooks } from "@devopsplaybook.io/otel-utils-fastify";
+import { SecurityHeadersRegister } from "./utils/SecurityHeaders";
 
 import fastifyCompress from "@fastify/compress";
 import fastifyMultipart from "@fastify/multipart";
@@ -113,6 +114,10 @@ Promise.resolve()
         level: "error",
       },
     });
+
+    // Security headers for the SPA (hash-pinned CSP for the generated inline
+    // scripts); attachment routes keep their own sandbox CSP
+    await SecurityHeadersRegister(fastify, path.join(__dirname, "../web"));
 
     // OpenTelemetry: exported when OPENTELEMETRY_COLLECTOR_* is configured,
     // inert no-op otherwise
