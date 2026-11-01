@@ -150,15 +150,38 @@ export async function NotificationsDataListAssigneesByTaskIds(
 }
 
 /**
- * Ids of the projects a user can see: public projects and projects the user
- * is a member of (mirrors LIST_VISIBLE_PROJECTS in ProjectsData).
+ * Visible project ids for several users in one query: public projects are
+ * visible to every user, projects the user is a member of only to that user
+ * (mirrors LIST_VISIBLE_PROJECTS in ProjectsData). Returns one set per
+ * requested user id.
  */
-export async function NotificationsDataListVisibleProjectIds(
-  userId: string,
-): Promise<string[]> {
+export async function NotificationsDataListVisibleProjectIdsForUsers(
+  userIds: string[],
+): Promise<Map<string, Set<string>>> {
+  const visibleByUser = new Map<string, Set<string>>();
+  if (userIds.length === 0) {
+    return visibleByUser;
+  }
+  for (const userId of userIds) {
+    visibleByUser.set(userId, new Set());
+  }
+  const placeholders = userIds.map(() => "?").join(", ");
   const rows = await DbUtilsQuerySQL(
-    `SELECT ${col("id")} AS "id" FROM projects WHERE ${col("visibility")} = 'public' OR ${col("id")} IN (SELECT ${col("projectId")} FROM project_users WHERE ${col("userId")} = ?)`,
-    [userId],
+    `SELECT ${col("id")} AS "projectId", NULL AS "userId" FROM projects WHERE ${col("visibility")} = 'public'
+     UNION ALL
+     SELECT ${col("projectId")} AS "projectId", ${col("userId")} AS "userId" FROM project_users WHERE ${col("userId")} IN (${placeholders})`,
+    userIds,
   );
-  return rows.map((row) => row.id as string);
+  for (const row of rows) {
+    const projectId = row.projectId as string;
+    const userId = row.userId as string | null;
+    if (userId === null) {
+      for (const set of visibleByUser.values()) {
+        set.add(projectId);
+      }
+    } else {
+      visibleByUser.get(userId)?.add(projectId);
+    }
+  }
+  return visibleByUser;
 }

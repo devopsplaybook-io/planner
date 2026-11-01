@@ -33,7 +33,7 @@ jest.mock("./NotificationsData", () => ({
   NotificationsDataListAssigneesByTaskIds: jest.fn(async () => new Map()),
   NotificationsDataListSubscriptions: jest.fn(async () => []),
   NotificationsDataListSubscriptionsByUser: jest.fn(async () => []),
-  NotificationsDataListVisibleProjectIds: jest.fn(async () => []),
+  NotificationsDataListVisibleProjectIdsForUsers: jest.fn(async () => new Map()),
   NotificationsDataLogSent: jest.fn(async () => true),
 }));
 

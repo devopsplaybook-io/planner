@@ -11,7 +11,7 @@ import {
   NotificationsDataListAssigneesByTaskIds,
   NotificationsDataListSubscriptions,
   NotificationsDataListSubscriptionsByUser,
-  NotificationsDataListVisibleProjectIds,
+  NotificationsDataListVisibleProjectIdsForUsers,
   NotificationsDataLogSent,
   type PushSubscriptionRecord,
 } from "./NotificationsData";
@@ -430,15 +430,10 @@ async function buildProjectVisibilityChecker(
   userIds: Iterable<string>,
 ): Promise<(userId: string, projectId: string) => boolean> {
   const adminIds = await getAdminIds();
-  const visibleProjectsByUser = new Map<string, Set<string>>();
-  for (const userId of new Set(userIds)) {
-    if (!adminIds.has(userId)) {
-      visibleProjectsByUser.set(
-        userId,
-        new Set(await NotificationsDataListVisibleProjectIds(userId)),
-      );
-    }
-  }
+  const nonAdminIds = [...new Set(userIds)].filter((id) => !adminIds.has(id));
+  // One batched query for every non-admin user in this run
+  const visibleProjectsByUser =
+    await NotificationsDataListVisibleProjectIdsForUsers(nonAdminIds);
   return createProjectVisibilityChecker(adminIds, visibleProjectsByUser);
 }
 
