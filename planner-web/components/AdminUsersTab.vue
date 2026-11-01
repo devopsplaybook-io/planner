@@ -2,10 +2,21 @@
   <section>
     <header class="section-header">
       <h2>Users</h2>
-      <button @click="showCreateDialog = true">
+      <button @click="openCreateDialog">
         <i class="bi bi-plus-lg" /> Add User
       </button>
     </header>
+
+    <div v-if="pageError" class="dialog-error" role="alert">
+      <span>{{ pageError }}</span>
+      <button
+        class="dialog-error-dismiss"
+        aria-label="Dismiss error"
+        @click="pageError = ''"
+      >
+        ×
+      </button>
+    </div>
 
     <div v-if="loading" class="loading-indicator" />
 
@@ -69,6 +80,16 @@
             @click="showCreateDialog = false"
           />
         </header>
+        <div v-if="createError" class="dialog-error" role="alert">
+          <span>{{ createError }}</span>
+          <button
+            class="dialog-error-dismiss"
+            aria-label="Dismiss error"
+            @click="createError = ''"
+          >
+            ×
+          </button>
+        </div>
         <form @submit.prevent="createUser">
           <label>
             Username
@@ -119,6 +140,16 @@
           <h3>Delete User</h3>
         </header>
         <p>Are you sure you want to delete user "{{ deleteTarget?.name }}"?</p>
+        <div v-if="deleteError" class="dialog-error" role="alert">
+          <span>{{ deleteError }}</span>
+          <button
+            class="dialog-error-dismiss"
+            aria-label="Dismiss error"
+            @click="deleteError = ''"
+          >
+            ×
+          </button>
+        </div>
         <footer class="dialog-footer">
           <button class="secondary" @click="deleteTarget = null">Cancel</button>
           <button class="contrast" :aria-busy="deleting" @click="deleteUser">
@@ -131,7 +162,7 @@
     <!-- API Key Dialog -->
     <dialog
       ref="apiKeyDialogEl"
-      @close="apiKeyTarget = null"
+      @close="onApiKeyDialogClosed"
     >
       <article>
         <header>
@@ -142,6 +173,16 @@
             @click="apiKeyTarget = null"
           />
         </header>
+        <div v-if="apiKeyError" class="dialog-error" role="alert">
+          <span>{{ apiKeyError }}</span>
+          <button
+            class="dialog-error-dismiss"
+            aria-label="Dismiss error"
+            @click="apiKeyError = ''"
+          >
+            ×
+          </button>
+        </div>
         <div v-if="apiKeyLoading" class="loading-indicator" />
         <template v-else>
           <div v-if="userApiKey" class="api-key-admin-display">
@@ -162,10 +203,10 @@
               </label>
             </div>
             <footer class="dialog-footer">
-              <button class="secondary" :aria-busy="regeneratingKey" @click="regenerateUserApiKey">
+              <button class="secondary" @click="showRegenerateConfirm = true">
                 <i class="bi bi-arrow-clockwise" /> Regenerate
               </button>
-              <button class="contrast" :aria-busy="deletingKey" @click="deleteUserApiKey">
+              <button class="contrast" @click="showDeleteKeyConfirm = true">
                 <i class="bi bi-trash" /> Delete
               </button>
             </footer>
@@ -193,6 +234,50 @@
         </template>
       </article>
     </dialog>
+
+    <!-- Regenerate API Key Confirmation -->
+    <dialog
+      ref="regenerateDialogEl"
+      class="inner-dialog"
+      @close="showRegenerateConfirm = false"
+    >
+      <article>
+        <header><h3>Regenerate API Key</h3></header>
+        <p>Regenerating will invalidate the current key. Continue?</p>
+        <footer class="dialog-footer">
+          <button class="secondary" @click="showRegenerateConfirm = false">
+            Cancel
+          </button>
+          <button :aria-busy="regeneratingKey" @click="regenerateUserApiKey">
+            Regenerate
+          </button>
+        </footer>
+      </article>
+    </dialog>
+
+    <!-- Delete API Key Confirmation -->
+    <dialog
+      ref="deleteKeyDialogEl"
+      class="inner-dialog"
+      @close="showDeleteKeyConfirm = false"
+    >
+      <article>
+        <header><h3>Delete API Key</h3></header>
+        <p>Delete this user's API key? This cannot be undone.</p>
+        <footer class="dialog-footer">
+          <button class="secondary" @click="showDeleteKeyConfirm = false">
+            Cancel
+          </button>
+          <button
+            class="contrast"
+            :aria-busy="deletingKey"
+            @click="deleteUserApiKey"
+          >
+            Delete
+          </button>
+        </footer>
+      </article>
+    </dialog>
   </section>
 </template>
 
@@ -211,6 +296,9 @@ const creating = ref(false);
 const deleting = ref(false);
 const deleteTarget = ref(null);
 const deleteDialogEl = useModalDialog(() => deleteTarget.value !== null);
+const createError = ref("");
+const pageError = ref("");
+const deleteError = ref("");
 
 // API Key management
 const apiKeyTarget = ref(null);
@@ -221,6 +309,11 @@ const newlyGeneratedKey = ref("");
 const generatingKey = ref(false);
 const regeneratingKey = ref(false);
 const deletingKey = ref(false);
+const apiKeyError = ref("");
+const showRegenerateConfirm = ref(false);
+const regenerateDialogEl = useModalDialog(() => showRegenerateConfirm.value);
+const showDeleteKeyConfirm = ref(false);
+const deleteKeyDialogEl = useModalDialog(() => showDeleteKeyConfirm.value);
 
 const newUser = ref({ name: "", password: "", role: "user" });
 
@@ -248,42 +341,51 @@ async function fetchUsers() {
   }
 }
 
+function openCreateDialog() {
+  createError.value = "";
+  showCreateDialog.value = true;
+}
+
 async function createUser() {
   creating.value = true;
+  createError.value = "";
   try {
     const res = await api.post("/users", newUser.value);
     users.value.push(res.data.user);
     showCreateDialog.value = false;
     newUser.value = { name: "", password: "", role: "user" };
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to create user");
+    createError.value = e.response?.data?.error || "Failed to create user";
   } finally {
     creating.value = false;
   }
 }
 
 async function updateRole(userId, role) {
+  pageError.value = "";
   try {
     await api.put(`/users/${userId}`, { role });
     await fetchUsers();
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to update role");
+    pageError.value = e.response?.data?.error || "Failed to update role";
   }
 }
 
 function confirmDeleteUser(user) {
+  deleteError.value = "";
   deleteTarget.value = user;
 }
 
 async function deleteUser() {
   if (!deleteTarget.value) return;
   deleting.value = true;
+  deleteError.value = "";
   try {
     await api.delete(`/users/${deleteTarget.value.id}`);
     users.value = users.value.filter((u) => u.id !== deleteTarget.value.id);
     deleteTarget.value = null;
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to delete user");
+    deleteError.value = e.response?.data?.error || "Failed to delete user";
   } finally {
     deleting.value = false;
   }
@@ -297,7 +399,15 @@ onMounted(async () => {
 async function openApiKeyDialog(user) {
   apiKeyTarget.value = user;
   newlyGeneratedKey.value = "";
+  apiKeyError.value = "";
   await fetchUserApiKey(user.id);
+}
+
+function onApiKeyDialogClosed() {
+  apiKeyTarget.value = null;
+  apiKeyError.value = "";
+  showRegenerateConfirm.value = false;
+  showDeleteKeyConfirm.value = false;
 }
 
 async function fetchUserApiKey(userId) {
@@ -315,6 +425,7 @@ async function fetchUserApiKey(userId) {
 async function generateUserApiKey() {
   if (!apiKeyTarget.value) return;
   generatingKey.value = true;
+  apiKeyError.value = "";
   try {
     const res = await api.post(`/users/${apiKeyTarget.value.id}/api-key`);
     newlyGeneratedKey.value = res.data.key;
@@ -323,7 +434,7 @@ async function generateUserApiKey() {
     if (user) user.hasApiKey = true;
     await fetchUserApiKey(apiKeyTarget.value.id);
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to generate API key");
+    apiKeyError.value = e.response?.data?.error || "Failed to generate API key";
   } finally {
     generatingKey.value = false;
   }
@@ -331,14 +442,16 @@ async function generateUserApiKey() {
 
 async function regenerateUserApiKey() {
   if (!apiKeyTarget.value) return;
-  if (!confirm("Regenerating will invalidate the current key. Continue?")) return;
+  showRegenerateConfirm.value = false;
   regeneratingKey.value = true;
+  apiKeyError.value = "";
   try {
     const res = await api.post(`/users/${apiKeyTarget.value.id}/api-key`);
     newlyGeneratedKey.value = res.data.key;
     await fetchUserApiKey(apiKeyTarget.value.id);
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to regenerate API key");
+    apiKeyError.value =
+      e.response?.data?.error || "Failed to regenerate API key";
   } finally {
     regeneratingKey.value = false;
   }
@@ -346,8 +459,9 @@ async function regenerateUserApiKey() {
 
 async function deleteUserApiKey() {
   if (!apiKeyTarget.value) return;
-  if (!confirm("Delete this user's API key? This cannot be undone.")) return;
+  showDeleteKeyConfirm.value = false;
   deletingKey.value = true;
+  apiKeyError.value = "";
   try {
     await api.delete(`/users/${apiKeyTarget.value.id}/api-key`);
     userApiKey.value = null;
@@ -356,7 +470,7 @@ async function deleteUserApiKey() {
     const user = users.value.find((u) => u.id === apiKeyTarget.value.id);
     if (user) user.hasApiKey = false;
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to delete API key");
+    apiKeyError.value = e.response?.data?.error || "Failed to delete API key";
   } finally {
     deletingKey.value = false;
   }

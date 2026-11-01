@@ -6,6 +6,17 @@
         <button class="close-btn" aria-label="Close" @click="requestClose" />
       </header>
 
+      <div v-if="dialogError" class="dialog-error" role="alert">
+        <span>{{ dialogError }}</span>
+        <button
+          class="dialog-error-dismiss"
+          aria-label="Dismiss error"
+          @click="dialogError = ''"
+        >
+          ×
+        </button>
+      </div>
+
       <!-- RECORD -->
       <section v-if="mode === 'record'" class="dictation-record">
         <p class="dictation-status" aria-live="polite">
@@ -232,6 +243,7 @@ const POLL_INTERVAL_MS = 1500;
 
 const mode = ref("record"); // record | processing | review
 const committing = ref(false);
+const dialogError = ref("");
 
 // Modal dialog wiring: backdrop, focus trap, Escape to close
 const dialogEl = useModalDialog(() => props.open);
@@ -316,6 +328,7 @@ const createButtonLabel = computed(() => {
 });
 
 function enterReview() {
+  dialogError.value = "";
   const result = dictationStore.result;
   polishedText.value = result?.polishedText || "";
   const projectId = defaultProjectId();
@@ -379,11 +392,13 @@ function stopPolling() {
 }
 
 function retry() {
+  dialogError.value = "";
   dictationStore.reset();
   mode.value = "record";
 }
 
 function discard() {
+  dialogError.value = "";
   dictationStore.reset();
   mode.value = "record";
   emit("close");
@@ -459,6 +474,7 @@ function ensureStatusesLoaded() {
 
 async function commitSelected() {
   committing.value = true;
+  dialogError.value = "";
   try {
     const fallbackProjectId = defaultProjectId();
     for (const action of selectedActions.value) {
@@ -485,7 +501,8 @@ async function commitSelected() {
     emit("committed");
     emit("close");
   } catch (err) {
-    alert(err?.response?.data?.error || "Failed to create the selected items.");
+    dialogError.value =
+      err?.response?.data?.error || "Failed to create the selected items.";
   } finally {
     committing.value = false;
   }
@@ -493,6 +510,7 @@ async function commitSelected() {
 
 async function saveAsNote() {
   committing.value = true;
+  dialogError.value = "";
   try {
     await notesStore.create({
       projectId: defaultProjectId(),
@@ -504,7 +522,7 @@ async function saveAsNote() {
     emit("committed");
     emit("close");
   } catch (err) {
-    alert(err?.response?.data?.error || "Failed to save the note.");
+    dialogError.value = err?.response?.data?.error || "Failed to save the note.";
   } finally {
     committing.value = false;
   }
@@ -514,6 +532,7 @@ watch(
   () => props.open,
   async (isOpen) => {
     if (isOpen) {
+      dialogError.value = "";
       await ensureProjectsLoaded();
       ensureStatusesLoaded();
       if (dictationStore.isProcessing) {

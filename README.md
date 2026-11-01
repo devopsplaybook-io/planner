@@ -40,6 +40,9 @@ docker run --name planner -p 8080:8080 -v "$(pwd)/data:/data" -d devopsplaybooki
 - Docker image: `devopsplaybookio/planner`
 - Exposes port: `8080`
 - Data volume: `/data`
+- The container runs as the non-root `node` user (UID/GID 1000): the mounted
+  `data` directory must be writable by that user. On an existing installation
+  created by a root container, run `sudo chown -R 1000:1000 data` once.
 
 ### Kubernetes
 
@@ -187,7 +190,7 @@ planner/
   planner-web/         # Nuxt SPA frontend
   docs/
     dev/               # Development scripts
-    deployments/       # Deployment examples (Docker, Kubernetes, Docker Compose)
+    deployments/       # Deployment examples (Docker Compose, Kubernetes)
     specs/             # Application specifications
 ```
 

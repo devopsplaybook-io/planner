@@ -99,6 +99,7 @@ planner/
 
 - Multi-stage build: builder stage compiles server + generates web, runtime stage uses `node:26-alpine`
 - Single container serves both API and static web files (`dist/App.js` serves the API and the generated `web/` directory)
+- The runtime runs as the non-root `node` user (UID/GID 1000); `/data` must be writable by that user (existing root-owned data needs `chown -R 1000:1000`)
 
 ## CI/CD
 

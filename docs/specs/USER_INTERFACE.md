@@ -7,6 +7,7 @@ It is installable on mobile and desktop devices and works offline.
 
 - [x] **Responsive**: Adapts to all screen sizes from mobile to desktop
 - [x] **PWA**: Installable with offline support, configured via @vite-pwa/nuxt
+- [x] **Zoom**: page zoom is never restricted (the viewport allows user scaling, WCAG 1.4.4)
 
 ## Navigation
 
@@ -17,6 +18,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On mobile, the menu's buttons (dictation and the command-palette search) get the same comfortable touch-target padding as the menu links, so taps near the icon always land on the button
 - [x] The Settings entry in the menu uses a gear icon, consistent with the other navigation icons
 - [x] Offline support (PWA configured with service worker, cache strategies)
+- [x] **Session**: the stored token is validated on app start and on every route change; an expired or invalid session redirects to the login page before an authenticated page renders, while a network failure keeps a locally valid session so the installed PWA still opens offline
 
 ### Command Palette
 
@@ -60,7 +62,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] All markdown rendered in the app (task/note/project descriptions, comments, dashboard AI recommendations) goes through the shared sanitized rendering composable: output is filtered through a DOMPurify allow-list (safe tags and attributes, http/https/mailto URLs only, no event handlers); rendered markdown links open in a new tab with `rel="noopener noreferrer"`
 - [x] The task and note dialog comment forms offer a Write/Preview toggle (Preview renders through the same sanitized pipeline), an auto-growing textarea and Ctrl/Cmd+Enter submit; unsent drafts persist per task/note (and per edited comment) in localStorage under the shared "planner." key prefix and degrade gracefully when storage is unavailable
 - [x] Collapsible detail-dialog sections (task: Checklist/Attachments/Comments; note: Attachments/Comments) remember their collapsed/expanded state per dialog type in localStorage, with graceful degrade to content-based defaults
-- [x] Task and note dialog flows (create and detail dialogs) use the custom confirmation dialogs and an inline dismissible error banner instead of browser `alert()`/`confirm()`
+- [x] The task, note, project and admin-user dialog flows, and the dictation dialog, use the custom confirmation dialogs and an inline dismissible error banner instead of browser `alert()`/`confirm()`
 - [x] A shared multi-user selection component (auto-complete box with removable chips) is used for task assignees and project user access, replacing per-user checkbox lists; for project user access it offers an optional compact permission select per chip (All / Update tasks / Comment / View, defaulting to All) next to the remove button
 - [x] A shared label chip editor (free-form label chips with remove buttons, autocomplete from existing labels with usage counts, keyboard navigation with ArrowUp/ArrowDown/Enter/Escape and Backspace to remove the last chip) is used for task create/edit, note edit and the dashboard/notes label filters
 - [x] When a Task, Note or Project detail dialog is closed, the view behind it refreshes its data in place: the list is not unmounted and the user's scroll position is preserved (the full loading indicator is only shown on initial load)
@@ -76,4 +78,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-10-25_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_

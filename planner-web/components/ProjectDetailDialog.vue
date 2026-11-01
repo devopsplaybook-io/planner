@@ -57,6 +57,17 @@
         </div>
       </header>
 
+      <div v-if="dialogError" class="dialog-error" role="alert">
+        <span>{{ dialogError }}</span>
+        <button
+          class="dialog-error-dismiss"
+          aria-label="Dismiss error"
+          @click="dialogError = ''"
+        >
+          ×
+        </button>
+      </div>
+
       <section v-if="loading" class="loading-indicator" />
 
       <template v-else-if="project">
@@ -283,6 +294,16 @@
             Are you sure you want to delete "{{ project?.name }}"? All
             associated tasks, notes, and comments will also be deleted.
           </p>
+          <div v-if="deleteError" class="dialog-error" role="alert">
+            <span>{{ deleteError }}</span>
+            <button
+              class="dialog-error-dismiss"
+              aria-label="Dismiss error"
+              @click="deleteError = ''"
+            >
+              ×
+            </button>
+          </div>
           <footer class="dialog-footer">
             <button class="secondary" @click="showDeleteConfirm = false">
               Cancel
@@ -293,6 +314,26 @@
               @click="deleteProject"
             >
               Delete
+            </button>
+          </footer>
+        </article>
+      </dialog>
+
+      <!-- Generic confirmation (promise-based) -->
+      <dialog
+        ref="confirmDialogEl"
+        class="inner-dialog confirm-dialog"
+        @close="settleConfirm(false)"
+      >
+        <article>
+          <header><h3>{{ confirmState.title }}</h3></header>
+          <p>{{ confirmState.message }}</p>
+          <footer class="dialog-footer">
+            <button class="secondary" @click="settleConfirm(false)">
+              Cancel
+            </button>
+            <button class="contrast" @click="settleConfirm(true)">
+              {{ confirmState.confirmLabel }}
             </button>
           </footer>
         </article>
@@ -333,6 +374,34 @@ const saving = ref(false);
 const advancedMenuEl = ref(null);
 const editForm = ref({ name: "", description: "" });
 const saveError = ref("");
+const dialogError = ref("");
+const deleteError = ref("");
+
+// Promise-based confirmation rendered as a stacked inner dialog
+const showConfirm = ref(false);
+const confirmDialogEl = useModalDialog(() => showConfirm.value);
+const confirmState = ref({
+  title: "",
+  message: "",
+  confirmLabel: "Confirm",
+});
+let confirmResolver = null;
+
+function askConfirm(title, message, confirmLabel = "Confirm") {
+  confirmState.value = { title, message, confirmLabel };
+  showConfirm.value = true;
+  return new Promise((resolve) => {
+    confirmResolver = resolve;
+  });
+}
+
+function settleConfirm(result) {
+  if (!confirmResolver) return;
+  const resolve = confirmResolver;
+  confirmResolver = null;
+  showConfirm.value = false;
+  resolve(result);
+}
 // Long descriptions collapse behind a "Show more/less" disclosure in view
 // mode; Edit mode always shows the full text (the textarea is untouched).
 const {
@@ -408,6 +477,7 @@ function accessUserName(userId) {
 watch(
   () => props.projectId,
   async (newId) => {
+    dialogError.value = "";
     if (newId) {
       loading.value = true;
       editing.value = false;
@@ -467,6 +537,7 @@ function seedEditState() {
 }
 
 function startEdit() {
+  dialogError.value = "";
   seedEditState();
   editing.value = true;
 }
@@ -521,10 +592,12 @@ async function saveEdit() {
             : `Cannot rename: ${names} are archived — unarchive them first`;
         return;
       }
-      const confirmed = window.confirm(
+      const confirmed = await askConfirm(
+        "Rename Sub-projects",
         `Rewrite the names of ${descendants.length} sub-project${
           descendants.length > 1 ? "s" : ""
         } to match the new name?`,
+        "Rename",
       );
       if (!confirmed) {
         return;
@@ -556,10 +629,12 @@ async function saveEdit() {
       ]
         .filter(Boolean)
         .join(" and ");
-      propagate = window.confirm(
+      propagate = await askConfirm(
+        "Apply to Sub-projects",
         `Apply the new ${what} to all ${descendants.length} sub-project${
           descendants.length > 1 ? "s" : ""
         }?`,
+        "Apply",
       );
     }
 
@@ -617,9 +692,7 @@ async function saveEdit() {
       const attempted =
         (cascade ? descendants.length : 0) +
         (propagate ? descendants.length : 0);
-      alert(
-        `${attempted - failures.length} of ${attempted} sub-project updates succeeded: ${failures.join(", ")}`,
-      );
+      dialogError.value = `${attempted - failures.length} of ${attempted} sub-project updates succeeded: ${failures.join(", ")}`;
     }
     editing.value = false;
     emit("updated");
@@ -645,6 +718,7 @@ function closeAdvancedMenu() {
 
 function openDeleteConfirm() {
   closeAdvancedMenu();
+  deleteError.value = "";
   showDeleteConfirm.value = true;
 }
 
@@ -652,17 +726,17 @@ async function deleteProject() {
   // Guard: a project with sub-projects cannot be deleted until they are
   // removed or moved (their parent path would go missing)
   if (projectsStore.descendantsOf(props.projectId).length > 0) {
-    showDeleteConfirm.value = false;
-    alert("Delete or move the sub-projects first.");
+    deleteError.value = "Delete or move the sub-projects first.";
     return;
   }
   deleting.value = true;
+  deleteError.value = "";
   try {
     await projectsStore.remove(props.projectId);
     showDeleteConfirm.value = false;
     emit("close");
   } catch (e) {
-    alert(e.response?.data?.error || "Failed to delete project");
+    deleteError.value = e.response?.data?.error || "Failed to delete project";
   } finally {
     deleting.value = false;
   }

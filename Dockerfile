@@ -39,13 +39,19 @@ RUN apk add --no-cache gzip ffmpeg zip unzip tzdata
 
 ENV TZ=UTC
 
-COPY --from=builder /opt/src/planner-server/node_modules /opt/app/planner/node_modules
-COPY --from=builder /opt/src/planner-server/dist /opt/app/planner/dist
-COPY --from=builder /opt/src/planner-web/.output/public /opt/app/planner/web
-COPY --from=builder /opt/src/whisper.cpp/build/bin/whisper-cli /opt/app/planner/bin/whisper-cli
-COPY planner-server/config.json /opt/app/planner/config.json
-COPY planner-server/sql /opt/app/planner/sql
-COPY package.json /opt/app/planner/package.json
+COPY --from=builder --chown=node:node /opt/src/planner-server/node_modules /opt/app/planner/node_modules
+COPY --from=builder --chown=node:node /opt/src/planner-server/dist /opt/app/planner/dist
+COPY --from=builder --chown=node:node /opt/src/planner-web/.output/public /opt/app/planner/web
+COPY --from=builder --chown=node:node /opt/src/whisper.cpp/build/bin/whisper-cli /opt/app/planner/bin/whisper-cli
+COPY --chown=node:node planner-server/config.json /opt/app/planner/config.json
+COPY --chown=node:node planner-server/sql /opt/app/planner/sql
+COPY --chown=node:node package.json /opt/app/planner/package.json
+
+# The persistent data volume must be writable by the unprivileged runtime
+# user (UID/GID 1000, the `node` user shipped by the base image)
+RUN mkdir -p /data && chown node:node /data
+
+USER node
 
 WORKDIR /opt/app/planner
 

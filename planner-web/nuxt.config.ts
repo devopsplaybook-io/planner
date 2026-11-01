@@ -7,8 +7,7 @@ export default defineNuxtConfig({
   app: {
     head: {
       charset: "utf-8",
-      viewport:
-        "width=device-width, initial-scale=1, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no",
+      viewport: "width=device-width, initial-scale=1",
       title: "Planner",
       meta: [
         { name: "description", content: "planner" },
