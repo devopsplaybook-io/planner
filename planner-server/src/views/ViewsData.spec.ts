@@ -262,3 +262,38 @@ describe("ViewsDataGetDashboard sections", () => {
     expect(data.overdue[0].labels).toEqual([]);
   });
 });
+
+describe("ViewsDataGetDashboard concurrency", () => {
+  beforeEach(() => {
+    mockQuery.mockReset();
+  });
+
+  it("should run the four section queries concurrently", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const resolvers: Array<() => void> = [];
+    mockQuery.mockImplementation(() => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      return new Promise((resolve) => {
+        resolvers.push(() => {
+          inFlight -= 1;
+          resolve([]);
+        });
+      });
+    });
+
+    const dashboardPromise = ViewsDataGetDashboard({});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // All four sections are in flight before any of them resolves
+    expect(resolvers).toHaveLength(4);
+    expect(maxInFlight).toBe(4);
+
+    for (const resolve of resolvers) {
+      resolve();
+    }
+    await dashboardPromise;
+    expect(inFlight).toBe(0);
+  });
+});

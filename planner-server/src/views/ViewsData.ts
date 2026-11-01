@@ -114,35 +114,28 @@ export async function ViewsDataGetDashboard(
 
   // Overdue: dueDate IS NOT NULL AND dueDate < today (server timezone) AND status != 'Done'
   const overdueSql = `${getSelectSql()} WHERE ${dueCol} IS NOT NULL AND ${dueCol} < ? AND ${statCol} != ?${filterClause} ${orderDueDateAsc()} LIMIT ${DASHBOARD_SECTION_LIMIT}`;
-  const overdueRows = await DbUtilsQuerySQL(overdueSql, [
-    todayKey,
-    "Done",
-    ...filterParams,
-  ]);
 
   // Upcoming (1 month): today <= dueDate <= today+30d AND status != 'Done'
   const upcomingSql = `${getSelectSql()} WHERE ${dueCol} IS NOT NULL AND ${dueCol} >= ? AND ${dueCol} <= ? AND ${statCol} != ?${filterClause} ${orderDueDateAsc()} LIMIT ${DASHBOARD_SECTION_LIMIT}`;
-  const upcomingRows = await DbUtilsQuerySQL(upcomingSql, [
-    todayKey,
-    in1MonthKey,
-    "Done",
-    ...filterParams,
-  ]);
 
   // No date, ordered by priority: dueDate IS NULL AND status != 'Done'
   const noDateSql = `${getSelectSql()} WHERE ${dueCol} IS NULL AND ${statCol} != ?${filterClause} ${orderPriorityAsc()} LIMIT ${DASHBOARD_SECTION_LIMIT}`;
-  const noDateRows = await DbUtilsQuerySQL(noDateSql, [
-    "Done",
-    ...filterParams,
-  ]);
 
   // Recently done (spec VIEWS.md): Done within the past 30 days, most
   // recently updated first, top 5
   const doneSql = `${getSelectSql()} WHERE ${statCol} = ? AND ${col("dateUpdated")} >= ?${filterClause} ${orderDateUpdatedDesc()} LIMIT 5`;
-  const doneRows = await DbUtilsQuerySQL(doneSql, [
-    "Done",
-    thirtyDaysAgo,
-    ...filterParams,
+
+  // The four sections are independent: run them concurrently
+  const [overdueRows, upcomingRows, noDateRows, doneRows] = await Promise.all([
+    DbUtilsQuerySQL(overdueSql, [todayKey, "Done", ...filterParams]),
+    DbUtilsQuerySQL(upcomingSql, [
+      todayKey,
+      in1MonthKey,
+      "Done",
+      ...filterParams,
+    ]),
+    DbUtilsQuerySQL(noDateSql, ["Done", ...filterParams]),
+    DbUtilsQuerySQL(doneSql, ["Done", thirtyDaysAgo, ...filterParams]),
   ]);
 
   // One batched labels query for every row of every section
