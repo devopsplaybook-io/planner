@@ -30,6 +30,11 @@
 - [x] `JWT_KEY` is mandatory outside `DEV_MODE`: startup fails with a clear error when it is missing, empty, whitespace-only or the public placeholder `dev`
 - [x] In `DEV_MODE` a missing key is replaced by a generated, per-process strong key (stable across configuration reloads), so tokens can always be signed; an explicitly configured key is kept
 
+### Data directory
+
+- [x] Startup fails with an explicit, actionable error when `DATA_DIR` does not exist or is not writable by the runtime user (UID/GID 1000): SQLite would open the database read-only and every write would fail with `attempt to write a readonly database` while the server reported itself healthy
+- [x] The writability check performs a real write transaction on the SQLite database (`user_version` written back unchanged), so file, `-wal`/`-shm` and mount permissions are all covered
+
 ### Security headers
 
 - [x] HTML (SPA) responses carry a Content-Security-Policy: `default-src 'self'`, same-origin scripts plus the SHA-256 hashes of every inline `<script>` found in the generated HTML at startup (import maps included, JSON blocks excluded), `wasm-unsafe-eval` for pdf.js, `style-src 'unsafe-inline'` for Vue/Pico inline styles, `object-src 'none'`, `base-uri 'self'` and `frame-ancestors 'none'`
@@ -57,4 +62,4 @@
 - [x] A shared attachment-viewer registry (file extension → viewer kind: image / pdf / audio / none) and a shared fullscreen viewer component decide how each attachment renders in the task and note dialogs; new viewer types are added in one place
 - [x] PDF attachments render inline through the bundled pdf.js renderer (pages drawn on canvas fit to the viewer width, scrollable): the browser's built-in PDF viewer cannot render PDFs inside iframes on mobile Chromium, so it is not an option; the pdf.js library and worker are lazy-loaded on first use. Inline PDF responses keep nosniff + the exact application/pdf content type and omit the sandbox CSP
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-02_
