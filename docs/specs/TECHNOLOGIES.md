@@ -17,6 +17,13 @@
   - Shared OpenTelemetry tracer and logger used across devopsplaybook projects
 - [x] [@devopsplaybook.io/otel-utils-fastify](https://github.com/devopsplaybook-io/otel-utils-fastify)
   - OpenTelemetry integration for Fastify (hooks registered in `App.ts`, inert without `OPENTELEMETRY_COLLECTOR_*`)
+- [x] [@devopsplaybook.io/common-utils](https://github.com/devopsplaybook-io/common-utils)
+  - Shared utilities; `FastifyErrorHandlerRegister` is registered in `App.ts` so 5xx responses never expose internal error codes or messages
+
+### Error responses
+
+- [x] Unexpected server errors (5xx) answer with the generic status label only: the thrown message and `code` (e.g. `SQLITE_READONLY`) are logged server-side and never sent to clients
+- [x] Client errors (4xx) keep their message and code so validation and plugin errors stay actionable
 
 ### Attachments
 
@@ -57,4 +64,4 @@
 - [x] A shared attachment-viewer registry (file extension → viewer kind: image / pdf / audio / none) and a shared fullscreen viewer component decide how each attachment renders in the task and note dialogs; new viewer types are added in one place
 - [x] PDF attachments render inline through the bundled pdf.js renderer (pages drawn on canvas fit to the viewer width, scrollable): the browser's built-in PDF viewer cannot render PDFs inside iframes on mobile Chromium, so it is not an option; the pdf.js library and worker are lazy-loaded on first use. Inline PDF responses keep nosniff + the exact application/pdf content type and omit the sandbox CSP
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-02_
