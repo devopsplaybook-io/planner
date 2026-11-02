@@ -17,3 +17,7 @@ The container runs as the non-root `node` user (UID/GID 1000), so the bind-mount
 ```bash
 sudo chown -R 1000:1000 data
 ```
+
+Until then the server refuses to start and reports that `DATA_DIR` is not usable,
+instead of starting and failing every write with `attempt to write a readonly
+database`.

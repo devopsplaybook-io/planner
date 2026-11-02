@@ -42,7 +42,9 @@ docker run --name planner -p 8080:8080 -v "$(pwd)/data:/data" -d devopsplaybooki
 - Data volume: `/data`
 - The container runs as the non-root `node` user (UID/GID 1000): the mounted
   `data` directory must be writable by that user. On an existing installation
-  created by a root container, run `sudo chown -R 1000:1000 data` once.
+  created by a root container, run `sudo chown -R 1000:1000 data` once. The
+  server refuses to start (instead of answering 500 to every write) while
+  `DATA_DIR` is not writable by that user.
 
 ### Kubernetes
 
