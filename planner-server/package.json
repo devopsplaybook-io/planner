@@ -15,6 +15,7 @@
     "migrate": "tsx ./src/migrate-database.ts"
   },
   "dependencies": {
+    "@devopsplaybook.io/common-utils": "^2.9.0",
     "@devopsplaybook.io/otel-utils": "^1.9.1",
     "@devopsplaybook.io/otel-utils-fastify": "^1.7.1",
     "@fastify/compress": "^9.3.0",

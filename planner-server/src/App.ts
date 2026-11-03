@@ -39,6 +39,7 @@ import { TaskTemplatesSchedulerInit } from "./tasktemplates/TaskTemplatesSchedul
 import { TaskTemplatesBackfillFromRecurrence } from "./tasktemplates/TaskTemplatesBackfill";
 import { StandardLogger, StandardTracer } from "@devopsplaybook.io/otel-utils";
 import { StandardTracerFastifyRegisterHooks } from "@devopsplaybook.io/otel-utils-fastify";
+import { FastifyErrorHandlerRegister } from "@devopsplaybook.io/common-utils/fastify-error-handler";
 import { SecurityHeadersRegister } from "./utils/SecurityHeaders";
 
 import fastifyCompress from "@fastify/compress";
@@ -114,6 +115,11 @@ Promise.resolve()
         level: "error",
       },
     });
+
+    // Unexpected failures must not leak driver codes or internal messages to
+    // clients (e.g. SQLITE_READONLY on a read-only data volume); the original
+    // error stays in the server logs and 4xx responses keep their message
+    FastifyErrorHandlerRegister(fastify);
 
     // Security headers for the SPA (hash-pinned CSP for the generated inline
     // scripts); attachment routes keep their own sandbox CSP

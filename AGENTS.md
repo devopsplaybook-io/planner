@@ -71,7 +71,7 @@ planner/
 - **Language**: TypeScript
 - **Framework**: Fastify
 - **Database**: SQLite via `better-sqlite3` (with optional PostgreSQL support)
-- **Libraries**: `@devopsplaybook.io/otel-utils`, `@devopsplaybook.io/otel-utils-fastify`
+- **Libraries**: `@devopsplaybook.io/otel-utils`, `@devopsplaybook.io/otel-utils-fastify`, `@devopsplaybook.io/common-utils` (safe Fastify error handler)
 - **Build**: `tsc` (compiles `src/` to `dist/`) + spec type-check (`tsc --noEmit`)
 - **Dev mode**: `tsx watch` (hot-reload)
 - **Tests**: Jest with `@swc/jest` (v8 coverage), files named `*.spec.ts` alongside source
