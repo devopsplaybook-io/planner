@@ -555,13 +555,76 @@ describe("ProjectsRoutes admin enforcement", () => {
     (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
     const project = new Project();
     (ProjectsDataGet as jest.Mock).mockResolvedValue(project);
-    (ProjectsDataDelete as jest.Mock).mockResolvedValue(undefined);
+    (ProjectsDataDelete as jest.Mock).mockResolvedValue(0);
     const res = await app.inject({
       method: "DELETE",
       url: `/${project.id}`,
     });
     expect(res.statusCode).toBe(201);
-    expect(ProjectsDataDelete).toHaveBeenCalledWith(project.id);
+    expect(res.json()).toEqual({ tasksMoved: 0 });
+    expect(ProjectsDataDelete).toHaveBeenCalledWith(project.id, null);
+  });
+
+  it("should move the project's tasks when a destination project is given", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const source = new Project();
+    source.id = "source";
+    const target = new Project();
+    target.id = "target";
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) =>
+      id === "source" ? source : target,
+    );
+    (ProjectsDataDelete as jest.Mock).mockResolvedValue(7);
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/source?moveTasksTo=target",
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toEqual({ tasksMoved: 7 });
+    expect(ProjectsDataDelete).toHaveBeenCalledWith("source", target);
+  });
+
+  it("should refuse to move tasks to a missing or archived project", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const source = new Project();
+    source.id = "source";
+    const archived = new Project();
+    archived.id = "archived";
+    archived.archived = true;
+    (ProjectsDataGet as jest.Mock).mockImplementation(async (id: string) => {
+      if (id === "source") return source;
+      if (id === "archived") return archived;
+      return null;
+    });
+
+    const missing = await app.inject({
+      method: "DELETE",
+      url: "/source?moveTasksTo=unknown",
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const archivedRes = await app.inject({
+      method: "DELETE",
+      url: "/source?moveTasksTo=archived",
+    });
+    expect(archivedRes.statusCode).toBe(400);
+    expect(archivedRes.json().error).toBe(
+      "Cannot move tasks to an archived project",
+    );
+    expect(ProjectsDataDelete).not.toHaveBeenCalled();
+  });
+
+  it("should refuse to move tasks to the project being deleted", async () => {
+    (AuthMustBeAdmin as jest.Mock).mockResolvedValue(undefined);
+    const source = new Project();
+    source.id = "source";
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(source);
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/source?moveTasksTo=source",
+    });
+    expect(res.statusCode).toBe(400);
+    expect(ProjectsDataDelete).not.toHaveBeenCalled();
   });
 
   it("should refuse to delete the default project", async () => {

@@ -158,8 +158,10 @@ export const useProjectsStore = defineStore("projects", {
       return res.data;
     },
 
-    async remove(id: string) {
-      await api.delete(`/projects/${id}`);
+    async remove(id: string, moveTasksTo?: string) {
+      await api.delete(`/projects/${id}`, {
+        params: moveTasksTo ? { moveTasksTo } : undefined,
+      });
       this.projects = this.projects.filter((p) => p.id !== id);
       if (this.currentProject?.id === id) {
         this.currentProject = null;

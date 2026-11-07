@@ -9,6 +9,9 @@ Projects are the top-level organizational unit.
 - [x] If the save is rejected (e.g. archiving while tasks are not Done, status rules), the error is shown inline and the dialog stays in Edit mode with the entered values.
 - [x] A save that replaces the user access list is atomic: the project fields and the whole access list commit together, so a failure leaves the previous access list and project unchanged.
 - [x] Delete: the project dialog offers an advanced menu with Delete (admins only, not for the default project); delete is no longer a standalone button.
+- [x] The delete confirmation shows how many tasks the project contains and, when it has tasks, offers to either move them to another project or delete them with the project (delete is the default). The destination picker excludes the project being deleted and archived projects.
+- [x] Moved tasks keep their comments, labels, assignees, dependencies and attachments (files stay on disk); a status the target project does not use resets to the target project's first status, like a single task project change. Notes and task templates are always deleted with the project.
+- [x] `DELETE /api/projects/:id?moveTasksTo=<projectId>` accepts the optional destination; an unknown destination answers 404, moving into the deleted project or into an archived project answers 400, and the response reports the number of moved tasks (`{ tasksMoved }`). Without the parameter every task is deleted with the project, as before.
 
 ## Visibility
 
@@ -75,4 +78,4 @@ Projects form a hierarchy through their names: a name containing `/` nests the p
 - [x] Whether the default project should be barred from being renamed into a sub-project path (e.g. `X/Default`) is not decided.
   - [NEEDS CLARIFICATION: the current assumption is no special-casing &mdash; the default project can live anywhere in the tree.]
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-07_

@@ -12,7 +12,7 @@ import {
 import { RunMigrations } from "../DbMigrations";
 import { Config } from "../Config";
 import { NotesDataDelete, NotesDataList } from "../notes/NotesData";
-import { ProjectsDataDelete } from "../projects/ProjectsData";
+import { ProjectsDataDelete, ProjectsDataGet } from "../projects/ProjectsData";
 import {
   MutateTaskLabels,
   TasksDataDelete,
@@ -65,10 +65,13 @@ async function insertUser(id: string): Promise<void> {
   );
 }
 
-async function insertProject(id: string): Promise<void> {
+async function insertProject(
+  id: string,
+  statuses = '["To Do", "Done"]',
+): Promise<void> {
   await DbUtilsExecSQL(
     "INSERT INTO projects (id, name, description, isDefault, statuses, dateCreated, visibility) VALUES (?,?,?,?,?,?,?)",
-    [id, `project-${id}`, "", 0, '["To Do", "Done"]', now, "public"],
+    [id, `project-${id}`, "", 0, statuses, now, "public"],
   );
 }
 
@@ -246,6 +249,63 @@ describe("delete cascades (integration)", () => {
     ).toBe(0);
     expect(await fs.pathExists(taskFile)).toBe(false);
     expect(await fs.pathExists(noteFile)).toBe(false);
+  });
+
+  it("should move a project's tasks to another project on delete", async () => {
+    await insertUser("u-move-1");
+    await insertProject("p-move-src", '["To Do", "Done"]');
+    await insertProject("p-move-dst", '["Backlog", "Done"]');
+    await insertTask("t-move-1", "p-move-src", "To Do");
+    await insertTask("t-move-2", "p-move-src", "Done");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_labels (id, taskId, name) VALUES (?,?,?)",
+      ["l-move-1", "t-move-1", "bug"],
+    );
+    const taskFile = path.join(dir, "attachments", "t-move-1.txt");
+    await fs.outputFile(taskFile, "content");
+    await DbUtilsExecSQL(
+      "INSERT INTO task_attachments (id, taskId, fileName, filePath, dateCreated) VALUES (?,?,?,?,?)",
+      ["a-move-1", "t-move-1", "file.txt", taskFile, now],
+    );
+    await DbUtilsExecSQL(
+      "INSERT INTO notes (id, projectId, title, description, dateCreated, dateUpdated) VALUES (?,?,?,?,?,?)",
+      ["n-move-1", "p-move-src", "Note", "", now, now],
+    );
+
+    const target = await ProjectsDataGet("p-move-dst");
+    const tasksMoved = await ProjectsDataDelete("p-move-src", target);
+
+    expect(tasksMoved).toBe(2);
+    expect(
+      await count("SELECT COUNT(*) AS c FROM projects WHERE id = ?", [
+        "p-move-src",
+      ]),
+    ).toBe(0);
+    expect(
+      await count("SELECT COUNT(*) AS c FROM tasks WHERE projectId = ?", [
+        "p-move-dst",
+      ]),
+    ).toBe(2);
+    const movedTasks = await DbUtilsQuerySQL(
+      "SELECT id, status FROM tasks WHERE projectId = ? ORDER BY id",
+      ["p-move-dst"],
+    );
+    // A status missing from the target selection falls back to its first one
+    expect(movedTasks.map((t) => [t.id, t.status])).toEqual([
+      ["t-move-1", "Backlog"],
+      ["t-move-2", "Done"],
+    ]);
+    expect(
+      await count("SELECT COUNT(*) AS c FROM task_labels WHERE taskId = ?", [
+        "t-move-1",
+      ]),
+    ).toBe(1);
+    expect(await fs.pathExists(taskFile)).toBe(true);
+    expect(
+      await count("SELECT COUNT(*) AS c FROM notes WHERE id = ?", [
+        "n-move-1",
+      ]),
+    ).toBe(0);
   });
 
   it("should delete a project with its task templates, children and attachment files", async () => {
