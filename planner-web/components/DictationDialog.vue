@@ -7,7 +7,7 @@
       </header>
 
       <div class="dictation-body">
-        <nav v-if="tabs.length > 1" class="dictation-tabs" role="tablist">
+        <div v-if="tabs.length > 1" class="dictation-tabs" role="tablist">
           <button
             v-for="tab in tabs"
             :key="tab.id"
@@ -20,7 +20,7 @@
           >
             <i class="bi" :class="tab.icon" /> {{ tab.label }}
           </button>
-        </nav>
+        </div>
 
         <template v-if="activeTab === 'dictate'">
           <div v-if="dialogError" class="dialog-error" role="alert">
@@ -147,7 +147,7 @@
 
       <!-- REVIEW: opens as soon as the raw transcript exists -->
       <section v-else class="dictation-review">
-        <nav v-if="showAskTab" class="review-tabs" role="tablist">
+        <div v-if="showAskTab" class="review-tabs" role="tablist">
           <button
             type="button"
             role="tab"
@@ -166,7 +166,7 @@
           >
             <i class="bi bi-question-circle" /> Ask
           </button>
-        </nav>
+        </div>
 
         <DictationAskPanel
           v-if="showAskTab && reviewTab === 'ask'"
