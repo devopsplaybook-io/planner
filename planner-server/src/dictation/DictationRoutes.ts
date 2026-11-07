@@ -12,8 +12,11 @@ import {
 import {
   DictationGetInFlightJobId,
   DictationGetJob,
+  DictationGetRecentJobs,
   DictationStartJob,
+  DictationWaitForJob,
 } from "./Dictation";
+import { DictationJobSource } from "./DictationData";
 
 /**
  * Resolves the STT language for an upload: the language field sent by the
@@ -32,13 +35,16 @@ export function NormalizeLanguage(
   return value;
 }
 
+const RECENT_JOBS_DEFAULT_LIMIT = 20;
+const RECENT_JOBS_MAX_LIMIT = 50;
+
 export class DictationRoutes {
   constructor(private config: Config) {}
 
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // POST /api/dictation — upload a recorded audio clip and start a
     // background dictation job for the current user (single-flight).
-    // The client polls GET /:jobId for the staged result.
+    // The client polls/long-polls GET /:jobId for the staged result.
     fastify.post(
       "/",
       {
@@ -66,7 +72,9 @@ export class DictationRoutes {
           return res.status(404).send({ error: "Dictation Not Available" });
         }
 
-        const inFlightJobId = DictationGetInFlightJobId(userSession.userId);
+        const inFlightJobId = await DictationGetInFlightJobId(
+          userSession.userId,
+        );
         if (inFlightJobId) {
           return res.status(409).send({
             error: "A dictation job is already in progress",
@@ -81,9 +89,16 @@ export class DictationRoutes {
         const fields: Record<string, string> = {};
         let audio: MultipartFile | null = null;
         let audioSize = 0;
+        let tooLarge = false;
+        let writeError = false;
 
         try {
-          for await (const part of req.parts()) {
+          // The size limit is enforced while streaming: the multipart stream
+          // stops at maxBytes (truncated) and the chunk counter aborts early
+          // for engines that keep delivering data.
+          for await (const part of req.parts({
+            limits: { fileSize: maxBytes },
+          })) {
             if (part.type === "field") {
               fields[part.fieldname] = String(part.value ?? "");
               continue;
@@ -101,18 +116,43 @@ export class DictationRoutes {
             const writeStream = fs.createWriteStream(audioPath);
             part.file.on("data", (chunk: Buffer) => {
               audioSize += chunk.length;
+              if (audioSize > maxBytes && !tooLarge) {
+                tooLarge = true;
+                part.file.destroy();
+              }
             });
-            await new Promise<void>((resolve, reject) => {
+            await new Promise<void>((resolve) => {
               part.file.pipe(writeStream);
+              part.file.on("error", () => {
+                writeError = true;
+                resolve();
+              });
+              writeStream.on("error", () => {
+                writeError = true;
+                resolve();
+              });
               writeStream.on("finish", () => resolve());
-              writeStream.on("error", reject);
+              part.file.on("close", () => resolve());
             });
           }
-        } catch {
+        } catch (error) {
           await fs.remove(audioPath).catch(() => undefined);
+          if (
+            (error as { code?: string })?.code === "FST_REQ_FILE_TOO_LARGE"
+          ) {
+            return res.status(413).send({ error: "Audio file too large" });
+          }
           return res.status(400).send({ error: "Invalid multipart upload" });
         }
 
+        if (tooLarge || audio?.file.truncated || audioSize > maxBytes) {
+          await fs.remove(audioPath).catch(() => undefined);
+          return res.status(413).send({ error: "Audio file too large" });
+        }
+        if (writeError) {
+          await fs.remove(audioPath).catch(() => undefined);
+          return res.status(400).send({ error: "Invalid audio upload" });
+        }
         if (!audio) {
           await fs.remove(audioPath).catch(() => undefined);
           return res.status(400).send({ error: "No audio file uploaded" });
@@ -123,16 +163,12 @@ export class DictationRoutes {
             .status(400)
             .send({ error: "Invalid: an audio file is expected" });
         }
-        if (audio.file.truncated || audioSize > maxBytes) {
-          await fs.remove(audioPath).catch(() => undefined);
-          return res.status(413).send({ error: "Audio file too large" });
-        }
 
         const language = NormalizeLanguage(
           fields.language,
           this.config.DICTATION_LANGUAGE,
         );
-        const jobId = DictationStartJob(
+        const jobId = await DictationStartJob(
           userSession.userId,
           audioPath,
           audio.mimetype,
@@ -142,14 +178,49 @@ export class DictationRoutes {
       },
     );
 
-    // GET /api/dictation/:jobId — poll the state/stage/result of a job.
-    // Users can only poll their own jobs.
-    fastify.get<{ Params: { jobId: string } }>("/:jobId", async (req, res) => {
+    // GET /api/dictation/jobs — recent jobs of the caller (bounded previews)
+    fastify.get<{ Querystring: { limit?: string; source?: string } }>(
+      "/jobs",
+      async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
+        if (!userSession.isAuthenticated) {
+          return res.status(401).send({ error: "Access Denied" });
+        }
+        const parsedLimit = parseInt(req.query.limit || "", 10);
+        const limit = Number.isFinite(parsedLimit)
+          ? Math.max(1, Math.min(RECENT_JOBS_MAX_LIMIT, parsedLimit))
+          : RECENT_JOBS_DEFAULT_LIMIT;
+        const source: DictationJobSource =
+          req.query.source === "voice_comment" ? "voice_comment" : "dictation";
+        const jobs = await DictationGetRecentJobs(
+          userSession.userId,
+          limit,
+          source,
+        );
+        return res.status(200).send({ jobs });
+      },
+    );
+
+    // GET /api/dictation/:jobId — read a job, or long-poll it with
+    // `?wait=1&since=<revision>` until a newer revision is persisted. Users
+    // can only see their own jobs.
+    fastify.get<{
+      Params: { jobId: string };
+      Querystring: { wait?: string; since?: string };
+    }>("/:jobId", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
         return res.status(401).send({ error: "Access Denied" });
       }
-      const job = DictationGetJob(userSession.userId, req.params.jobId);
+      const wait = req.query.wait === "1" || req.query.wait === "true";
+      const sinceRevision = Number.parseInt(req.query.since || "0", 10) || 0;
+      const job = wait
+        ? await DictationWaitForJob(
+            userSession.userId,
+            req.params.jobId,
+            sinceRevision,
+          )
+        : await DictationGetJob(userSession.userId, req.params.jobId);
       if (!job) {
         return res.status(404).send({ error: "Dictation Job Not Found" });
       }

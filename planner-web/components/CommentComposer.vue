@@ -41,6 +41,14 @@
       aria-live="polite"
     >
       <span class="composer-voice-timer">{{ formattedVoiceElapsed }}</span>
+      <label v-if="voiceLanguages.length > 1" class="composer-voice-language">
+        <span class="visually-hidden">Voice comment language</span>
+        <select v-model="voiceLanguage">
+          <option v-for="lang in voiceLanguages" :key="lang" :value="lang">
+            {{ languageLabel(lang) }}
+          </option>
+        </select>
+      </label>
       <button
         type="button"
         class="composer-tab"
@@ -100,6 +108,9 @@ const props = defineProps({
 });
 const emit = defineEmits(["update:modelValue", "submit", "voice"]);
 
+const recommendationStore = useRecommendationStore();
+const dictationStore = useDictationStore();
+
 const mode = ref("write");
 const { textarea, input, triggerResize } = useTextareaAutosize();
 
@@ -114,8 +125,33 @@ const {
   stop: stopVoiceRecordingInternal,
   cancel: cancelVoiceRecordingInternal,
 } = useDictation({
+  // The server config owns the limit; the composable reads it on each tick
+  maxDurationSeconds: computed(
+    () => recommendationStore.dictationMaxDurationSeconds,
+  ),
   onAutoStop: (recording) => emitVoiceRecording(recording),
 });
+
+const voiceLanguages = computed(() => recommendationStore.dictationLanguages);
+const voiceLanguage = computed({
+  get: () => dictationStore.language,
+  set: (value) => dictationStore.setLanguage(value),
+});
+
+const LANGUAGE_LABELS = {
+  auto: "Automatic detection",
+  en: "English",
+  fr: "French",
+  de: "German",
+  es: "Spanish",
+  it: "Italian",
+  pt: "Portuguese",
+  nl: "Dutch",
+};
+
+function languageLabel(code) {
+  return LANGUAGE_LABELS[code] || code.toUpperCase();
+}
 
 // A timer race between the auto-stop and a manual stop must not emit twice
 let voiceEmitted = false;
@@ -125,7 +161,9 @@ function emitVoiceRecording(recording) {
     return;
   }
   voiceEmitted = true;
-  emit("voice", recording);
+  // The parent uploads the recording and passes the language to the
+  // transcription job
+  emit("voice", { recording, language: voiceLanguage.value });
 }
 
 // MediaRecorder APIs are probed once; SSR is disabled in this app
@@ -254,6 +292,24 @@ function onKeydown(event) {
   font-variant-numeric: tabular-nums;
   color: var(--color-danger);
   font-size: var(--text-sm);
+}
+
+.composer-voice-language select {
+  margin: 0;
+  width: auto;
+  font-size: var(--text-sm);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .composer-voice-error {

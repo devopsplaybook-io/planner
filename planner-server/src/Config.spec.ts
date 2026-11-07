@@ -1,7 +1,7 @@
 import * as fs from "fs-extra";
 import * as path from "path";
 import * as os from "os";
-import { Config } from "./Config";
+import { Config, ParseLanguageList } from "./Config";
 
 describe("Config", () => {
   describe("constructor defaults", () => {
@@ -46,7 +46,19 @@ describe("Config", () => {
       expect(config.STT_MODEL).toBe("whisper-large-v3-turbo");
       expect(config.STT_EMBEDDED_MODEL).toBe("ggml-base");
       expect(config.STT_EMBEDDED_BIN_PATH).toBe("");
+      expect(config.STT_EMBEDDED_THREADS).toBe(0);
+      expect(config.STT_EMBEDDED_TRIM_SILENCE).toBe(true);
       expect(config.DICTATION_LANGUAGE).toBe("auto");
+      expect(config.DICTATION_LANGUAGES).toEqual([
+        "en",
+        "fr",
+        "de",
+        "es",
+        "it",
+        "pt",
+        "nl",
+      ]);
+      expect(config.DICTATION_ESTIMATED_RTF).toBe(0);
       expect(config.DICTATION_MAX_DURATION_SECONDS).toBe(120);
       expect(config.DICTATION_MAX_UPLOAD_MB).toBe(10);
       expect(config.RATE_LIMIT_DICTATION_MAX).toBe(30);
@@ -161,7 +173,11 @@ describe("Config", () => {
         STT_MODEL: "whisper-small",
         STT_EMBEDDED_MODEL: "ggml-small",
         STT_EMBEDDED_BIN_PATH: "/opt/whisper/whisper-cli",
+        STT_EMBEDDED_THREADS: 2,
+        STT_EMBEDDED_TRIM_SILENCE: false,
         DICTATION_LANGUAGE: "fr",
+        DICTATION_LANGUAGES: ["fr", "en"],
+        DICTATION_ESTIMATED_RTF: 0.4,
         DICTATION_MAX_DURATION_SECONDS: 60,
         DICTATION_MAX_UPLOAD_MB: 5,
         RATE_LIMIT_DICTATION_MAX: 12,
@@ -176,7 +192,11 @@ describe("Config", () => {
       expect(config.STT_MODEL).toBe("whisper-small");
       expect(config.STT_EMBEDDED_MODEL).toBe("ggml-small");
       expect(config.STT_EMBEDDED_BIN_PATH).toBe("/opt/whisper/whisper-cli");
+      expect(config.STT_EMBEDDED_THREADS).toBe(2);
+      expect(config.STT_EMBEDDED_TRIM_SILENCE).toBe(false);
       expect(config.DICTATION_LANGUAGE).toBe("fr");
+      expect(config.DICTATION_LANGUAGES).toEqual(["fr", "en"]);
+      expect(config.DICTATION_ESTIMATED_RTF).toBe(0.4);
       expect(config.DICTATION_MAX_DURATION_SECONDS).toBe(60);
       expect(config.DICTATION_MAX_UPLOAD_MB).toBe(5);
       expect(config.RATE_LIMIT_DICTATION_MAX).toBe(12);
@@ -193,7 +213,11 @@ describe("Config", () => {
       process.env.STT_MODEL = "whisper-env";
       process.env.STT_EMBEDDED_MODEL = "ggml-tiny-env";
       process.env.STT_EMBEDDED_BIN_PATH = "/usr/local/bin/whisper-cli-env";
+      process.env.STT_EMBEDDED_THREADS = "3";
+      process.env.STT_EMBEDDED_TRIM_SILENCE = "false";
       process.env.DICTATION_LANGUAGE = "de";
+      process.env.DICTATION_LANGUAGES = "de, en ,fr";
+      process.env.DICTATION_ESTIMATED_RTF = "0.6";
       process.env.DICTATION_MAX_DURATION_SECONDS = "90";
       process.env.DICTATION_MAX_UPLOAD_MB = "7";
       process.env.RATE_LIMIT_DICTATION_MAX = "21";
@@ -212,7 +236,11 @@ describe("Config", () => {
       expect(config.STT_MODEL).toBe("whisper-env");
       expect(config.STT_EMBEDDED_MODEL).toBe("ggml-tiny-env");
       expect(config.STT_EMBEDDED_BIN_PATH).toBe("/usr/local/bin/whisper-cli-env");
+      expect(config.STT_EMBEDDED_THREADS).toBe(3);
+      expect(config.STT_EMBEDDED_TRIM_SILENCE).toBe(false);
       expect(config.DICTATION_LANGUAGE).toBe("de");
+      expect(config.DICTATION_LANGUAGES).toEqual(["de", "en", "fr"]);
+      expect(config.DICTATION_ESTIMATED_RTF).toBe(0.6);
       expect(config.DICTATION_MAX_DURATION_SECONDS).toBe(90);
       expect(config.DICTATION_MAX_UPLOAD_MB).toBe(7);
       expect(config.RATE_LIMIT_DICTATION_MAX).toBe(21);
@@ -232,8 +260,7 @@ describe("Config", () => {
     });
   });
 
-  describe("IsDictationSttConfigured", () => {
-    it("should require the url, key and model in external mode", () => {
+  describe("IsDictationSttConfigured", () => {    it("should require the url, key and model in external mode", () => {
       const config = new Config();
       config.STT_MODE = "external";
       config.STT_API_URL = "";
@@ -266,6 +293,31 @@ describe("Config", () => {
       config.STT_API_URL = "https://stt.test";
       config.STT_API_KEY = "stt-key";
       expect(config.IsDictationSttConfigured()).toBe(true);
+    });
+  });
+
+  describe("ParseLanguageList", () => {
+    const fallback = ["en", "fr"];
+
+    it("should normalize, deduplicate and drop invalid entries", () => {
+      expect(
+        ParseLanguageList([" FR ", "en", "", "auto", "not a code", "fr"], fallback),
+      ).toEqual(["fr", "en"]);
+      expect(ParseLanguageList("de, ES ,de", fallback)).toEqual(["de", "es"]);
+    });
+
+    it("should accept regional language codes", () => {
+      expect(ParseLanguageList("pt-BR,zh-Hans", fallback)).toEqual([
+        "pt-br",
+        "zh-hans",
+      ]);
+    });
+
+    it("should fall back to the default list when nothing valid remains", () => {
+      expect(ParseLanguageList([], fallback)).toEqual(fallback);
+      expect(ParseLanguageList("auto", fallback)).toEqual(fallback);
+      expect(ParseLanguageList(undefined, fallback)).toEqual(fallback);
+      expect(ParseLanguageList(42, fallback)).toEqual(fallback);
     });
   });
 });

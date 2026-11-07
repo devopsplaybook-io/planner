@@ -42,14 +42,13 @@
         <label>
           Dictation language
           <select v-model="dictationLanguage">
-            <option value="auto">Automatic detection</option>
-            <option value="en">English</option>
-            <option value="fr">French</option>
-            <option value="de">German</option>
-            <option value="es">Spanish</option>
-            <option value="it">Italian</option>
-            <option value="pt">Portuguese</option>
-            <option value="nl">Dutch</option>
+            <option
+              v-for="lang in dictationLanguages"
+              :key="lang"
+              :value="lang"
+            >
+              {{ dictationLanguageLabel(lang) }}
+            </option>
           </select>
         </label>
         <p class="setting-hint">
@@ -316,6 +315,27 @@ const dictationLanguage = computed({
   set: (value) => dictationStore.setLanguage(value),
 });
 
+// The server owns the supported language list (DICTATION_LANGUAGES); "auto"
+// is always offered first by the config.
+const dictationLanguages = computed(
+  () => recommendationStore.dictationLanguages,
+);
+
+const DICTATION_LANGUAGE_LABELS = {
+  auto: "Automatic detection",
+  en: "English",
+  fr: "French",
+  de: "German",
+  es: "Spanish",
+  it: "Italian",
+  pt: "Portuguese",
+  nl: "Dutch",
+};
+
+function dictationLanguageLabel(code) {
+  return DICTATION_LANGUAGE_LABELS[code] || code.toUpperCase();
+}
+
 const notificationStatus = computed(() => {
   if (!notificationsStore.serverEnabled) {
     return "Notifications are not available on this server.";
@@ -376,6 +396,7 @@ const deletingKey = ref(false);
 onMounted(async () => {
   if (authStore.isAuthenticated) {
     notificationsStore.init();
+    recommendationStore.fetchConfig();
     await fetchApiKey();
   }
 });

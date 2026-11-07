@@ -19,6 +19,10 @@
 
       <!-- RECORD -->
       <section v-if="mode === 'record'" class="dictation-record">
+        <p v-if="enginePreparing" class="engine-preparing" role="status">
+          <i class="bi bi-hourglass-split" />
+          Preparing speech engine (first run)…
+        </p>
         <p class="dictation-status" aria-live="polite">
           {{ recordStatus }}
         </p>
@@ -37,6 +41,15 @@
         <div class="level-track" aria-hidden="true">
           <div class="level-bar" :style="{ width: levelPercent }" />
         </div>
+        <label v-if="languages.length > 1" class="language-select">
+          <i class="bi bi-translate" />
+          Language
+          <select v-model="language" :disabled="isRecording">
+            <option v-for="lang in languages" :key="lang" :value="lang">
+              {{ languageLabel(lang) }}
+            </option>
+          </select>
+        </label>
         <footer class="dialog-footer">
           <button
             type="button"
@@ -49,6 +62,33 @@
             Cancel
           </button>
         </footer>
+
+        <details v-if="recentJobs.length > 0" class="recent-dictations">
+          <summary>Recent dictations ({{ recentJobs.length }})</summary>
+          <ul class="recent-list">
+            <li v-for="job in recentJobs" :key="job.jobId" class="recent-item">
+              <div class="recent-info">
+                <span class="recent-status" :class="`is-${job.status}`">
+                  {{ recentStatusLabel(job) }}
+                </span>
+                <span class="recent-when">{{ recentWhen(job) }}</span>
+                <span class="recent-preview">{{ recentPreview(job) }}</span>
+              </div>
+              <button
+                type="button"
+                class="secondary small-btn"
+                @click="openRecent(job)"
+              >
+                {{ job.status === "processing" ? "Resume" : "Open" }}
+              </button>
+            </li>
+          </ul>
+          <p class="review-note">
+            Dictation audio is deleted right after transcription: once a
+            dictation has been transcribed, retrying it requires recording
+            again.
+          </p>
+        </details>
       </section>
 
       <!-- PROCESSING -->
@@ -66,7 +106,12 @@
           </footer>
         </template>
         <template v-else>
+          <p v-if="enginePreparing" class="engine-preparing" role="status">
+            <i class="bi bi-hourglass-split" />
+            Preparing speech engine (first run)…
+          </p>
           <div class="loading-indicator" aria-hidden="true" />
+          <p v-if="etaLabel" class="eta-label">{{ etaLabel }}</p>
           <ol class="stages">
             <li
               v-for="(stage, index) in processingStages"
@@ -79,28 +124,47 @@
         </template>
       </section>
 
-      <!-- REVIEW -->
+      <!-- REVIEW: opens as soon as the raw transcript exists -->
       <section v-else class="dictation-review">
         <form @submit.prevent="commitSelected">
           <label>
             Dictated text
             <textarea
-              v-model="polishedText"
+              v-model="reviewText"
               rows="6"
               placeholder="Dictated text"
+              @input="reviewDirty = true"
             />
           </label>
-          <p v-if="!dictationStore.result?.polished" class="review-note">
+          <p v-if="reviewProgress" class="review-progress" role="status">
+            <span class="inline-spinner" aria-hidden="true" />
+            {{ reviewProgress }}
+          </p>
+          <p v-if="canUsePolishedText" class="review-note">
+            <button
+              type="button"
+              class="secondary small-btn"
+              @click="usePolishedText"
+            >
+              <i class="bi bi-stars" /> Use polished text
+            </button>
+          </p>
+          <p class="stage-timings" v-if="stageSummary">
+            <i class="bi bi-stopwatch" /> {{ stageSummary }}
+          </p>
+          <p v-if="showRawFallback" class="review-note">
             <i class="bi bi-info-circle" />
             The text could not be improved automatically; the raw transcript is
             used as is.
           </p>
+          <p v-if="showActionsUnavailable" class="review-note">
+            <i class="bi bi-info-circle" />
+            Action proposals are not available for this dictation.
+          </p>
 
-          <details class="raw-transcript">
+          <details v-if="rawTranscript" class="raw-transcript">
             <summary>Raw transcript</summary>
-            <p class="raw-transcript-text">
-              {{ dictationStore.result?.rawTranscript }}
-            </p>
+            <p class="raw-transcript-text">{{ rawTranscript }}</p>
           </details>
 
           <template v-if="includedActions.length > 0">
@@ -237,13 +301,15 @@ const projectsStore = useProjectsStore();
 const tasksStore = useTasksStore();
 const notesStore = useNotesStore();
 const statusesStore = useStatusesStore();
+const recommendationStore = useRecommendationStore();
 
-const DICTATION_MAX_DURATION_SECONDS = 120;
-const POLL_INTERVAL_MS = 1500;
+const POLL_FALLBACK_MS = 1500;
 
 const mode = ref("record"); // record | processing | review
 const committing = ref(false);
 const dialogError = ref("");
+const submittedDurationSeconds = ref(0);
+const recentJobs = computed(() => dictationStore.recentJobs || []);
 
 // Modal dialog wiring: backdrop, focus trap, Escape to close
 const dialogEl = useModalDialog(() => props.open);
@@ -257,11 +323,33 @@ const {
   stop: stopRecordingInternal,
   cancel: cancelRecording,
 } = useDictation({
-  maxDurationSeconds: DICTATION_MAX_DURATION_SECONDS,
+  // Server-driven limit (no hardcoded 120 s); read on every timer tick
+  maxDurationSeconds: computed(
+    () => recommendationStore.dictationMaxDurationSeconds,
+  ),
   onAutoStop: (recording) => finishRecording(recording),
 });
 
-let pollingTimer = null;
+const languages = computed(() => recommendationStore.dictationLanguages);
+const language = computed({
+  get: () => dictationStore.language,
+  set: (value) => dictationStore.setLanguage(value),
+});
+
+const LANGUAGE_LABELS = {
+  auto: "Automatic detection",
+  en: "English",
+  fr: "French",
+  de: "German",
+  es: "Spanish",
+  it: "Italian",
+  pt: "Portuguese",
+  nl: "Dutch",
+};
+
+function languageLabel(code) {
+  return LANGUAGE_LABELS[code] || code.toUpperCase();
+}
 
 const formattedElapsed = computed(() => {
   const minutes = String(Math.floor(elapsedSeconds.value / 60)).padStart(2, "0");
@@ -279,6 +367,19 @@ const recordStatus = computed(() => {
     return "Recording… speak now, then press stop.";
   }
   return "Press the microphone and dictate your text.";
+});
+
+// The embedded model may still be downloading at startup: make that visible
+// instead of letting the first dictation look stuck.
+const enginePreparing = computed(() => {
+  if (recommendationStore.dictationEngineState === "preparing") {
+    return true;
+  }
+  const state = dictationStore.engineState;
+  return (
+    dictationStore.status === "processing" &&
+    (state === "downloading" || state === "idle")
+  );
 });
 
 const processingStages = [
@@ -301,10 +402,86 @@ function stageClass(index) {
   };
 }
 
+// Rough ETA before STT: recorded duration × configured real-time factor
+const etaLabel = computed(() => {
+  if (dictationStore.hasRawTranscript) {
+    return "";
+  }
+  const rtf = recommendationStore.dictationEstimatedRtf;
+  if (!submittedDurationSeconds.value || !rtf) {
+    return "";
+  }
+  const seconds = Math.max(1, Math.ceil(submittedDurationSeconds.value * rtf));
+  return `Estimated transcription time: about ${seconds} s`;
+});
+
 // ── Review state ──────────────────────────────────────────────────────────────
 
-const polishedText = ref("");
+const reviewText = ref("");
+const reviewDirty = ref(false);
 const includedActions = ref([]);
+let reviewInitialized = false;
+let actionsPatched = false;
+
+const rawTranscript = computed(
+  () => dictationStore.result?.rawTranscript || "",
+);
+const polishedText = computed(() => dictationStore.result?.polishedText || "");
+const polishedAvailable = computed(
+  () => !!dictationStore.availability?.polishedText && !!polishedText.value,
+);
+const canUsePolishedText = computed(
+  () =>
+    polishedAvailable.value &&
+    reviewDirty.value &&
+    reviewText.value !== polishedText.value,
+);
+const reviewProgress = computed(() => {
+  if (dictationStore.status !== "processing") {
+    return "";
+  }
+  if (dictationStore.stage === "actions") {
+    return "Finding actions…";
+  }
+  if (dictationStore.stage === "polishing") {
+    return "Improving text…";
+  }
+  return "Transcribing…";
+});
+const showRawFallback = computed(
+  () =>
+    dictationStore.status === "done" &&
+    !!dictationStore.result &&
+    !dictationStore.result.polished,
+);
+const showActionsUnavailable = computed(
+  () =>
+    dictationStore.status === "done" &&
+    !!dictationStore.result &&
+    !dictationStore.result.actionsAvailable,
+);
+
+function formatStageDuration(ms) {
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+const stageSummary = computed(() => {
+  const timings = dictationStore.timings;
+  if (!timings) {
+    return "";
+  }
+  const parts = [];
+  if (timings.sttMs !== null && timings.sttMs !== undefined) {
+    parts.push(`Transcribed in ${formatStageDuration(timings.sttMs)}`);
+  }
+  if (timings.polishMs !== null && timings.polishMs !== undefined) {
+    parts.push(`Improved in ${formatStageDuration(timings.polishMs)}`);
+  }
+  if (timings.actionsMs !== null && timings.actionsMs !== undefined) {
+    parts.push(`Actions in ${formatStageDuration(timings.actionsMs)}`);
+  }
+  return parts.join(" · ");
+});
 
 const selectedActions = computed(() =>
   includedActions.value.filter((action) => action.included),
@@ -327,12 +504,13 @@ const createButtonLabel = computed(() => {
   return "Create tasks";
 });
 
-function enterReview() {
-  dialogError.value = "";
-  const result = dictationStore.result;
-  polishedText.value = result?.polishedText || "";
+function patchActions(actions) {
+  if (actionsPatched) {
+    return;
+  }
+  actionsPatched = true;
   const projectId = defaultProjectId();
-  includedActions.value = (result?.actions || []).map((action) =>
+  includedActions.value = (actions || []).map((action) =>
     action.type === "create_task"
       ? {
           ...action,
@@ -342,10 +520,113 @@ function enterReview() {
         }
       : { ...action, included: true },
   );
-  mode.value = "review";
 }
 
+function resetReviewState() {
+  reviewInitialized = false;
+  actionsPatched = false;
+  reviewText.value = "";
+  reviewDirty.value = false;
+  includedActions.value = [];
+}
+
+function enterReview() {
+  dialogError.value = "";
+  mode.value = "review";
+  if (reviewInitialized) {
+    return;
+  }
+  reviewInitialized = true;
+  const result = dictationStore.result;
+  // Prefer the polished text, but the raw transcript is already usable
+  reviewText.value = result?.polishedText || result?.rawTranscript || "";
+  reviewDirty.value = false;
+  // Actions may not exist yet: the watcher patches them when they arrive
+  if (result?.actionsAvailable) {
+    patchActions(result.actions || []);
+  }
+}
+
+function usePolishedText() {
+  if (polishedText.value) {
+    reviewText.value = polishedText.value;
+    reviewDirty.value = false;
+  }
+}
+
+// Progressive delivery: patch the polished text and actions as they arrive,
+// without clobbering what the user already typed.
+watch(polishedText, (value) => {
+  if (!value || mode.value !== "review") {
+    return;
+  }
+  if (!reviewDirty.value) {
+    reviewText.value = value;
+  }
+});
+
+watch(
+  () => dictationStore.availability?.actions,
+  (available) => {
+    if (available && mode.value === "review") {
+      patchActions(dictationStore.result?.actions || []);
+    }
+  },
+);
+
 // ── Flow ──────────────────────────────────────────────────────────────────────
+
+// Token-based loop: closing the dialog or starting a new job cancels it; the
+// job keeps running server-side.
+let pollToken = 0;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollLoop(token) {
+  while (token === pollToken && dictationStore.isProcessing) {
+    if (dictationStore.hasRawTranscript && mode.value === "processing") {
+      enterReview();
+    }
+    const refreshed = await dictationStore.poll(true);
+    if (token !== pollToken) {
+      return;
+    }
+    if (dictationStore.hasRawTranscript && mode.value === "processing") {
+      enterReview();
+    }
+    if (!dictationStore.isProcessing) {
+      return;
+    }
+    if (!refreshed) {
+      // Long-poll unavailable (proxy timeout, network hiccup): short-poll as
+      // a fallback, then try the push channel again.
+      await sleep(POLL_FALLBACK_MS);
+      if (token !== pollToken) {
+        return;
+      }
+      await dictationStore.poll(false);
+      if (dictationStore.hasRawTranscript && mode.value === "processing") {
+        enterReview();
+      }
+      if (!dictationStore.isProcessing) {
+        return;
+      }
+      await sleep(POLL_FALLBACK_MS);
+    }
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  const token = ++pollToken;
+  void pollLoop(token);
+}
+
+function stopPolling() {
+  pollToken += 1;
+}
 
 async function startRecording() {
   await startRecordingInternal();
@@ -364,41 +645,80 @@ async function finishRecording(preStopped = null) {
   if (!recording) {
     return;
   }
+  submittedDurationSeconds.value = elapsedSeconds.value;
+  resetReviewState();
   mode.value = "processing";
-  await dictationStore.submitAudio(recording.blob, recording.mimeType);
-  if (dictationStore.status === "processing") {
+  await dictationStore.submitAudio(
+    recording.blob,
+    recording.mimeType,
+    language.value,
+  );
+  if (dictationStore.isProcessing) {
+    startPolling();
+  } else if (
+    dictationStore.status === "done" &&
+    dictationStore.hasRawTranscript
+  ) {
+    enterReview();
+  }
+}
+
+async function openRecent(job) {
+  dialogError.value = "";
+  resetReviewState();
+  submittedDurationSeconds.value = 0;
+  await dictationStore.openJob(job.jobId);
+  if (dictationStore.status === "error") {
+    mode.value = "processing";
+    return;
+  }
+  if (dictationStore.hasRawTranscript) {
+    enterReview();
+  } else {
+    mode.value = "processing";
     startPolling();
   }
 }
 
-function startPolling() {
-  stopPolling();
-  pollingTimer = setInterval(async () => {
-    await dictationStore.poll();
-    if (dictationStore.status === "done") {
-      stopPolling();
-      enterReview();
-    } else if (dictationStore.status === "error") {
-      stopPolling();
-    }
-  }, POLL_INTERVAL_MS);
+function recentStatusLabel(job) {
+  if (job.status === "processing") {
+    return "In progress";
+  }
+  if (job.status === "error") {
+    return "Failed";
+  }
+  return "Done";
 }
 
-function stopPolling() {
-  if (pollingTimer !== null) {
-    clearInterval(pollingTimer);
-    pollingTimer = null;
+function recentWhen(job) {
+  const date = new Date(job.dateCreated);
+  if (Number.isNaN(date.getTime())) {
+    return "";
   }
+  const time = `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+  return `${formatLocalDate(date)} ${time}`;
+}
+
+function recentPreview(job) {
+  const text = job.result?.rawTranscript || "";
+  if (!text) {
+    return "No transcript yet";
+  }
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text;
 }
 
 function retry() {
   dialogError.value = "";
+  resetReviewState();
   dictationStore.reset();
   mode.value = "record";
 }
 
 function discard() {
   dialogError.value = "";
+  resetReviewState();
   dictationStore.reset();
   mode.value = "record";
   emit("close");
@@ -497,6 +817,7 @@ async function commitSelected() {
       }
     }
     dictationStore.reset();
+    resetReviewState();
     mode.value = "record";
     emit("committed");
     emit("close");
@@ -514,10 +835,11 @@ async function saveAsNote() {
   try {
     await notesStore.create({
       projectId: defaultProjectId(),
-      title: noteTitleFromText(polishedText.value),
-      description: polishedText.value,
+      title: noteTitleFromText(reviewText.value),
+      description: reviewText.value,
     });
     dictationStore.reset();
+    resetReviewState();
     mode.value = "record";
     emit("committed");
     emit("close");
@@ -535,11 +857,21 @@ watch(
       dialogError.value = "";
       await ensureProjectsLoaded();
       ensureStatusesLoaded();
+      if (!recommendationStore.config) {
+        recommendationStore.fetchConfig().catch(() => undefined);
+      }
+      dictationStore.fetchRecentJobs().catch(() => undefined);
       if (dictationStore.isProcessing) {
-        mode.value = "processing";
-        startPolling();
-      } else if (dictationStore.status === "done" && dictationStore.result) {
+        if (dictationStore.hasRawTranscript) {
+          enterReview();
+        } else {
+          mode.value = "processing";
+          startPolling();
+        }
+      } else if (dictationStore.jobId && dictationStore.result) {
         enterReview();
+      } else if (dictationStore.status === "error" && dictationStore.jobId) {
+        mode.value = "processing";
       } else if (mode.value !== "record") {
         mode.value = "record";
       }
@@ -566,6 +898,15 @@ onUnmounted(() => {
 .dictation-status {
   text-align: center;
   margin: 0;
+}
+
+.engine-preparing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin: 0;
+  font-size: var(--text-sm);
+  opacity: 0.85;
 }
 
 .mic-area {
@@ -612,6 +953,18 @@ onUnmounted(() => {
   font-size: var(--text-lg);
 }
 
+.language-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  font-size: var(--text-sm);
+}
+
+.language-select select {
+  margin: 0;
+  width: auto;
+}
+
 .level-track {
   width: 100%;
   max-width: 320px;
@@ -630,6 +983,12 @@ onUnmounted(() => {
 
 .dictation-processing .loading-indicator {
   margin: var(--space-md) auto;
+}
+
+.eta-label {
+  margin: 0;
+  font-size: var(--text-sm);
+  opacity: 0.8;
 }
 
 .stages {
@@ -658,6 +1017,65 @@ onUnmounted(() => {
   content: "✓ ";
 }
 
+.recent-dictations {
+  width: 100%;
+  margin-top: var(--space-sm);
+}
+
+.recent-dictations summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.recent-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-xs) 0;
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2xs) var(--space-xs);
+}
+
+.recent-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.recent-status {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}
+
+.recent-status.is-processing {
+  color: var(--color-primary);
+}
+
+.recent-status.is-error {
+  color: var(--color-danger);
+}
+
+.recent-when {
+  font-size: var(--text-xs);
+  opacity: 0.75;
+}
+
+.recent-preview {
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dictation-review h4 {
   margin-top: var(--space-md);
 }
@@ -665,6 +1083,36 @@ onUnmounted(() => {
 .review-note {
   font-size: var(--text-sm);
   opacity: 0.8;
+}
+
+.review-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin: 0;
+  font-size: var(--text-sm);
+  opacity: 0.85;
+}
+
+.inline-spinner {
+  width: 0.9em;
+  height: 0.9em;
+  border: 2px solid color-mix(in srgb, var(--color-text) 25%, transparent);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: inline-spin 0.8s linear infinite;
+}
+
+@keyframes inline-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.stage-timings {
+  margin: 0;
+  font-size: var(--text-sm);
+  opacity: 0.85;
 }
 
 .raw-transcript {

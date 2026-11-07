@@ -12,7 +12,8 @@
     "////": "-----------------------------------------------------------------",
     "dev": "tsx watch ./src/App.ts",
     "dev:test": "NODE_ENV=dev jest --watch --config='jest.config.js'",
-    "migrate": "tsx ./src/migrate-database.ts"
+    "migrate": "tsx ./src/migrate-database.ts",
+    "bench:stt": "tsx src/dictation/bench/BenchStt.ts"
   },
   "dependencies": {
     "@devopsplaybook.io/common-utils": "^2.9.0",

@@ -13,7 +13,9 @@ import {
 import {
   DictationGetInFlightJobId,
   DictationGetJob,
+  DictationGetRecentJobs,
   DictationStartJob,
+  DictationWaitForJob,
 } from "./Dictation";
 
 jest.mock("../users/Auth", () => ({
@@ -26,6 +28,8 @@ jest.mock("./Dictation", () => ({
   DictationStartJob: jest.fn(() => "job-abc"),
   DictationGetJob: jest.fn(),
   DictationGetInFlightJobId: jest.fn(() => null),
+  DictationGetRecentJobs: jest.fn(async () => []),
+  DictationWaitForJob: jest.fn(),
 }));
 
 jest.mock("fs-extra", () => {
@@ -297,6 +301,52 @@ describe("DictationRoutes", () => {
     const res = await app.inject({ method: "GET", url: "/job-abc" });
     expect(res.statusCode).toBe(401);
     expect(DictationGetJob).not.toHaveBeenCalled();
+  });
+
+  it("should long-poll a job when wait and since are given", async () => {
+    (DictationWaitForJob as jest.Mock).mockResolvedValue({
+      jobId: "job-abc",
+      status: "processing",
+      stage: "polishing",
+      revision: 4,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/job-abc?wait=1&since=3",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ revision: 4, stage: "polishing" });
+    expect(DictationWaitForJob).toHaveBeenCalledWith("user-1", "job-abc", 3);
+    expect(DictationGetJob).not.toHaveBeenCalled();
+  });
+
+  it("should list the recent dictation jobs of the caller", async () => {
+    (DictationGetRecentJobs as jest.Mock).mockResolvedValue([
+      { jobId: "job-abc", status: "done" },
+    ]);
+    const res = await app.inject({ method: "GET", url: "/jobs" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ jobs: [{ jobId: "job-abc", status: "done" }] });
+    expect(DictationGetRecentJobs).toHaveBeenCalledWith("user-1", 20, "dictation");
+  });
+
+  it("should clamp the recent jobs limit and accept the voice source", async () => {
+    (DictationGetRecentJobs as jest.Mock).mockResolvedValue([]);
+    await app.inject({ method: "GET", url: "/jobs?limit=500&source=voice_comment" });
+    expect(DictationGetRecentJobs).toHaveBeenCalledWith(
+      "user-1",
+      50,
+      "voice_comment",
+    );
+  });
+
+  it("should answer 401 when listing jobs without a session", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const res = await app.inject({ method: "GET", url: "/jobs" });
+    expect(res.statusCode).toBe(401);
+    expect(DictationGetRecentJobs).not.toHaveBeenCalled();
   });
 });
 

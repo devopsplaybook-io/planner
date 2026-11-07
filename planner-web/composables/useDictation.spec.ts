@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ref } from "vue";
 import { useDictation } from "./useDictation";
 
 class FakeMediaStreamTrack {
@@ -131,6 +132,38 @@ describe("useDictation", () => {
     expect(recording!.blob).toBeInstanceOf(Blob);
     expect(dictation.isRecording.value).toBe(false);
     expect(dictation.elapsedSeconds.value).toBe(5);
+  });
+
+  it("should follow a reactive maximum duration", async () => {
+    stubMedia();
+    const onAutoStop = vi.fn();
+    const maxDuration = ref(10);
+    const dictation = useDictation({
+      maxDurationSeconds: maxDuration,
+      onAutoStop,
+    });
+    await dictation.start();
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(onAutoStop).not.toHaveBeenCalled();
+
+    // A config update shortens the limit; it is read on the next tick
+    maxDuration.value = 6;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onAutoStop).toHaveBeenCalledTimes(1);
+    expect(dictation.isRecording.value).toBe(false);
+  });
+
+  it("should not auto-stop when no maximum is configured", async () => {
+    stubMedia();
+    const onAutoStop = vi.fn();
+    const dictation = useDictation({ onAutoStop });
+    await dictation.start();
+
+    await vi.advanceTimersByTimeAsync(300000);
+    expect(onAutoStop).not.toHaveBeenCalled();
+    expect(dictation.isRecording.value).toBe(true);
+    await dictation.stop();
   });
 
   it("should stop the recorder before releasing the microphone", async () => {

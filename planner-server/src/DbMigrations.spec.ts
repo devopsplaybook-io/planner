@@ -45,6 +45,7 @@ describe("RunMigrations (fresh database)", () => {
     ).map((r) => r.name as string);
     for (const table of [
       "api_keys",
+      "dictation_jobs",
       "metadata",
       "note_attachments",
       "note_comments",
@@ -181,6 +182,8 @@ describe("RunMigrations (fresh database)", () => {
     expect(applied.filter((f: string) => f === "init-0024.sql")).toHaveLength(1);
     expect(applied).toContain("init-0025.sql");
     expect(applied.filter((f: string) => f === "init-0025.sql")).toHaveLength(1);
+    expect(applied).toContain("init-0026.sql");
+    expect(applied.filter((f: string) => f === "init-0026.sql")).toHaveLength(1);
   });
 
   it("should add the permission column with an all default", async () => {

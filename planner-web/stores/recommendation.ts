@@ -16,12 +16,54 @@ export interface Recommendation {
   tasks: RecommendationTask[];
 }
 
+export interface DictationConfig {
+  maxDurationSeconds: number;
+  maxUploadMb: number;
+  defaultLanguage: string;
+  languages: string[];
+  estimatedRtf: number;
+  engine: "embedded" | "external";
+  engineState: "ready" | "preparing" | "error";
+  model: string;
+}
+
 export interface AppConfig {
   llmRecommendationEnabled: boolean;
   llmImproveEnabled: boolean;
   dictationEnabled: boolean;
   dictationSttConfigured: boolean;
+  dictation?: DictationConfig;
 }
+
+// Fallbacks used before the server config arrives (or with an older server):
+// the UI must stay usable with the historic defaults.
+const DEFAULT_DICTATION_LANGUAGES = [
+  "auto",
+  "en",
+  "fr",
+  "de",
+  "es",
+  "it",
+  "pt",
+  "nl",
+];
+
+export const DEFAULT_APP_CONFIG: AppConfig = {
+  llmRecommendationEnabled: false,
+  llmImproveEnabled: false,
+  dictationEnabled: false,
+  dictationSttConfigured: false,
+  dictation: {
+    maxDurationSeconds: 120,
+    maxUploadMb: 10,
+    defaultLanguage: "auto",
+    languages: [...DEFAULT_DICTATION_LANGUAGES],
+    estimatedRtf: 0.5,
+    engine: "external",
+    engineState: "ready",
+    model: "",
+  },
+};
 
 export const useRecommendationStore = defineStore("recommendation", {
   state: () => ({
@@ -38,6 +80,25 @@ export const useRecommendationStore = defineStore("recommendation", {
     isDictationEnabled: (state) => state.config?.dictationEnabled ?? false,
     isDictationSttConfigured: (state) =>
       state.config?.dictationSttConfigured ?? false,
+    dictationMaxDurationSeconds: (state) =>
+      state.config?.dictation?.maxDurationSeconds ??
+      DEFAULT_APP_CONFIG.dictation!.maxDurationSeconds,
+    dictationMaxUploadMb: (state) =>
+      state.config?.dictation?.maxUploadMb ??
+      DEFAULT_APP_CONFIG.dictation!.maxUploadMb,
+    dictationLanguages: (state) =>
+      state.config?.dictation?.languages?.length
+        ? state.config.dictation.languages
+        : DEFAULT_DICTATION_LANGUAGES,
+    dictationDefaultLanguage: (state) =>
+      state.config?.dictation?.defaultLanguage ??
+      DEFAULT_APP_CONFIG.dictation!.defaultLanguage,
+    dictationEstimatedRtf: (state) =>
+      state.config?.dictation?.estimatedRtf ??
+      DEFAULT_APP_CONFIG.dictation!.estimatedRtf,
+    dictationEngineState: (state) =>
+      state.config?.dictation?.engineState ??
+      DEFAULT_APP_CONFIG.dictation!.engineState,
   },
 
   actions: {
@@ -46,12 +107,7 @@ export const useRecommendationStore = defineStore("recommendation", {
         const res = await api.get("/status/config");
         this.config = res.data;
       } catch {
-        this.config = {
-          llmRecommendationEnabled: false,
-          llmImproveEnabled: false,
-          dictationEnabled: false,
-          dictationSttConfigured: false,
-        };
+        this.config = { ...DEFAULT_APP_CONFIG, dictation: { ...DEFAULT_APP_CONFIG.dictation! } };
       }
     },
 
