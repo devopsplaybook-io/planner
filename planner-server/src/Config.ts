@@ -45,6 +45,32 @@ export function ParseLanguageList(
   return languages.length > 0 ? languages : [...fallback];
 }
 
+function clampInteger(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(parsed)));
+}
+
+function clampNumber(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, parsed));
+}
+
 function getDevelopmentJwtKey(): string {
   if (!generatedDevJwtKey) {
     generatedDevJwtKey = crypto.randomBytes(48).toString("hex");
@@ -95,6 +121,12 @@ export class Config {
   public DICTATION_MAX_DURATION_SECONDS: number;
   public DICTATION_MAX_UPLOAD_MB: number;
   public RATE_LIMIT_DICTATION_MAX: number;
+  /** Max vocabulary terms injected into the STT initial prompt */
+  public DICTATION_HOTWORDS_MAX: number;
+  /** Max vocabulary terms stored per user across scopes */
+  public DICTATION_VOCABULARY_MAX: number;
+  /** UI threshold under which a segment is highlighted as low confidence */
+  public DICTATION_CONFIDENCE_THRESHOLD: number;
 
   // Web Push Notifications
   public WEB_PUSH_ENABLED: boolean;
@@ -142,6 +174,9 @@ export class Config {
     this.DICTATION_MAX_DURATION_SECONDS = 120;
     this.DICTATION_MAX_UPLOAD_MB = 10;
     this.RATE_LIMIT_DICTATION_MAX = 30;
+    this.DICTATION_HOTWORDS_MAX = 50;
+    this.DICTATION_VOCABULARY_MAX = 200;
+    this.DICTATION_CONFIDENCE_THRESHOLD = 0.6;
     this.WEB_PUSH_ENABLED = true;
     this.WEB_PUSH_SUBJECT = "mailto:admin@localhost";
     this.WEB_PUSH_NOTIFY_HOUR = 9; // send notifications from 9:00
@@ -210,6 +245,24 @@ export class Config {
       config.DICTATION_MAX_DURATION_SECONDS || 120;
     this.DICTATION_MAX_UPLOAD_MB = config.DICTATION_MAX_UPLOAD_MB || 10;
     this.RATE_LIMIT_DICTATION_MAX = config.RATE_LIMIT_DICTATION_MAX || 30;
+    this.DICTATION_HOTWORDS_MAX = clampInteger(
+      config.DICTATION_HOTWORDS_MAX,
+      1,
+      200,
+      50,
+    );
+    this.DICTATION_VOCABULARY_MAX = clampInteger(
+      config.DICTATION_VOCABULARY_MAX,
+      1,
+      1000,
+      200,
+    );
+    this.DICTATION_CONFIDENCE_THRESHOLD = clampNumber(
+      config.DICTATION_CONFIDENCE_THRESHOLD,
+      0.05,
+      0.95,
+      0.6,
+    );
     this.WEB_PUSH_ENABLED = config.WEB_PUSH_ENABLED ?? true;
     this.WEB_PUSH_SUBJECT = config.WEB_PUSH_SUBJECT || "mailto:admin@localhost";
     this.WEB_PUSH_NOTIFY_HOUR = config.WEB_PUSH_NOTIFY_HOUR ?? 9;
@@ -335,6 +388,30 @@ export class Config {
       this.RATE_LIMIT_DICTATION_MAX =
         parseInt(process.env.RATE_LIMIT_DICTATION_MAX) ||
         this.RATE_LIMIT_DICTATION_MAX;
+    }
+    if (process.env.DICTATION_HOTWORDS_MAX) {
+      this.DICTATION_HOTWORDS_MAX = clampInteger(
+        process.env.DICTATION_HOTWORDS_MAX,
+        1,
+        200,
+        this.DICTATION_HOTWORDS_MAX,
+      );
+    }
+    if (process.env.DICTATION_VOCABULARY_MAX) {
+      this.DICTATION_VOCABULARY_MAX = clampInteger(
+        process.env.DICTATION_VOCABULARY_MAX,
+        1,
+        1000,
+        this.DICTATION_VOCABULARY_MAX,
+      );
+    }
+    if (process.env.DICTATION_CONFIDENCE_THRESHOLD) {
+      this.DICTATION_CONFIDENCE_THRESHOLD = clampNumber(
+        process.env.DICTATION_CONFIDENCE_THRESHOLD,
+        0.05,
+        0.95,
+        this.DICTATION_CONFIDENCE_THRESHOLD,
+      );
     }
     if (process.env.WEB_PUSH_ENABLED) {
       this.WEB_PUSH_ENABLED = process.env.WEB_PUSH_ENABLED === "true";

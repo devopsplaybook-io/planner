@@ -137,6 +137,8 @@ const props = defineProps({
   // Shared controller so a host can render the button and drive the flow
   controller: { type: Object, default: null },
   showButton: { type: Boolean, default: true },
+  // Project being edited: its vocabulary biases the transcription
+  projectId: { type: String, default: null },
 });
 
 const recommendationStore = useRecommendationStore();
@@ -155,6 +157,7 @@ const inline =
   props.controller ||
   useInlineDictation({
     target: () => targetElement(),
+    projectId: () => props.projectId || null,
   });
 
 const {

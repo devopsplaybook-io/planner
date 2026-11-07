@@ -7,6 +7,7 @@ import { RunMigrations } from "../DbMigrations";
 import {
   UsersDataGet,
   UsersDataListNotificationDigestOptIn,
+  UsersDataSetDictationTargetLanguage,
   UsersDataSetNotificationDigest,
 } from "./UsersData";
 
@@ -77,5 +78,47 @@ describe("UsersData notification digest (integration)", () => {
     expect(optedIn).toContain("u-optin-a");
     expect(optedIn).toContain("u-optin-c");
     expect(optedIn).not.toContain("u-optin-b");
+  });
+});
+
+describe("UsersData dictation target language (integration)", () => {
+  const targetDir = path.join(
+    os.tmpdir(),
+    `planner-users-target-language-${Date.now()}`,
+  );
+
+  beforeAll(async () => {
+    await fs.remove(targetDir);
+    await fs.ensureDir(targetDir);
+    const config = new Config();
+    config.DATA_DIR = targetDir;
+    await DbUtilsInit(config);
+    await RunMigrations();
+  });
+
+  afterAll(async () => {
+    await DbUtilsClose();
+    await fs.remove(targetDir);
+  });
+
+  it("should persist the target language without bumping tokenVersion", async () => {
+    await insertUser("u-target-persist");
+
+    await UsersDataSetDictationTargetLanguage("u-target-persist", "fr");
+    let user = await UsersDataGet("u-target-persist");
+    expect(user.dictationTargetLanguage).toBe("fr");
+    expect(user.tokenVersion).toBe(0);
+
+    await UsersDataSetDictationTargetLanguage("u-target-persist", null);
+    user = await UsersDataGet("u-target-persist");
+    expect(user.dictationTargetLanguage).toBeNull();
+    expect(user.tokenVersion).toBe(0);
+  });
+
+  it("should default the target language to null", async () => {
+    await insertUser("u-target-default");
+
+    const user = await UsersDataGet("u-target-default");
+    expect(user.dictationTargetLanguage).toBeNull();
   });
 });

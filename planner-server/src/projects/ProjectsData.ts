@@ -245,6 +245,10 @@ export async function ProjectsDataDelete(id: string): Promise<void> {
     await DbUtilsExecSQL(SQL_QUERIES.DELETE_PROJECT_USERS[DbUtilsGetType()], [
       id,
     ]);
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_PROJECT_DICTATION_VOCABULARY[DbUtilsGetType()],
+      [id],
+    );
     await DbUtilsExecSQL(SQL_QUERIES.DELETE_PROJECT[DbUtilsGetType()], [id]);
   });
   await removeFilesQuietly(attachmentPaths);
@@ -371,6 +375,10 @@ const SQL_QUERIES = {
   DELETE_PROJECT_USERS: {
     postgres: 'DELETE FROM project_users WHERE "projectId" = $1',
     sqlite: "DELETE FROM project_users WHERE projectId = ?",
+  },
+  DELETE_PROJECT_DICTATION_VOCABULARY: {
+    postgres: 'DELETE FROM dictation_vocabulary WHERE "projectId" = $1',
+    sqlite: "DELETE FROM dictation_vocabulary WHERE projectId = ?",
   },
   GET_PROJECT_USERS: {
     postgres:

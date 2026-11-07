@@ -107,6 +107,7 @@ const activeRoute = computed(() => {
 onMounted(() => {
   if (authStore.isAuthenticated) {
     recommendationStore.fetchConfig();
+    dictationStore.fetchPreferences().catch(() => undefined);
   }
 });
 

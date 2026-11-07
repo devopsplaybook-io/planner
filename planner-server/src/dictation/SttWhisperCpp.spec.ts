@@ -100,6 +100,7 @@ describe("SttWhisperCpp embedded STT engine", () => {
   let config: Config;
   let ffmpegScript: SpawnScript;
   let whisperScript: SpawnScript;
+  let whisperJson: unknown;
   let wavDurationMs: number | null;
 
   beforeEach(() => {
@@ -117,9 +118,11 @@ describe("SttWhisperCpp embedded STT engine", () => {
 
     ffmpegScript = { code: 0 };
     whisperScript = { code: 0, stdout: "hello world" };
+    whisperJson = null;
     wavDurationMs = null;
     mockSpawn.mockImplementation((command: string, args: string[]) => {
-      const script = command === "ffmpeg" ? ffmpegScript : whisperScript;
+      const isFfmpeg = command === "ffmpeg";
+      const script = isFfmpeg ? ffmpegScript : whisperScript;
       const child = fakeChild();
       setImmediate(() => {
         if (script.error) {
@@ -132,8 +135,18 @@ describe("SttWhisperCpp embedded STT engine", () => {
         if (script.stderr) {
           child.stderr.emit("data", script.stderr);
         }
-        if (command === "ffmpeg" && wavDurationMs !== null) {
+        if (isFfmpeg && wavDurationMs !== null) {
           writeWav(args[args.length - 1], wavDurationMs);
+        }
+        if (!isFfmpeg && whisperJson !== null) {
+          const jsonBase = args[args.indexOf("-of") + 1];
+          realFs.mkdirSync(path.dirname(jsonBase), { recursive: true });
+          realFs.writeFileSync(
+            `${jsonBase}.json`,
+            typeof whisperJson === "string"
+              ? whisperJson
+              : JSON.stringify(whisperJson),
+          );
         }
         child.emit("close", script.code ?? 0);
       });
@@ -291,7 +304,100 @@ describe("SttWhisperCpp embedded STT engine", () => {
       expect.any(String),
       "-np",
       "-nt",
+      "-ojf",
+      "-of",
+      expect.stringMatching(/^\/tmp\/stt-test\/dictation\/.+$/),
     ]);
+  });
+
+  it("should pass the vocabulary prompt to whisper-cli", async () => {
+    await SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/a6c.audio",
+      "audio/webm",
+      "en",
+      { prompt: "Vocabulary: Planner, Kubernetes." },
+    );
+    const [, args] = mockSpawn.mock.calls[1];
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "--prompt",
+        "Vocabulary: Planner, Kubernetes.",
+      ]),
+    );
+  });
+
+  it("should omit the prompt flag when no vocabulary is configured", async () => {
+    await SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/a6d.audio",
+      "audio/webm",
+      "en",
+    );
+    const [, args] = mockSpawn.mock.calls[1];
+    expect(args).not.toContain("--prompt");
+  });
+
+  it("should parse per-segment confidences from the whisper JSON output", async () => {
+    whisperJson = {
+      transcription: [
+        {
+          text: " hello world",
+          offsets: { from: 120, to: 1480 },
+          tokens: [
+            { text: "[_BEG_]", p: 0.99 },
+            { text: " hello", p: 0.8 },
+            { text: " world", p: 0.6 },
+            { text: "   ", p: 0.1 },
+          ],
+        },
+        {
+          text: " second part",
+          offsets: { from: 1500, to: 2400 },
+          tokens: [
+            { text: " second", p: 0.4 },
+            { text: " part", p: 0.5 },
+            { text: "<|endoftext|>", p: 0.9 },
+          ],
+        },
+      ],
+    };
+    const result = await SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/a6e.audio",
+      "audio/webm",
+      "en",
+    );
+    expect(result.text).toBe("hello world");
+    expect(result.segments).toHaveLength(2);
+    expect(result.segments?.[0]).toMatchObject({
+      text: "hello world",
+      fromMs: 120,
+      toMs: 1480,
+    });
+    expect(result.segments?.[0].confidence).toBeCloseTo(0.7, 5);
+    expect(result.segments?.[1]).toMatchObject({
+      text: "second part",
+      fromMs: 1500,
+      toMs: 2400,
+    });
+    expect(result.segments?.[1].confidence).toBeCloseTo(0.45, 5);
+    // The generated JSON file never outlives the transcription
+    expect(mockRemove).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/tmp\/stt-test\/dictation\/.+\.json$/),
+    );
+  });
+
+  it("should degrade to null segments when the JSON output is unreadable", async () => {
+    whisperJson = "not json";
+    const result = await SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/a6f.audio",
+      "audio/webm",
+      "en",
+    );
+    expect(result.text).toBe("hello world");
+    expect(result.segments).toBeNull();
   });
 
   it("should pass an explicit thread count through to whisper-cli", async () => {
@@ -456,7 +562,8 @@ describe("SttWhisperCpp embedded STT engine", () => {
     const results = await Promise.all([first, second]);
     expect(results.map((result) => result.text)).toEqual(["hi", "hi"]);
     expect(mockSpawn).toHaveBeenCalledTimes(4);
-    expect(mockRemove).toHaveBeenCalledTimes(2);
+    // Each run removes its temporary WAV and whisper JSON output
+    expect(mockRemove).toHaveBeenCalledTimes(4);
   });
 });
 

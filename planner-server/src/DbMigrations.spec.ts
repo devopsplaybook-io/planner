@@ -46,6 +46,7 @@ describe("RunMigrations (fresh database)", () => {
     for (const table of [
       "api_keys",
       "dictation_jobs",
+      "dictation_vocabulary",
       "metadata",
       "note_attachments",
       "note_comments",
@@ -184,6 +185,31 @@ describe("RunMigrations (fresh database)", () => {
     expect(applied.filter((f: string) => f === "init-0025.sql")).toHaveLength(1);
     expect(applied).toContain("init-0026.sql");
     expect(applied.filter((f: string) => f === "init-0026.sql")).toHaveLength(1);
+    expect(applied).toContain("init-0027.sql");
+    expect(applied.filter((f: string) => f === "init-0027.sql")).toHaveLength(1);
+  });
+
+  it("should add the dictation vocabulary schema of init-0027", async () => {
+    const userColumns = (
+      await DbUtilsQuerySQL("PRAGMA table_info(users)")
+    ).map((c) => c.name as string);
+    expect(userColumns).toContain("dictationTargetLanguage");
+    const jobColumns = (
+      await DbUtilsQuerySQL("PRAGMA table_info(dictation_jobs)")
+    ).map((c) => c.name as string);
+    expect(jobColumns).toEqual(
+      expect.arrayContaining(["segments", "targetLanguage"]),
+    );
+    const indexes = (
+      await DbUtilsQuerySQL("PRAGMA index_list(dictation_vocabulary)")
+    ).map((i) => i.name as string);
+    expect(indexes).toEqual(
+      expect.arrayContaining([
+        "idx_dictation_vocabulary_user",
+        "idx_dictation_vocabulary_user_term",
+        "idx_dictation_vocabulary_project_term",
+      ]),
+    );
   });
 
   it("should add the permission column with an all default", async () => {

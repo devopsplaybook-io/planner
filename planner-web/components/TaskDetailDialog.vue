@@ -127,6 +127,7 @@
               />
               <InlineDictationButton
                 :target="editTitleInput"
+                :project-id="task.projectId"
                 aria-label="Dictate task title"
               />
             </span>
@@ -142,6 +143,7 @@
               />
               <InlineDictationButton
                 :target="editDescriptionInput"
+                :project-id="task.projectId"
                 aria-label="Dictate task description"
               />
             </span>

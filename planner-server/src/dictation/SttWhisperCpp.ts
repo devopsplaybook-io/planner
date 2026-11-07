@@ -10,6 +10,10 @@ import {
   ResolveWhisperThreads,
 } from "../utils/CpuLimits";
 import {
+  DictationSegment,
+  DICTATION_SEGMENTS_MAX,
+} from "./DictationTypes";
+import {
   DictationTelemetryRecordModelPrepare,
   DictationTelemetryStartSpan,
 } from "./DictationTelemetry";
@@ -35,12 +39,16 @@ export interface SttWhisperCppResult {
   audioDurationMs: number | null;
   threads: number;
   sttMs: number;
+  /** Per-segment confidence when the JSON output is available */
+  segments: DictationSegment[] | null;
 }
 
 export interface SttWhisperCppTranscribeOptions {
   model?: string;
   threads?: number;
   trimSilence?: boolean;
+  /** Initial prompt biasing the engine towards the user's vocabulary */
+  prompt?: string | null;
   /** Benchmark hook: called with the spawned whisper-cli process */
   onSpawn?: (child: childProcess.ChildProcessWithoutNullStreams) => void;
 }
@@ -377,47 +385,138 @@ export async function ParseWavDurationMs(
   }
 }
 
+const SPECIAL_TOKEN_PATTERN = /^(\[_.*\]|<\|.*\|>)$/;
+
+interface WhisperJsonResult {
+  text: string;
+  segments: DictationSegment[] | null;
+}
+
+/**
+ * Parses the whisper.cpp full JSON output into per-segment confidences.
+ * Tokens with a special marker or no text are ignored; the confidence is the
+ * average token probability of the segment. Returns null segments when the
+ * JSON cannot be read (the caller keeps the plain transcript).
+ */
+async function readWhisperJson(
+  jsonPath: string,
+): Promise<DictationSegment[] | null> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await fsp.readFile(jsonPath, "utf-8"));
+  } catch {
+    return null;
+  }
+  const transcription = (parsed as { transcription?: unknown })?.transcription;
+  if (!Array.isArray(transcription)) {
+    return null;
+  }
+  const segments: DictationSegment[] = [];
+  for (const raw of transcription.slice(0, DICTATION_SEGMENTS_MAX)) {
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
+    const entry = raw as Record<string, unknown>;
+    const text = typeof entry.text === "string" ? entry.text.trim() : "";
+    if (!text) {
+      continue;
+    }
+    const offsets = entry.offsets as
+      | { from?: unknown; to?: unknown }
+      | undefined;
+    const fromMs = Number(offsets?.from);
+    const toMs = Number(offsets?.to);
+    let sum = 0;
+    let count = 0;
+    if (Array.isArray(entry.tokens)) {
+      for (const token of entry.tokens) {
+        if (!token || typeof token !== "object") {
+          continue;
+        }
+        const tokenEntry = token as { text?: unknown; p?: unknown };
+        const tokenText =
+          typeof tokenEntry.text === "string" ? tokenEntry.text.trim() : "";
+        if (!tokenText || SPECIAL_TOKEN_PATTERN.test(tokenText)) {
+          continue;
+        }
+        const probability = Number(tokenEntry.p);
+        if (!Number.isFinite(probability)) {
+          continue;
+        }
+        sum += probability;
+        count++;
+      }
+    }
+    segments.push({
+      text,
+      fromMs: Number.isFinite(fromMs) ? Math.max(0, fromMs) : 0,
+      toMs: Number.isFinite(toMs) ? Math.max(0, toMs) : 0,
+      confidence:
+        count > 0 ? Math.min(1, Math.max(0, sum / count)) : null,
+    });
+  }
+  return segments.length > 0 ? segments : null;
+}
+
 async function transcribeWithWhisperCli(
   config: Config,
   modelPath: string,
   wavPath: string,
   language: string | null,
   threads: number,
+  prompt?: string | null,
   onSpawn?: (child: childProcess.ChildProcessWithoutNullStreams) => void,
-): Promise<string> {
+): Promise<WhisperJsonResult> {
   const binPath =
     config.STT_EMBEDDED_BIN_PATH ||
     path.join(__dirname, "..", "..", "bin", "whisper-cli");
-  const result = await runProcess(
-    binPath,
-    [
-      "-m",
-      modelPath,
-      "-f",
-      wavPath,
-      "-l",
-      language || "auto",
-      "-t",
-      String(threads),
-      "-np",
-      "-nt",
-    ],
-    WHISPER_TIMEOUT_MS,
-    onSpawn,
-  );
-  if (result.code !== 0) {
-    // Never surface whisper stderr: it can contain transcript fragments.
-    throw new Error(`whisper-cli failed with exit code ${result.code}`);
+  const jsonBase = path.join(path.dirname(wavPath), uuidv4());
+  const jsonPath = `${jsonBase}.json`;
+  const args = [
+    "-m",
+    modelPath,
+    "-f",
+    wavPath,
+    "-l",
+    language || "auto",
+    "-t",
+    String(threads),
+    "-np",
+    "-nt",
+    // Full JSON output is written to <jsonBase>.json: it carries the segment
+    // offsets and token probabilities used for the confidence review.
+    "-ojf",
+    "-of",
+    jsonBase,
+  ];
+  if (prompt) {
+    args.push("--prompt", prompt);
   }
-  const transcript = result.stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .join(" ");
-  if (!transcript) {
-    throw new Error("STT returned an empty transcript");
+  try {
+    const result = await runProcess(
+      binPath,
+      args,
+      WHISPER_TIMEOUT_MS,
+      onSpawn,
+    );
+    if (result.code !== 0) {
+      // Never surface whisper stderr: it can contain transcript fragments.
+      throw new Error(`whisper-cli failed with exit code ${result.code}`);
+    }
+    const transcript = result.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .join(" ");
+    if (!transcript) {
+      throw new Error("STT returned an empty transcript");
+    }
+    // Confidence is best-effort: a missing/malformed JSON never fails the job
+    const segments = await readWhisperJson(jsonPath);
+    return { text: transcript, segments };
+  } finally {
+    await fs.remove(jsonPath).catch(() => undefined);
   }
-  return transcript;
 }
 
 async function transcribe(
@@ -488,17 +587,18 @@ async function transcribe(
     });
     const sttStart = Date.now();
     try {
-      const text = await transcribeWithWhisperCli(
+      const { text, segments } = await transcribeWithWhisperCli(
         config,
         modelPath,
         wavPath,
         language,
         threads,
+        options.prompt,
         options.onSpawn,
       );
       const sttMs = Date.now() - sttStart;
       sttSpan.setAttribute("transcript.chars", text.length);
-      return { text, audioDurationMs, threads, sttMs };
+      return { text, audioDurationMs, threads, sttMs, segments };
     } catch (error) {
       sttSpan.fail(error);
       throw error;

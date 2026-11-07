@@ -4,6 +4,7 @@ import {
   DbUtilsQuerySQL,
 } from "../utils/DbUtils";
 import { DictationActionProposal } from "./DictationLlm";
+import { DictationSegment, ParseDictationSegments } from "./DictationTypes";
 
 export type DictationJobSource = "dictation" | "voice_comment" | "inline";
 export type DictationJobStatus = "processing" | "done" | "error";
@@ -18,11 +19,13 @@ export interface DictationJobRecord {
   status: DictationJobStatus;
   stage: string | null;
   language: string | null;
+  targetLanguage: string | null;
   engine: string;
   model: string | null;
   rawTranscript: string | null;
   polishedText: string | null;
   polished: boolean;
+  segments: DictationSegment[] | null;
   actions: DictationActionProposal[];
   actionsAvailable: boolean;
   error: string | null;
@@ -48,6 +51,7 @@ export interface DictationJobCreateInput {
   status: DictationJobStatus;
   stage?: string | null;
   language?: string | null;
+  targetLanguage?: string | null;
   engine: string;
   model?: string | null;
   expiresAt: string;
@@ -57,10 +61,12 @@ export interface DictationJobUpdatePatch {
   status?: DictationJobStatus;
   stage?: string | null;
   language?: string | null;
+  targetLanguage?: string | null;
   model?: string | null;
   rawTranscript?: string | null;
   polishedText?: string | null;
   polished?: boolean;
+  segments?: DictationSegment[] | null;
   actions?: DictationActionProposal[];
   actionsAvailable?: boolean;
   error?: string | null;
@@ -74,19 +80,22 @@ export interface DictationJobUpdatePatch {
 }
 
 const SELECT_COLUMNS = `id, userId, source, taskId, attachmentId, commentId,
-  status, stage, language, engine, model, rawTranscript, polishedText, polished,
-  actions, actionsAvailable, error, audioDurationMs, queueMs, sttMs, polishMs,
-  actionsMs, totalMs, revision, expiresAt, dateCreated, dateUpdated`;
+  status, stage, language, targetLanguage, engine, model, rawTranscript,
+  polishedText, polished, segments, actions, actionsAvailable, error,
+  audioDurationMs, queueMs, sttMs, polishMs, actionsMs, totalMs, revision,
+  expiresAt, dateCreated, dateUpdated`;
 
 // Physical column names (identical on both engines apart from quoting)
 const UPDATE_COLUMN_ORDER: (keyof DictationJobUpdatePatch)[] = [
   "status",
   "stage",
   "language",
+  "targetLanguage",
   "model",
   "rawTranscript",
   "polishedText",
   "polished",
+  "segments",
   "actions",
   "actionsAvailable",
   "error",
@@ -115,6 +124,17 @@ function parseActions(value: unknown): DictationActionProposal[] {
   }
 }
 
+function parseSegments(value: unknown): DictationSegment[] | null {
+  if (typeof value !== "string" || !value) {
+    return null;
+  }
+  try {
+    return ParseDictationSegments(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
 function toNumberOrNull(value: unknown): number | null {
   return value === null || value === undefined ? null : Number(value);
 }
@@ -130,11 +150,13 @@ function mapRow(row: Record<string, unknown>): DictationJobRecord {
     status: String(row.status) as DictationJobStatus,
     stage: (row.stage as string) ?? null,
     language: (row.language as string) ?? null,
+    targetLanguage: (row.targetLanguage as string) ?? null,
     engine: String(row.engine),
     model: (row.model as string) ?? null,
     rawTranscript: (row.rawTranscript as string) ?? null,
     polishedText: (row.polishedText as string) ?? null,
     polished: toBoolean(row.polished),
+    segments: parseSegments(row.segments),
     actions: parseActions(row.actions),
     actionsAvailable: toBoolean(row.actionsAvailable),
     error: (row.error as string) ?? null,
@@ -161,8 +183,8 @@ export async function DictationDataCreate(
   const now = new Date().toISOString();
   await DbUtilsExecSQL(
     `INSERT INTO dictation_jobs (id, userId, source, taskId, attachmentId, commentId,
-      status, stage, language, engine, model, revision, expiresAt, dateCreated, dateUpdated)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+      status, stage, language, targetLanguage, engine, model, revision, expiresAt, dateCreated, dateUpdated)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     [
       input.id,
       input.userId,
@@ -173,6 +195,7 @@ export async function DictationDataCreate(
       input.status,
       input.stage ?? null,
       input.language ?? null,
+      input.targetLanguage ?? null,
       input.engine,
       input.model ?? null,
       input.expiresAt,
@@ -223,6 +246,8 @@ export async function DictationDataUpdate(
       params.push(booleanForStorage(value));
     } else if (field === "actions") {
       params.push(JSON.stringify(value ?? []));
+    } else if (field === "segments") {
+      params.push(value === null ? null : JSON.stringify(value));
     } else {
       params.push(value);
     }

@@ -78,6 +78,7 @@
               />
               <InlineDictationButton
                 :target="editTitleInput"
+                :project-id="note.projectId"
                 aria-label="Dictate note title"
               />
             </span>
@@ -93,6 +94,7 @@
               />
               <InlineDictationButton
                 :target="editDescriptionInput"
+                :project-id="note.projectId"
                 aria-label="Dictate note content"
               />
             </span>

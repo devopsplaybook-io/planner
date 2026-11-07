@@ -9,11 +9,13 @@ vi.mock("../utils/api", () => ({
   default: {
     post: vi.fn(),
     get: vi.fn(),
+    put: vi.fn(),
   },
 }));
 
 const mockApiPost = api.post as unknown as ReturnType<typeof vi.fn>;
 const mockApiGet = api.get as unknown as ReturnType<typeof vi.fn>;
+const mockApiPut = api.put as unknown as ReturnType<typeof vi.fn>;
 
 function jobView(overrides: Partial<DictationJobView> = {}): DictationJobView {
   return {
@@ -23,6 +25,7 @@ function jobView(overrides: Partial<DictationJobView> = {}): DictationJobView {
     stage: "transcribing",
     engine: "embedded",
     language: "fr",
+    targetLanguage: null,
     revision: 1,
     result: null,
     availability: {
@@ -134,6 +137,7 @@ describe("dictation store", () => {
           polished: false,
           actions: [],
           actionsAvailable: false,
+          segments: null,
         },
         availability: {
           rawTranscript: true,
@@ -169,6 +173,7 @@ describe("dictation store", () => {
           polished: true,
           actions: [],
           actionsAvailable: true,
+          segments: null,
         },
         availability: {
           rawTranscript: true,
@@ -180,6 +185,37 @@ describe("dictation store", () => {
     expect(store.hasPolishedText).toBe(true);
     expect(store.result?.polishedText).toBe("Hello!");
     expect(store.isProcessing).toBe(false);
+  });
+
+  it("should apply the job translation target and confidence segments", () => {
+    const store = useDictationStore();
+
+    store.applyJob(
+      jobView({
+        status: "done",
+        stage: null,
+        targetLanguage: "en",
+        engine: "embedded",
+        result: {
+          rawTranscript: "bonjour",
+          polishedText: "Hello",
+          polished: true,
+          actions: [],
+          actionsAvailable: false,
+          segments: [
+            { text: "bonjour", fromMs: 0, toMs: 900, confidence: 0.4 },
+          ],
+        },
+      }),
+    );
+
+    expect(store.jobTargetLanguage).toBe("en");
+    expect(store.engine).toBe("embedded");
+    expect(store.result?.segments?.[0]?.confidence).toBe(0.4);
+
+    store.resetJob();
+    expect(store.jobTargetLanguage).toBeNull();
+    expect(store.engine).toBeNull();
   });
 
   it("should long-poll with wait and the last revision", async () => {
@@ -265,6 +301,7 @@ describe("dictation store", () => {
           polished: true,
           actions: [],
           actionsAvailable: true,
+          segments: null,
         },
         availability: {
           rawTranscript: true,
@@ -295,6 +332,7 @@ describe("dictation store", () => {
       polished: true,
       actions: [],
       actionsAvailable: true,
+      segments: null,
     };
     store.revision = 2;
     store.stage = "actions";
@@ -332,6 +370,46 @@ describe("dictation store helpers", () => {
     expect(form.get("language")).toBe("fr");
     expect(form.get("source")).toBe("inline");
     expect(form.get("file").name).toBe("dictation.webm");
+  });
+
+  it("should send the project scope and the translation target", async () => {
+    mockApiPost.mockResolvedValue({ data: { jobId: "job-9" } });
+    const store = useDictationStore();
+
+    await store.uploadJob(
+      new Blob(["audio"]),
+      "audio/webm",
+      "fr",
+      "inline",
+      "project-1",
+      "en",
+    );
+
+    const [, form] = mockApiPost.mock.calls[0]!;
+    expect(form.get("projectId")).toBe("project-1");
+    expect(form.get("targetLanguage")).toBe("en");
+  });
+
+  it("should always send a target language, disabling it when off", async () => {
+    mockApiPost.mockResolvedValue({ data: { jobId: "job-9" } });
+    const store = useDictationStore();
+
+    await store.uploadJob(new Blob(["audio"]), "audio/webm", "fr");
+
+    const [, form] = mockApiPost.mock.calls[0]!;
+    expect(form.get("targetLanguage")).toBe("");
+    expect(form.get("projectId")).toBeNull();
+  });
+
+  it("should fall back to the stored translation target", async () => {
+    mockApiPost.mockResolvedValue({ data: { jobId: "job-9" } });
+    const store = useDictationStore();
+    store.targetLanguage = "de";
+
+    await store.uploadJob(new Blob(["audio"]), "audio/webm");
+
+    const [, form] = mockApiPost.mock.calls[0]!;
+    expect(form.get("targetLanguage")).toBe("de");
   });
 
   it("should leave the source out for dialog dictation", async () => {
@@ -428,5 +506,63 @@ describe("dictation store helpers", () => {
     const store = useDictationStore();
 
     expect(await store.fetchJob("job-1")).toEqual({});
+  });
+});
+
+describe("dictation store preferences", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("should load the stored translation target", async () => {
+    mockApiGet.mockResolvedValue({ data: { targetLanguage: "en" } });
+    const store = useDictationStore();
+
+    await store.fetchPreferences();
+
+    expect(mockApiGet).toHaveBeenCalledWith("/dictation/preferences");
+    expect(store.targetLanguage).toBe("en");
+    expect(localStorage.getItem("dictation-target-language")).toBe("en");
+  });
+
+  it("should keep the local fallback when the preference cannot load", async () => {
+    localStorage.setItem("dictation-target-language", "fr");
+    mockApiGet.mockRejectedValue(new Error("Network Error"));
+    const store = useDictationStore();
+
+    await store.fetchPreferences();
+    expect(store.targetLanguage).toBe("fr");
+  });
+
+  it("should save a target language and clear it when off", async () => {
+    mockApiPut.mockResolvedValue({ data: { targetLanguage: "de" } });
+    const store = useDictationStore();
+
+    expect(await store.setTargetLanguage("de")).toEqual({});
+    expect(mockApiPut).toHaveBeenCalledWith("/dictation/preferences", {
+      targetLanguage: "de",
+    });
+    expect(store.targetLanguage).toBe("de");
+
+    mockApiPut.mockResolvedValue({ data: { targetLanguage: null } });
+    expect(await store.setTargetLanguage(null)).toEqual({});
+    expect(store.targetLanguage).toBe("");
+    expect(localStorage.getItem("dictation-target-language")).toBeNull();
+  });
+
+  it("should roll back an optimistic preference the server refuses", async () => {
+    localStorage.setItem("dictation-target-language", "fr");
+    mockApiPut.mockRejectedValue({
+      response: { data: { error: "Invalid: targetLanguage" } },
+    });
+    const store = useDictationStore();
+
+    const result = await store.setTargetLanguage("xx");
+
+    expect(result.error).toBe("Invalid: targetLanguage");
+    expect(store.targetLanguage).toBe("fr");
+    expect(localStorage.getItem("dictation-target-language")).toBe("fr");
   });
 });

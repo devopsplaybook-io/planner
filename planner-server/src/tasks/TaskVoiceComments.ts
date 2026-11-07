@@ -21,6 +21,8 @@ import {
   DictationTelemetryStartSpan,
 } from "../dictation/DictationTelemetry";
 import { SttNoSpeechError } from "../dictation/SttWhisperCpp";
+import { ComposeHotwordPrompt } from "../dictation/DictationHotwords";
+import { DictationVocabularyResolveForPrompt } from "../dictation/DictationVocabularyData";
 import { DbUtilsIsUniqueViolation } from "../utils/DbUtils";
 import { addComment, TasksDataGet, TasksDataTouch } from "./TasksData";
 import { recordTaskUpdate } from "./TaskUpdates";
@@ -285,14 +287,34 @@ async function runVoiceJob(
     }
 
     const sttStart = Date.now();
+    // Vocabulary lookup is best-effort: never fail a transcription over it
+    let hotwordPrompt: string | null = null;
+    if (config) {
+      try {
+        const terms = await DictationVocabularyResolveForPrompt(
+          request.userId,
+          task.projectId ?? null,
+          config.DICTATION_HOTWORDS_MAX,
+        );
+        hotwordPrompt = ComposeHotwordPrompt(
+          [],
+          terms,
+          config.DICTATION_HOTWORDS_MAX,
+        );
+      } catch {
+        hotwordPrompt = null;
+      }
+    }
     const transcription = await DictationTranscribeAudio(
       request.filePath,
       request.mimeType,
       language,
+      { prompt: hotwordPrompt },
     );
     DictationTelemetryRecordStage("stt", Date.now() - sttStart, "voice_comment");
     await DictationDataUpdate(jobId, {
       rawTranscript: transcription.text,
+      segments: transcription.segments,
       audioDurationMs: transcription.audioDurationMs,
       sttMs: transcription.sttMs,
       stage: "polishing",
@@ -300,9 +322,11 @@ async function runVoiceJob(
     DictationNotifyJobChange(jobId);
 
     const polishStart = Date.now();
+    // Voice comments keep the spoken language: never translated
     const { polishedText, polished } = await DictationPolishTranscript(
       transcription.text,
       language,
+      null,
     );
     const polishMs = Date.now() - polishStart;
     DictationTelemetryRecordStage("polish", polishMs, "voice_comment");

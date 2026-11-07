@@ -16,7 +16,9 @@ export const POLISH_SYSTEM_PROMPT =
   "may be missing punctuation, casing and paragraph breaks and may contain transcription mistakes.\n" +
   "Rewrite the transcript: restore punctuation and casing, remove filler words and obvious " +
   "transcription artifacts, and apply light markdown structure (paragraphs or lists) when it improves readability.\n" +
-  "Keep the original language, meaning and wording — never invent information that is not in the transcript.\n\n" +
+  "Keep the original language, meaning and wording — never invent information that is not in the transcript.\n" +
+  "Preserve proper nouns, product names and technical terms exactly as they appear (never translate or paraphrase them).\n" +
+  "When the input mixes languages, keep each part in its original language unless an explicit translation target is requested.\n\n" +
   'Answer with strict JSON only: {"text": "..."} containing the polished text. ' +
   "No markdown code fences, no commentary.";
 
@@ -51,11 +53,17 @@ export function ComputeMaxTokens(text: string): number {
 export function BuildPolishPrompt(
   transcript: string,
   language: string | null,
+  targetLanguage: string | null = null,
 ): string {
   const hint = language
     ? `The dictated text is in language code "${language}".\n`
     : "";
-  return `${hint}Transcript:\n${transcript}`;
+  // "Speak French, write English": only when a target differs from the source
+  const translation =
+    targetLanguage && targetLanguage !== language
+      ? `Translate the polished text into language code "${targetLanguage}". Keep names, jargon and terms unchanged.\n`
+      : "";
+  return `${hint}${translation}Transcript:\n${transcript}`;
 }
 
 /**

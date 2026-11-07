@@ -56,6 +56,45 @@
           Picking the language explicitly is recommended: short clips can be
           misdetected when the language is set to automatic detection.
         </p>
+        <label>
+          Translate to
+          <select v-model="translateTo">
+            <option value="">No translation</option>
+            <option
+              v-for="lang in translationLanguages"
+              :key="lang"
+              :value="lang"
+            >
+              {{ dictationLanguageLabel(lang) }}
+            </option>
+          </select>
+        </label>
+        <p class="setting-hint">
+          <i class="bi bi-translate" />
+          Optionally write the dictation in another language than the one
+          spoken. Names, jargon and mixed-language terms are preserved.
+        </p>
+        <p
+          v-if="translationError"
+          class="notification-status notification-status--error"
+        >
+          {{ translationError }}
+        </p>
+
+        <h3 class="setting-subtitle">Custom vocabulary</h3>
+        <p class="setting-hint">
+          <i class="bi bi-info-circle" />
+          Names and jargon improve transcription accuracy. Terms of the project
+          being dictated into are applied before personal terms. Vocabulary and
+          prompts are never logged.
+        </p>
+        <DictationVocabularyEditor />
+
+        <p class="setting-hint retention-hint">
+          <i class="bi bi-shield-lock" />
+          Dictation audio is deleted right after transcription. Voice-comment
+          audio is kept as a task attachment and can be deleted with it.
+        </p>
       </section>
 
       <section v-if="authStore.isAuthenticated && notificationsStore.supported">
@@ -285,6 +324,7 @@ const authStore = useAuthStore();
 const notificationsStore = useNotificationsStore();
 const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
+const projectsStore = useProjectsStore();
 const router = useRouter();
 const route = useRoute();
 const toggleTheme = inject("toggleTheme");
@@ -320,6 +360,22 @@ const dictationLanguage = computed({
 const dictationLanguages = computed(
   () => recommendationStore.dictationLanguages,
 );
+
+const translationLanguages = computed(
+  () => recommendationStore.dictationTranslationLanguages,
+);
+
+const translationError = ref("");
+const translateTo = computed({
+  get: () => dictationStore.targetLanguage || "",
+  set: async (value) => {
+    translationError.value = "";
+    const res = await dictationStore.setTargetLanguage(value || null);
+    if (res?.error) {
+      translationError.value = res.error;
+    }
+  },
+});
 
 const DICTATION_LANGUAGE_LABELS = {
   auto: "Automatic detection",
@@ -397,6 +453,8 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     notificationsStore.init();
     recommendationStore.fetchConfig();
+    dictationStore.fetchPreferences().catch(() => undefined);
+    projectsStore.fetchAll().catch(() => undefined);
     await fetchApiKey();
   }
 });
@@ -595,6 +653,15 @@ function formatDate(dateStr) {
   margin-bottom: 0;
   font-size: var(--text-sm);
   opacity: 0.7;
+}
+
+.setting-subtitle {
+  margin-top: var(--space-md);
+  font-size: var(--text-md);
+}
+
+.retention-hint {
+  margin-top: var(--space-md);
 }
 
 .notification-status--error {

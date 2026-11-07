@@ -110,6 +110,7 @@
               placeholder="Template title">
             <InlineDictationButton
               :target="titleInput"
+              :project-id="form.projectId"
               aria-label="Dictate template title"
             />
           </span>
@@ -124,6 +125,7 @@
             />
             <InlineDictationButton
               :target="descriptionInput"
+              :project-id="form.projectId"
               aria-label="Dictate template description"
             />
           </span>

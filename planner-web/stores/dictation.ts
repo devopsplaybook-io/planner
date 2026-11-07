@@ -14,6 +14,13 @@ export interface DictationActionProposal {
   dueDate?: string;
 }
 
+export interface DictationSegment {
+  text: string;
+  fromMs: number;
+  toMs: number;
+  confidence: number | null;
+}
+
 export interface DictationResult {
   rawTranscript: string;
   // Progressive delivery: null until polish completes
@@ -21,6 +28,8 @@ export interface DictationResult {
   polished: boolean;
   actions: DictationActionProposal[];
   actionsAvailable: boolean;
+  // Embedded engine only: null for external engines or older servers
+  segments: DictationSegment[] | null;
 }
 
 export interface DictationAvailability {
@@ -45,6 +54,7 @@ export interface DictationJobView {
   stage: DictationStage | null;
   engine: string;
   language: string | null;
+  targetLanguage: string | null;
   revision: number;
   result: DictationResult | null;
   availability: DictationAvailability | null;
@@ -56,6 +66,7 @@ export interface DictationJobView {
 }
 
 const LANGUAGE_STORAGE_KEY = "dictation-language";
+const TARGET_LANGUAGE_STORAGE_KEY = "dictation-target-language";
 const LONG_POLL_TIMEOUT_MS = 30 * 1000;
 
 function loadStoredLanguage(): string {
@@ -63,6 +74,26 @@ function loadStoredLanguage(): string {
     return localStorage.getItem(LANGUAGE_STORAGE_KEY) || "auto";
   } catch {
     return "auto";
+  }
+}
+
+function loadStoredTargetLanguage(): string {
+  try {
+    return localStorage.getItem(TARGET_LANGUAGE_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function persistTargetLanguage(language: string): void {
+  try {
+    if (language) {
+      localStorage.setItem(TARGET_LANGUAGE_STORAGE_KEY, language);
+    } else {
+      localStorage.removeItem(TARGET_LANGUAGE_STORAGE_KEY);
+    }
+  } catch {
+    // Storage unavailable: keep the preference for this session only
   }
 }
 
@@ -77,10 +108,15 @@ export const useDictationStore = defineStore("dictation", {
     availability: null as DictationAvailability | null,
     timings: null as DictationTimings | null,
     engineState: null as DictationEngineState | null,
+    engine: null as string | null,
     revision: 0,
     error: null as string | null,
     dateUpdated: null as string | null,
     language: loadStoredLanguage(),
+    // Output language for the polish stage ("" = keep the spoken language)
+    targetLanguage: loadStoredTargetLanguage(),
+    // Translation target of the job currently open in the dialog
+    jobTargetLanguage: null as string | null,
     recentJobs: [] as DictationJobView[],
   }),
 
@@ -107,6 +143,46 @@ export const useDictationStore = defineStore("dictation", {
         // Storage unavailable: keep the language for this session only
       }
     },
+    /**
+     * Persists the optional translation target. The local value is applied
+     * optimistically and rolled back when the server refuses it.
+     */
+    async setTargetLanguage(
+      language: string | null,
+    ): Promise<{ error?: string }> {
+      const value = language || null;
+      const previous = this.targetLanguage;
+      this.targetLanguage = value || "";
+      persistTargetLanguage(this.targetLanguage);
+      try {
+        const res = await api.put("/dictation/preferences", {
+          targetLanguage: value,
+        });
+        const stored = res.data?.targetLanguage || "";
+        this.targetLanguage = stored;
+        persistTargetLanguage(stored);
+        return {};
+      } catch (err) {
+        this.targetLanguage = previous;
+        persistTargetLanguage(previous);
+        return {
+          error:
+            (err as { response?: { data?: { error?: string } } })?.response
+              ?.data?.error || "The preference could not be saved.",
+        };
+      }
+    },
+    /** Loads the stored translation target; failures keep the local fallback. */
+    async fetchPreferences(): Promise<void> {
+      try {
+        const res = await api.get("/dictation/preferences");
+        const value = res.data?.targetLanguage || "";
+        this.targetLanguage = value;
+        persistTargetLanguage(value);
+      } catch {
+        // Keep the localStorage fallback when the request fails
+      }
+    },
     /** Clears every field of the current job, keeping recent jobs. */
     resetJob() {
       this.jobId = null;
@@ -117,9 +193,11 @@ export const useDictationStore = defineStore("dictation", {
       this.availability = null;
       this.timings = null;
       this.engineState = null;
+      this.engine = null;
       this.revision = 0;
       this.error = null;
       this.dateUpdated = null;
+      this.jobTargetLanguage = null;
     },
     reset() {
       this.resetJob();
@@ -138,6 +216,8 @@ export const useDictationStore = defineStore("dictation", {
       this.availability = job.availability ?? null;
       this.timings = job.timings ?? null;
       this.engineState = job.engineState ?? null;
+      this.engine = job.engine ?? null;
+      this.jobTargetLanguage = job.targetLanguage ?? null;
       this.revision = job.revision ?? 0;
       this.error = job.error ?? null;
       this.dateUpdated = job.dateUpdated ?? null;
@@ -161,6 +241,8 @@ export const useDictationStore = defineStore("dictation", {
       mimeType: string,
       language?: string,
       source: "dictation" | "inline" = "dictation",
+      projectId?: string | null,
+      targetLanguage?: string | null,
     ): Promise<{ jobId?: string; conflictJobId?: string; error?: string }> {
       const form = new FormData();
       form.append(
@@ -173,6 +255,15 @@ export const useDictationStore = defineStore("dictation", {
       if (source === "inline") {
         form.append("source", "inline");
       }
+      if (projectId) {
+        form.append("projectId", projectId);
+      }
+      // Always sent: an empty value explicitly disables the stored preference
+      const target =
+        targetLanguage === undefined
+          ? (this.targetLanguage ?? "")
+          : (targetLanguage ?? "");
+      form.append("targetLanguage", target);
       try {
         const res = await api.post("/dictation", form, {
           headers: { "Content-Type": "multipart/form-data" },
