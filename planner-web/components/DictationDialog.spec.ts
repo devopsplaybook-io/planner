@@ -84,6 +84,7 @@ function makeDictationStore() {
     engineState: "ready",
     engine: "embedded",
     language: "auto",
+    dialogTab: "dictate" as "dictate" | "capture" | "import",
     jobTargetLanguage: null as string | null,
     availability: {
       rawTranscript: true,
@@ -159,6 +160,14 @@ async function openDialog() {
       components: {
         ProjectSelect: defineComponent({ render: () => null }),
         InlineDictationButton: defineComponent({ render: () => null }),
+        QuickCapturePanel: defineComponent({
+          name: "QuickCapturePanel",
+          template: '<div class="quick-capture-panel-stub" />',
+        }),
+        MeetingImportPanel: defineComponent({
+          name: "MeetingImportPanel",
+          template: '<div class="meeting-import-panel-stub" />',
+        }),
         DictationActionCard,
         DictationAskPanel,
         DictationConfidenceReview,
@@ -180,6 +189,8 @@ beforeEach(() => {
     config: {},
     isDictationEnabled: true,
     isImproveEnabled: true,
+    isDictationSttConfigured: true,
+    dictationImportEnabled: true,
     dictationMaxDurationSeconds: 300,
     dictationMaxUploadMb: 10,
     dictationLanguages: ["auto", "en", "fr"],
@@ -874,5 +885,68 @@ describe("DictationDialog ask", () => {
 
     expect(wrapper.find(".review-tabs").exists()).toBe(false);
     expect(wrapper.find(".ask-panel").exists()).toBe(false);
+  });
+});
+
+describe("DictationDialog consolidated menu", () => {
+  function tabLabels(wrapper: ReturnType<typeof mount>) {
+    return wrapper.findAll(".dictation-tab").map((tab) => tab.text());
+  }
+
+  it("renders Dictate, Capture and Import as one tab strip", async () => {
+    const wrapper = await openDialog();
+
+    expect(wrapper.find(".dictation-tabs").exists()).toBe(true);
+    expect(tabLabels(wrapper)).toEqual(["Dictate", "Capture", "Import"]);
+    expect(
+      wrapper.findAll(".dictation-tab").map((tab) =>
+        tab.attributes("aria-selected"),
+      ),
+    ).toEqual(["true", "false", "false"]);
+    expect(wrapper.find(".dictation-review").exists()).toBe(true);
+  });
+
+  it("switches between the dictate, capture and import panels", async () => {
+    const wrapper = await openDialog();
+
+    await findButton(wrapper, "Capture")!.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".quick-capture-panel-stub").exists()).toBe(true);
+    expect(wrapper.find(".dictation-review").exists()).toBe(false);
+
+    await findButton(wrapper, "Import")!.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".meeting-import-panel-stub").exists()).toBe(true);
+    expect(wrapper.find(".quick-capture-panel-stub").exists()).toBe(false);
+
+    await findButton(wrapper, "Dictate")!.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".dictation-review").exists()).toBe(true);
+    expect(wrapper.find(".meeting-import-panel-stub").exists()).toBe(false);
+  });
+
+  it("opens on the tab requested by the store", async () => {
+    dictationStore.dialogTab = "capture";
+
+    const wrapper = await openDialog();
+
+    expect(wrapper.find(".quick-capture-panel-stub").exists()).toBe(true);
+    expect(
+      findButton(wrapper, "Capture")!.attributes("aria-selected"),
+    ).toBe("true");
+  });
+
+  it("opens directly on Import when speech-to-text is unavailable", async () => {
+    (recommendationStore as Record<string, unknown>).isDictationSttConfigured =
+      false;
+
+    const wrapper = await openDialog();
+
+    expect(wrapper.find(".dictation-tabs").exists()).toBe(false);
+    expect(wrapper.find(".meeting-import-panel-stub").exists()).toBe(true);
+    expect(wrapper.find(".quick-capture-panel-stub").exists()).toBe(false);
   });
 });

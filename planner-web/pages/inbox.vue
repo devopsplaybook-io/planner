@@ -10,7 +10,7 @@
           v-if="importEnabled"
           type="button"
           class="header-button"
-          @click="openMeetingImport()"
+          @click="dictationStore.openDialog('import')"
         >
           <i class="bi bi-file-earmark-music" />
           <span class="button-label">Import meeting</span>
@@ -19,7 +19,7 @@
           v-if="captureEnabled"
           type="button"
           class="header-button primary"
-          @click="openQuickCapture()"
+          @click="dictationStore.openDialog('capture')"
         >
           <i class="bi bi-lightning-charge" />
           <span class="button-label">Capture</span>
@@ -104,8 +104,6 @@ const dictationStore = useDictationStore();
 const recommendationStore = useRecommendationStore();
 const offlineQueue = useOfflineDictationQueue();
 const { pushToast } = useToasts();
-const { openQuickCapture } = useQuickCapture();
-const { openMeetingImport } = useMeetingImport();
 const route = useRoute();
 const router = useRouter();
 

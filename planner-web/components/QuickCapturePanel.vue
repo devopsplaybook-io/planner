@@ -1,97 +1,74 @@
 <template>
-  <div v-if="quickCaptureOpen" class="dialog-backdrop" @click.self="cancel">
-    <div
-      class="quick-capture"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="quick-capture-title"
-    >
-      <header>
-        <h2 id="quick-capture-title">
-          <i class="bi bi-lightning-charge" /> Quick capture
-        </h2>
-        <button
-          type="button"
-          class="icon-button"
-          aria-label="Close quick capture"
-          @click="cancel"
-        >
-          <i class="bi bi-x-lg" />
-        </button>
-      </header>
+  <div class="quick-capture-panel">
+    <p class="hint">
+      Record a short thought now; it is transcribed in the background and
+      lands in your inbox, without interrupting what you are doing.
+    </p>
 
-      <p class="hint">
-        Record a short thought now; it is transcribed in the background and
-        lands in your inbox, without interrupting what you are doing.
-      </p>
-
-      <div class="recording-row">
-        <button
-          v-if="!isRecording"
-          type="button"
-          class="record-button"
-          :disabled="!supported"
-          @click="start"
-        >
-          <i class="bi bi-mic-fill" /> Record
-        </button>
-        <button
-          v-else
-          type="button"
-          class="record-button stop"
-          @click="stopAndSave"
-        >
-          <i class="bi bi-stop-fill" /> Save
-        </button>
-        <span v-if="isRecording" class="timer">
-          {{ formattedElapsed }}
-          <span class="pulse" />
-        </span>
-      </div>
-
-      <p v-if="recorder.error" class="error" role="alert">
-        {{ recorder.error }}
-      </p>
-      <p v-if="!supported" class="hint">
-        Voice recording is not supported by this browser.
-      </p>
-
-      <label class="field">
-        Language
-        <select v-model="language">
-          <option
-            v-for="code in languages"
-            :key="code"
-            :value="code"
-          >
-            {{ languageLabel(code) }}
-          </option>
-        </select>
-      </label>
-
-      <label class="field">
-        Project (optional)
-        <ProjectSelect v-model="projectId" all-label="No project" />
-      </label>
-
-      <p class="hint offline-hint">
-        <i class="bi bi-wifi-off" />
-        Offline? The recording is queued locally (up to
-        {{ QUEUE_MAX_ITEMS }} recordings) and uploaded automatically when the
-        connection returns.
-      </p>
+    <div class="recording-row">
+      <button
+        v-if="!isRecording"
+        type="button"
+        class="record-button"
+        :disabled="!supported"
+        @click="start"
+      >
+        <i class="bi bi-mic-fill" /> Record
+      </button>
+      <button
+        v-else
+        type="button"
+        class="record-button stop"
+        @click="stopAndSave"
+      >
+        <i class="bi bi-stop-fill" /> Save
+      </button>
+      <span v-if="isRecording" class="timer">
+        {{ formattedElapsed }}
+        <span class="pulse" />
+      </span>
     </div>
+
+    <p v-if="recorder.error" class="error" role="alert">
+      {{ recorder.error }}
+    </p>
+    <p v-if="!supported" class="hint">
+      Voice recording is not supported by this browser.
+    </p>
+
+    <label class="field">
+      Language
+      <select v-model="language">
+        <option v-for="code in languages" :key="code" :value="code">
+          {{ languageLabel(code) }}
+        </option>
+      </select>
+    </label>
+
+    <label class="field">
+      Project (optional)
+      <ProjectSelect v-model="projectId" all-label="No project" />
+    </label>
+
+    <p class="hint offline-hint">
+      <i class="bi bi-wifi-off" />
+      Offline? The recording is queued locally (up to
+      {{ QUEUE_MAX_ITEMS }} recordings) and uploaded automatically when the
+      connection returns.
+    </p>
   </div>
 </template>
 
 <script setup>
+import { onUnmounted } from "vue";
 import { QUEUE_MAX_ITEMS } from "../utils/dictationQueue";
+
+const emit = defineEmits(["close"]);
 
 const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
 const { pushToast } = useToasts();
 const offlineQueue = useOfflineDictationQueue();
-const { quickCaptureOpen, closeQuickCapture } = useQuickCapture();
 
 const supported = isVoiceRecordingSupported();
 const language = ref(dictationStore.language || "auto");
@@ -127,7 +104,7 @@ const LANGUAGE_LABELS = {
 };
 
 function languageLabel(code) {
-  return LANGUAGE_LABELS[code] || String(code).toUpperCase();
+  return LANGUAGE_LABELS[code] || code.toUpperCase();
 }
 
 async function start() {
@@ -143,15 +120,8 @@ function stopAndSave() {
   })();
 }
 
-function cancel() {
-  if (isRecording.value) {
-    void recorder.stop();
-  }
-  closeQuickCapture();
-}
-
 /**
- * Uploads without blocking the UI: the dialog closes immediately and the
+ * Uploads without blocking the UI: the panel closes immediately and the
  * outcome is reported with a toast. Offline (or an unreachable server) falls
  * back to the durable queue.
  */
@@ -162,7 +132,7 @@ function saveInBackground(recording) {
     language: language.value,
     projectId: projectId.value || null,
   };
-  closeQuickCapture();
+  emit("close");
   void (async () => {
     try {
       if (typeof navigator !== "undefined" && navigator.onLine) {
@@ -213,50 +183,21 @@ function saveInBackground(recording) {
     }
   })();
 }
+
+// Leaving the capture tab while recording discards the capture, like
+// closing the former standalone dialog did.
+onUnmounted(() => {
+  if (isRecording.value) {
+    void recorder.cancel();
+  }
+});
 </script>
 
 <style scoped>
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1100;
-  padding: var(--space-sm);
-}
-
-.quick-capture {
-  width: min(420px, 100%);
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-lg);
-  padding: var(--space-md);
+.quick-capture-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-}
-
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-xs);
-}
-
-h2 {
-  margin: 0;
-  font-size: var(--text-lg);
-}
-
-.icon-button {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: var(--space-2xs);
 }
 
 .hint {

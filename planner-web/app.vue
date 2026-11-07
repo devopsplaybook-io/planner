@@ -26,7 +26,7 @@
       @close="closeDialog('projectId')"
       @updated="onDialogUpdated"
     />
-    <!-- Global dictation dialog, opened from the navigation mic button -->
+    <!-- Global dictation menu (dictate, capture, import), opened from the navigation -->
     <DictationDialog
       :open="dictationStore.dialogOpen"
       @close="dictationStore.closeDialog()"
@@ -47,9 +47,6 @@
       @close="showNoteCreate = false"
       @created="onNoteCreated"
     />
-    <!-- Global quick capture and meeting import dialogs -->
-    <QuickCaptureDialog />
-    <MeetingImportDialog />
     <!-- In-app notifications (also fed by service-worker push messages) -->
     <AppToast />
   </div>
@@ -64,7 +61,6 @@ const authStore = useAuthStore();
 const recommendationStore = useRecommendationStore();
 const { pushToast } = useToasts();
 const offlineQueue = useOfflineDictationQueue();
-const { openQuickCapture } = useQuickCapture();
 
 const showTaskCreate = ref(false);
 const showNoteCreate = ref(false);
@@ -156,7 +152,7 @@ function onGlobalKeydown(event) {
     return;
   }
   event.preventDefault();
-  openQuickCapture();
+  dictationStore.openDialog("capture");
 }
 
 // Theme management

@@ -24,38 +24,11 @@
           class="dictation-button"
           :disabled="dictationDisabled"
           :title="dictationTooltip"
-          aria-label="Start dictation"
-          @click="dictationStore.openDialog()"
+          aria-label="Open the dictation menu"
+          @click="openDictationMenu()"
         >
           <i class="bi bi-mic"></i>
           <span class="nav-label">Dictation</span>
-        </button>
-      </li>
-      <li v-if="captureAvailable" class="dictation-entry">
-        <button
-          class="dictation-button"
-          title="Quick capture"
-          aria-label="Quick capture"
-          @click="openQuickCapture()"
-        >
-          <i class="bi bi-lightning-charge"></i>
-          <span class="nav-label">Capture</span>
-        </button>
-      </li>
-      <li v-if="importAvailable" class="dictation-entry">
-        <button
-          class="dictation-button"
-          :disabled="!online"
-          :title="
-            online
-              ? 'Import a meeting recording'
-              : 'Importing needs a network connection'
-          "
-          aria-label="Import a meeting recording"
-          @click="openMeetingImport()"
-        >
-          <i class="bi bi-file-earmark-music"></i>
-          <span class="nav-label">Import</span>
         </button>
       </li>
     </ul>
@@ -135,8 +108,6 @@ const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
 const inboxStore = useInboxStore();
 const commandPaletteStore = useCommandPaletteStore();
-const { openQuickCapture } = useQuickCapture();
-const { openMeetingImport } = useMeetingImport();
 const route = useRoute();
 
 const paletteHint = computed(() => {
@@ -187,30 +158,36 @@ onUnmounted(() => {
 const dictationAvailable = computed(
   () => authStore.isAuthenticated && recommendationStore.isDictationEnabled,
 );
-const captureAvailable = computed(
-  () => authStore.isAuthenticated && recommendationStore.isDictationEnabled,
-);
-const importAvailable = computed(
-  () =>
-    authStore.isAuthenticated &&
-    recommendationStore.isDictationEnabled &&
-    recommendationStore.dictationImportEnabled,
-);
 const dictationDisabled = computed(
-  () => !recommendationStore.isDictationSttConfigured || !online.value,
+  () =>
+    !online.value ||
+    (!recommendationStore.isDictationSttConfigured &&
+      !recommendationStore.dictationImportEnabled),
 );
 const dictationTooltip = computed(() => {
   if (!online.value) {
     return "Dictation is unavailable offline";
   }
-  if (!recommendationStore.isDictationSttConfigured) {
+  if (
+    !recommendationStore.isDictationSttConfigured &&
+    !recommendationStore.dictationImportEnabled
+  ) {
     return "Dictation needs a speech-to-text server configuration";
+  }
+  if (!recommendationStore.isDictationSttConfigured) {
+    return "Import a meeting recording";
   }
   if (recommendationStore.dictationEngineState === "preparing") {
     return "Preparing speech engine…";
   }
-  return "Start dictation";
+  return "Dictation, capture and meeting import";
 });
+
+function openDictationMenu() {
+  dictationStore.openDialog(
+    recommendationStore.isDictationSttConfigured ? "dictate" : "import",
+  );
+}
 </script>
 
 <style scoped>

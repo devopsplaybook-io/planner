@@ -1,137 +1,111 @@
 <template>
-  <div v-if="meetingImportOpen" class="dialog-backdrop" @click.self="close">
-    <div
-      class="meeting-import"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="meeting-import-title"
-    >
-      <header>
-        <h2 id="meeting-import-title">
-          <i class="bi bi-file-earmark-music" /> Import a meeting
-        </h2>
+  <div class="meeting-import-panel">
+    <template v-if="!job">
+      <p class="hint">
+        Upload a recording (up to {{ maxMinutes }} minutes, {{ maxMb }} MB).
+        It is transcribed in the background with timestamped segments, a
+        summary and the agreed action items. Interactive dictation keeps
+        working while it runs.
+      </p>
+
+      <label class="field">
+        Audio file
+        <input
+          type="file"
+          accept="audio/*,.m4a,.mp3,.wav,.webm,.ogg"
+          :disabled="submitting"
+          @change="onFileSelected"
+        >
+      </label>
+      <p v-if="fileLabel" class="file-label">
+        <i class="bi bi-file-earmark" /> {{ fileLabel }}
+      </p>
+
+      <div class="field-row">
+        <label class="field">
+          Language
+          <select v-model="language" :disabled="submitting">
+            <option v-for="code in languages" :key="code" :value="code">
+              {{ languageLabel(code) }}
+            </option>
+          </select>
+        </label>
+        <label class="field">
+          Default project (optional)
+          <ProjectSelect v-model="projectId" all-label="No project" />
+        </label>
+      </div>
+
+      <label class="checkbox">
+        <input v-model="keepAudio" type="checkbox" :disabled="submitting">
+        Keep the audio for {{ retentionDays }} days (max
+        {{ keepMaxMb }} MB per user)
+      </label>
+
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
+
+      <div class="actions">
+        <button type="button" class="btn-secondary" @click="close">
+          Cancel
+        </button>
         <button
           type="button"
-          class="icon-button"
-          aria-label="Close import"
-          @click="close"
+          class="btn-primary"
+          :disabled="!file || submitting"
+          @click="submit"
         >
-          <i class="bi bi-x-lg" />
+          <i class="bi bi-cloud-upload" />
+          {{ submitting ? `Uploading ${uploadPercent}%` : "Import" }}
         </button>
-      </header>
+      </div>
+      <div v-if="submitting" class="progress">
+        <div class="progress-bar" :style="{ width: `${uploadPercent}%` }" />
+      </div>
+    </template>
 
-      <template v-if="!job">
-        <p class="hint">
-          Upload a recording (up to {{ maxMinutes }} minutes, {{ maxMb }} MB).
-          It is transcribed in the background with timestamped segments, a
-          summary and the agreed action items. Interactive dictation keeps
-          working while it runs.
-        </p>
-
-        <label class="field">
-          Audio file
-          <input
-            type="file"
-            accept="audio/*,.m4a,.mp3,.wav,.webm,.ogg"
-            :disabled="submitting"
-            @change="onFileSelected"
-          >
-        </label>
-        <p v-if="fileLabel" class="file-label">
-          <i class="bi bi-file-earmark" /> {{ fileLabel }}
-        </p>
-
-        <div class="field-row">
-          <label class="field">
-            Language
-            <select v-model="language" :disabled="submitting">
-              <option
-                v-for="code in languages"
-                :key="code"
-                :value="code"
-              >
-                {{ languageLabel(code) }}
-              </option>
-            </select>
-          </label>
-          <label class="field">
-            Default project (optional)
-            <ProjectSelect
-              v-model="projectId"
-              all-label="No project"
-            />
-          </label>
-        </div>
-
-        <label class="checkbox">
-          <input v-model="keepAudio" type="checkbox" :disabled="submitting">
-          Keep the audio for {{ retentionDays }} days (max
-          {{ keepMaxMb }} MB per user)
-        </label>
-
-        <p v-if="error" class="error" role="alert">{{ error }}</p>
-
-        <div class="actions">
-          <button type="button" class="btn-secondary" @click="close">
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="btn-primary"
-            :disabled="!file || submitting"
-            @click="submit"
-          >
-            <i class="bi bi-cloud-upload" />
-            {{ submitting ? `Uploading ${uploadPercent}%` : "Import" }}
-          </button>
-        </div>
-        <div v-if="submitting" class="progress">
-          <div class="progress-bar" :style="{ width: `${uploadPercent}%` }" />
-        </div>
-      </template>
-
-      <template v-else>
-        <p class="stage">
-          <i class="bi bi-hourglass-split" />
-          {{ stageLabel }}
-        </p>
-        <div class="progress" :class="{ indeterminate: !percent }">
-          <div
-            class="progress-bar"
-            :style="percent ? { width: `${percent}%` } : undefined"
-          />
-        </div>
-        <p class="hint">
-          <template v-if="percent">{{ percent }}%</template>
-          <template v-if="etaLabel"> · {{ etaLabel }}</template>
-          <span v-if="job.error" class="error">{{ job.error }}</span>
-        </p>
-        <p class="hint">
-          You can close this dialog: the import keeps running and the inbox
-          badge updates when it is ready.
-        </p>
-        <div class="actions">
-          <button type="button" class="btn-secondary" @click="close">
-            Close
-          </button>
-          <NuxtLink to="/inbox" class="btn-primary" @click="close">
-            Open inbox
-          </NuxtLink>
-        </div>
-      </template>
-    </div>
+    <template v-else>
+      <p class="stage">
+        <i class="bi bi-hourglass-split" />
+        {{ stageLabel }}
+      </p>
+      <div class="progress" :class="{ indeterminate: !percent }">
+        <div
+          class="progress-bar"
+          :style="percent ? { width: `${percent}%` } : undefined"
+        />
+      </div>
+      <p class="hint">
+        <template v-if="percent">{{ percent }}%</template>
+        <template v-if="etaLabel"> · {{ etaLabel }}</template>
+        <span v-if="job.error" class="error">{{ job.error }}</span>
+      </p>
+      <p class="hint">
+        You can close this dialog: the import keeps running and the inbox
+        badge updates when it is ready.
+      </p>
+      <div class="actions">
+        <button type="button" class="btn-secondary" @click="close">
+          Close
+        </button>
+        <NuxtLink to="/inbox" class="btn-primary" @click="close">
+          Open inbox
+        </NuxtLink>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup>
+import { onUnmounted } from "vue";
 import api from "../utils/api";
+
+const emit = defineEmits(["close"]);
 
 const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
 const inboxStore = useInboxStore();
 const { pushToast } = useToasts();
 const router = useRouter();
-const { meetingImportOpen, closeMeetingImport } = useMeetingImport();
 
 const file = ref(null);
 const fileLabel = ref("");
@@ -143,6 +117,9 @@ const uploadPercent = ref(0);
 const error = ref("");
 const job = ref(null);
 const pollingStartedAt = ref(0);
+
+let stopped = false;
+let pollToken = 0;
 
 const languages = computed(() => recommendationStore.dictationLanguages);
 const maxMb = computed(() => recommendationStore.dictationImportMaxMb);
@@ -273,7 +250,8 @@ async function submit() {
 }
 
 async function pollJob(jobId) {
-  while (meetingImportOpen.value) {
+  const token = ++pollToken;
+  while (!stopped && token === pollToken) {
     try {
       const res = await api.get(`/dictation/${jobId}`);
       job.value = res.data;
@@ -285,6 +263,9 @@ async function pollJob(jobId) {
     }
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
+  if (stopped || token !== pollToken) {
+    return;
+  }
   if (job.value?.status === "done") {
     pushToast({
       kind: "success",
@@ -293,7 +274,7 @@ async function pollJob(jobId) {
       url: "/inbox",
     });
     await inboxStore.fetchBadge();
-    close();
+    emit("close");
     router.push("/inbox");
   } else if (job.value?.status === "error") {
     error.value = job.value.error || "The meeting import failed.";
@@ -306,59 +287,27 @@ async function pollJob(jobId) {
 }
 
 function close() {
-  closeMeetingImport();
+  pollToken += 1;
   job.value = null;
   submitting.value = false;
   file.value = null;
   fileLabel.value = "";
   error.value = "";
   uploadPercent.value = 0;
+  emit("close");
 }
+
+onUnmounted(() => {
+  stopped = true;
+  pollToken += 1;
+});
 </script>
 
 <style scoped>
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1100;
-  padding: var(--space-sm);
-}
-
-.meeting-import {
-  width: min(520px, 100%);
-  max-height: 90vh;
-  overflow: auto;
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-lg);
-  padding: var(--space-md);
+.meeting-import-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-}
-
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-h2 {
-  margin: 0;
-  font-size: var(--text-lg);
-}
-
-.icon-button {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: var(--space-2xs);
 }
 
 .hint {

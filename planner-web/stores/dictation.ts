@@ -269,6 +269,8 @@ function persistTargetLanguage(language: string): void {
 export const useDictationStore = defineStore("dictation", {
   state: () => ({
     dialogOpen: false,
+    // Tab selected when the consolidated dictation menu opens
+    dialogTab: "dictate" as "dictate" | "capture" | "import",
     jobId: null as string | null,
     source: null as string | null,
     status: null as DictationStatus | null,
@@ -317,7 +319,8 @@ export const useDictationStore = defineStore("dictation", {
   },
 
   actions: {
-    openDialog() {
+    openDialog(tab: "dictate" | "capture" | "import" = "dictate") {
+      this.dialogTab = tab;
       this.dialogOpen = true;
     },
     closeDialog() {
