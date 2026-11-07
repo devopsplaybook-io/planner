@@ -6,6 +6,9 @@ import {
   type Span,
 } from "@opentelemetry/api";
 import { StandardMeter, StandardTracer } from "@devopsplaybook.io/otel-utils";
+import type { DictationJobSource } from "./DictationTypes";
+
+export type { DictationJobSource };
 
 /**
  * Telemetry for the dictation pipeline. Spans and metrics never carry audio
@@ -13,8 +16,6 @@ import { StandardMeter, StandardTracer } from "@devopsplaybook.io/otel-utils";
  * character counts. Every helper is inert when OpenTelemetry is not
  * configured (the StandardTracer/StandardMeter then use a no-op provider).
  */
-
-export type DictationJobSource = "dictation" | "voice_comment" | "inline";
 
 let tracer: StandardTracer | null = null;
 let jobsCounter: Counter | null = null;
@@ -30,6 +31,13 @@ let actionsResolutionCounter: Counter | null = null;
 let actionsAppliedCounter: Counter | null = null;
 let actionsUndoCounter: Counter | null = null;
 let askCounter: Counter | null = null;
+let importJobsCounter: Counter | null = null;
+let importDuration: Histogram | null = null;
+let chunksCounter: Counter | null = null;
+let chunkDuration: Histogram | null = null;
+let summaryDuration: Histogram | null = null;
+let notificationsSentCounter: Counter | null = null;
+let inboxConversionsCounter: Counter | null = null;
 
 export function DictationTelemetryInit(
   tracerIn: StandardTracer,
@@ -81,6 +89,32 @@ export function DictationTelemetryInit(
   askCounter = meterIn.createCounter("dictation.ask", {
     description: "Read-only question outcomes, by intent",
   });
+  importJobsCounter = meterIn.createCounter("dictation.import.jobs", {
+    description: "Long-form import jobs by final status",
+  });
+  importDuration = meterIn.createHistogram("dictation.import.duration", {
+    description: "Long-form import duration",
+    unit: "ms",
+  });
+  chunksCounter = meterIn.createCounter("dictation.chunks", {
+    description: "Long-form chunks processed, by priority and result",
+  });
+  chunkDuration = meterIn.createHistogram("dictation.chunk.duration", {
+    description: "Long-form chunk transcription duration",
+    unit: "ms",
+  });
+  summaryDuration = meterIn.createHistogram("dictation.summary.duration", {
+    description: "Long-form map-reduce summarization duration",
+    unit: "ms",
+  });
+  notificationsSentCounter = meterIn.createCounter(
+    "dictation.notifications.sent",
+    { description: "Dictation-ready push attempts, by result" },
+  );
+  inboxConversionsCounter = meterIn.createCounter(
+    "dictation.inbox.conversions",
+    { description: "Inbox conversions, by target and result" },
+  );
 }
 
 export interface DictationSpan {
@@ -231,4 +265,46 @@ export function DictationTelemetryRecordAsk(
   outcome: string,
 ): void {
   safe(() => askCounter?.add(1, { intent, outcome }));
+}
+
+// Long-form and inbox metrics: ids, kinds, counts, durations and statuses
+// only. Never transcripts, summaries, titles or file names.
+export function DictationTelemetryRecordImport(
+  status: string,
+  durationMs: number,
+  jobKind: string,
+): void {
+  safe(() => {
+    importJobsCounter?.add(1, { status, kind: jobKind });
+    importDuration?.record(durationMs, { status, kind: jobKind });
+  });
+}
+
+export function DictationTelemetryRecordChunk(
+  priority: string,
+  durationMs: number,
+  outcome: "ok" | "error",
+): void {
+  safe(() => {
+    chunksCounter?.add(1, { priority, outcome });
+    chunkDuration?.record(durationMs, { priority, outcome });
+  });
+}
+
+export function DictationTelemetryRecordSummary(durationMs: number): void {
+  safe(() => summaryDuration?.record(durationMs));
+}
+
+export function DictationTelemetryRecordNotification(
+  result: "sent" | "skipped" | "error",
+  jobKind: string,
+): void {
+  safe(() => notificationsSentCounter?.add(1, { result, kind: jobKind }));
+}
+
+export function DictationTelemetryRecordConversion(
+  target: string,
+  result: "ok" | "error",
+): void {
+  safe(() => inboxConversionsCounter?.add(1, { target, result }));
 }

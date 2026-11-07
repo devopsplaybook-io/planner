@@ -1,6 +1,6 @@
 # Notifications
 
-The application sends Web Push notifications (PWA) to remind users about upcoming task due dates. Notifications are delivered even when the application is closed.
+The application sends Web Push notifications (PWA) to remind users about upcoming task due dates and to tell them when a voice recording has finished processing. Notifications are delivered even when the application is closed; an open page also receives them as in-app toasts.
 
 | Feature               | Description                                                                                                                              |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -15,6 +15,9 @@ The application sends Web Push notifications (PWA) to remind users about upcomin
 | [x] Completed tasks   | Tasks with the final status ("Done") do not trigger notifications                                                                        |
 | [x] Audience          | Reminders go only to the assignees of the task, filtered by project visibility: admins see every project, public projects reach every authenticated user, restricted projects only their members; tasks without assignees remind nobody |
 | [x] Daily digest      | Optional per-user preference: one consolidated notification listing the day's due and overdue tasks instead of one notification per task (Settings → Notifications; applies to every device of the user) |
+| [x] Dictation ready   | When a short dictation or an imported meeting finishes, the owning user receives a "Dictation ready"/"Meeting ready" notification that deep-links to `/inbox?jobId=<id>`. Per-user preference `dictation` (default on) and the global `DICTATION_NOTIFY_READY` kill switch; sent only on success, never on failure |
+| [x] Content-free      | The dictation payload carries only a generic title/body, a tag, the inbox URL and `kind: "dictation"` — never audio, transcript, summary, action items or error text. Push failures are logged and never fail the job |
+| [x] In-app toast      | The service worker forwards every displayed notification to open pages, which show an in-app toast and refresh the inbox badge; the dictation link opens the finished job directly |
 | [x] Open task         | Clicking a notification opens (or focuses) the application on the related task                                                           |
 | [x] Cleanup           | Expired push subscriptions are automatically removed when delivery fails                                                                 |
 | [x] Endpoint validation | A subscription endpoint must be a public HTTPS URL: no `http:`, no credentials, no `localhost`/`.local`/`.internal` host and no loopback, private, link-local or reserved IP literal. Malformed or non-HTTPS endpoints are rejected with 400 on subscribe and re-validated before every send, deleting stored rows that no longer pass. DNS rebinding to an internal hostname remains a residual risk (hostnames are validated by shape, not by resolved address) |
@@ -22,4 +25,4 @@ The application sends Web Push notifications (PWA) to remind users about upcomin
 | [x] Batched lookups   | Push subscriptions are loaded once per run and grouped per user instead of being queried inside the per-recipient loop |
 | [x] No overlap        | A reminder run that fires while the previous one is still running is skipped |
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-07_

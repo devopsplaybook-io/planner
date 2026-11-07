@@ -6,6 +6,14 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 
 Accuracy and trust features sit on top of that pipeline: a per-user and per-project custom vocabulary biases both STT engines, embedded jobs expose per-segment confidence so the review can highlight uncertain words, the review offers a word-level raw-versus-polished comparison with explicit actions, an optional target output language can translate the polished text, and the UI states exactly what is retained.
 
+On top of interactive dictation, Planner captures voice anywhere and processes long recordings:
+
+- **Voice inbox**: a dedicated page lists every dictation, inline job, quick capture and imported meeting with triage actions (review, convert to task/note/comment/checklist, archive, delete) and a navigation badge.
+- **Capture anywhere**: a non-blocking quick capture from the navigation (or `Ctrl/Cmd+Shift+D`), a content-free "dictation ready" push notification plus an in-app toast, a best-effort PWA share target for audio files, and a durable offline queue that uploads when the connection returns.
+- **Long-form meeting import**: a 30 s–2 h audio file is probed, split on silence into bounded chunks, transcribed sequentially with timestamped segments, then summarized by a map-reduce LLM pass into a summary, decisions and action items. The job is durable and resumable, reports progress/ETA, and never starves interactive dictation.
+
+All long-running work is persisted in the database and resumed after a restart. The STT priority scheduler, the per-user single-flight checks and the meeting worker are in-process, so the feature assumes a **single server replica** (no distributed queue is introduced).
+
 ## Functional Requirements
 
 ### Server
@@ -17,11 +25,11 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
   - [x] When dictation is disabled or STT is not configured, the endpoint answers 404 (`Dictation Not Available`) instead of accepting a job that could never be processed.
   - [x] The endpoint is rate-limited per user (hourly voice quota shared with voice-comment transcriptions).
   - [x] It returns 202 with a job id and processes the dictation in the background; only one job may run at a time per user.
-  - [x] An optional `source` field distinguishes the origin of the job: `dictation` (the full dialog, default) or `inline` (a text-surface microphone). Unknown values fall back to `dictation`; the source is persisted with the job and exported only as a telemetry attribute.
+  - [x] An optional `source` field distinguishes the origin of the job: `dictation` (the full dialog, default), `inline` (a text-surface microphone) or `quick_capture` (the capture dialog). Unknown values and `import` (which has its own endpoint) fall back to `dictation`; the source is persisted with the job and exported only as a telemetry attribute. A quick capture may send a client-generated `clientId`, so a retry uploads at most once.
   - [x] An optional `projectId` field scopes the dictation to a visible project: it selects the project vocabulary and is validated with the usual project visibility rules (`404` deletes the temporary audio when the project is missing or invisible).
   - [x] An optional `targetLanguage` field sets the output language of the polish stage: absent → the caller's stored preference; `""`, `none` or `off` → translation explicitly off (overriding the stored preference); an unknown language → `400`.
-  - [x] The single-flight rule is shared by dialog and inline jobs, so starting a second dictation answers 409 with the running job id instead of transcribing two recordings at once.
-  - [x] The audio is deleted immediately after transcription — no audio is ever persisted or logged.
+  - [x] The single-flight rule is shared by dialog, inline and quick-capture jobs, so starting a second dictation answers 409 with the running job id instead of transcribing two recordings at once. Long-form imports use a separate single-flight rule (one processing import per user) and are not blocked by, nor block, interactive dictation.
+  - [x] The audio is deleted immediately after transcription — no short-form audio is ever persisted or logged. Imported meeting audio follows the explicit retention rules described below.
 - [x] Custom vocabulary biases transcription (see below); project terms come first, then personal terms, and are composed into a prompt that is passed to the STT engine for both dialog and inline jobs.
 - [x] Embedded jobs expose per-segment confidence (see below); the job view reports it alongside the transcript without changing the plain text for older clients.
 - [x] The background pipeline runs three stages progressively:
@@ -37,7 +45,7 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
 - [x] `GET /api/dictation/:jobId` returns the job view (`status`, `stage`, `engine`, `language`, `targetLanguage`, `revision`, `result` — including optional `segments` —, `availability`, `timings`, `engineState`, `error`); each user can only see their own jobs.
   - [x] `?wait=1&since=<revision>` long-polls up to 25 s server-side and returns as soon as a newer revision exists (or the timeout elapses), so the client receives progressive updates without a 1.5 s polling burst.
   - [x] Unknown or expired jobs answer 404 with a machine-readable error, which the web client maps to "this dictation expired".
-- [x] `GET /api/dictation/jobs?limit=&source=` lists the user's recent jobs (default 20) for the "recent dictations" panel, optionally filtered by source (`dictation`, `voice_comment` or `inline`).
+- [x] `GET /api/dictation/jobs?limit=&source=` lists the user's recent jobs (default 20) for the "recent dictations" panel, optionally filtered by source (`dictation`, `voice_comment`, `inline`, `quick_capture` or `import`).
 - [x] Failures are graceful: an STT failure is surfaced to the client for retry; a polish or actions LLM failure falls back to the raw transcript and skips action proposals; a recording with no detectable speech after trimming is reported as `NO_SPEECH`.
 - [x] The dictation language can be set per request (`auto` by default, meaning engine-side detection; explicit languages are forwarded to the STT engine); the accepted language list comes from `DICTATION_LANGUAGES`.
 - [x] Per-stage timings (`queueMs`, `sttMs`, `polishMs`, `actionsMs`, `totalMs`, `audioDurationMs`) are stored with the job and exported as OpenTelemetry span attributes and metrics; transcript, audio and prompt content are never exported or logged.
@@ -95,6 +103,50 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
 - [x] Transcripts are corrected by editing the generated comment: there is no separate "edit transcript" API.
 - [x] Voice-comment transcriptions are biased by the task project's vocabulary plus the caller's personal terms; they never translate (the spoken language is kept) so comments stay in the language they were recorded in.
 
+### Server — Voice inbox
+
+- [x] `GET /api/dictation/inbox?limit=&offset=&status=&source=&includeArchived=` lists the caller's non-voice-comment jobs (`dictation`, `inline`, `quick_capture`, `import`), newest first, with `{ items, total, hasMore }`:
+  - [x] `limit` defaults to 20 and is capped at 50; `offset` paginates; `status` accepts `processing`/`done`/`error`; `source` accepts any known source; unknown values answer `400`; `includeArchived=1` includes archived jobs (archived jobs are excluded by default).
+  - [x] Each item carries `id`, `source`, `jobKind`, `status`, `stage`, a plain-text `preview` (bounded, no markdown), `language`, `audioDurationMs`, timestamps, `archivedAt`, conversion state (`convertedType`, `convertedTargetId`), `segmentsDone`/`segmentsTotal`, and an error code — never transcript or audio content beyond the bounded preview.
+  - [x] `voice_comment` jobs stay attached to their task and are excluded from the inbox unless explicitly requested with `source=voice_comment`.
+- [x] `GET /api/dictation/inbox/badge?since=<iso>` returns `{ unread, processing }`: unread counts settled (`done`/`error`) non-archived jobs updated after `since`, processing counts non-archived running jobs. The client stores its last-seen timestamp locally; job state stays server-side.
+- [x] `PATCH /api/dictation/inbox/:jobId` with `{ archived: boolean }` persists or clears `archivedAt` (the archive survives reloads and restarts); `404` for a missing, expired or another user's job.
+- [x] `DELETE /api/dictation/inbox/:jobId` deletes the job and any kept audio, cascading its action rows; it answers `409` while the job is still processing and `404` for a job that is not the caller's.
+- [x] `POST /api/dictation/inbox/:jobId/convert` triages one completed job into `task`, `note`, `comment` or `checklist`:
+  - [x] `task`/`note` require a `projectId` that is visible, not archived and writable (`update` permission); the task gets the caller as assignee and the project's initial status, and a normal task-update entry is recorded.
+  - [x] `comment` appends a regular task comment (`comment` permission); `checklist` merges up to 25 items (200 characters each) into the task checklist (`update` permission).
+  - [x] The text defaults to the polished text, then the raw transcript; the title defaults to the first transcript line (200 characters). Only a `done` job can be converted, and converting twice answers `409`.
+  - [x] The conversion is recorded on the job (`convertedAt`, `convertedType`, `convertedTargetId`) so the inbox shows it and a duplicate request is refused. Visibility and permissions are re-checked server-side; the client never creates the item itself.
+- [x] Jobs have a source-aware TTL: voice comments expire after 1 hour, imports after `DICTATION_MEETING_TTL_DAYS` (default 7 days) and other inbox jobs after `DICTATION_INBOX_TTL_HOURS` (default 168 hours = 7 days). The periodic maintenance job purges expired jobs and their kept audio.
+
+### Server — Capture anywhere
+
+- [x] Quick capture uses the normal `POST /api/dictation` endpoint with `source=quick_capture`; the job is persisted before the response, so closing the app or leaving the page never loses an accepted recording.
+- [x] A client-generated `clientId` (at most 100 characters) makes the upload idempotent: a retry with the same id returns the existing job (202) instead of creating a duplicate, enforced by a per-user unique index. Concurrent duplicates fall back to the same lookup.
+- [x] A completed short or long-form job triggers a content-free "Dictation ready" / "Meeting ready" Web Push notification:
+  - [x] It is sent only when web push is enabled, `DICTATION_NOTIFY_READY` is on, the user's `notificationDictation` preference is on (default on) and the user has subscriptions; a push failure is logged without failing the job.
+  - [x] The payload carries a generic title/body, a `planner-dictation-<id>` tag, the deep link `/inbox?jobId=<id>` and `kind: "dictation"` for the in-app toast/badge refresh — never audio, transcript, summary or error text.
+- [x] `GET/PUT /api/notifications/preferences` expose `{ digest, dictation }`; `PUT` accepts either or both booleans (existing `{ digest }` calls keep working) and answers `400` when neither is present.
+- [x] Failure notifications are not sent; the inbox badge and the failed item remain the source of truth.
+
+### Server — Long-form meeting import
+
+- [x] `POST /api/dictation/import` accepts an authenticated multipart audio upload (`wav`, `mp3`, `m4a`, `webm`/audio MIME types) with optional `language`, `targetLanguage`, `projectId`, `keepAudio` and `clientId`:
+  - [x] Requires dictation enabled and `DICTATION_IMPORT_ENABLED`; otherwise answers 404 (`Dictation Not Available`). It is rate-limited per user (`RATE_LIMIT_DICTATION_IMPORT_MAX`, default 5 per hour).
+  - [x] The body is streamed with `DICTATION_IMPORT_MAX_MB` (default 200 MB) enforced while writing, and the duration is probed with `ffprobe`; an upload beyond `DICTATION_IMPORT_MAX_DURATION_SECONDS` (default 7200 s) answers `400` and the temporary file is deleted. A `projectId` is validated like any other project (visible, not archived, writable) with `404`/`403`.
+  - [x] Only one import may be processing per user: another upload answers `409` with the running job id; a duplicate `clientId` returns the existing job (202).
+  - [x] The audio is moved to durable storage (`DATA_DIR/dictation-audio/<userId>/<jobId>.<ext>`), a `jobKind='meeting'` job is persisted with the meeting TTL and the call answers `202 { jobId }` before processing starts in the background.
+- [x] The durable pipeline runs in explicit stages `queued → chunking → transcribing → summarizing → done` (status stays `processing` until terminal):
+  - [x] Chunking: `ffprobe` reads the duration, `ffmpeg silencedetect` (noise floor -35 dB, minimum silence 600 ms) finds silences, and the plan splits at the silence midpoints closest to a 30 s target, never longer than 45 s, covering the whole file and merging a tiny tail into the previous chunk. The plan is persisted before transcription so a restart resumes it.
+  - [x] Transcribing: each chunk is cut to 16 kHz mono WAV and sent to the configured STT engine with **batch** priority; segment timestamps are offset by the chunk start, appended to `transcriptSegments`, and `segmentsDone`/`revision` are bumped after every chunk. Chunks are enqueued one at a time, so interactive dictation can interleave between them.
+  - [x] A restart resumes from the persisted plan and `segmentsDone` instead of re-transcribing finished chunks; an interrupted import whose audio is missing fails with a content-free error while keeping the partial segments.
+  - [x] Summarizing: a map-reduce LLM pass over bounded ~12,000-character groups produces `{ summary, decisions[], actionItems[] }`, bounded in size (summary 10,000 characters, at most 50 decisions, 25 action items). Summary chunks are independent so long recordings stay within token budgets.
+  - [x] Action items are stored as regular `create_task` action proposals (`actionsAvailable`) scoped to the validated import project, so the existing preview/apply/undo flow and legacy review keep working unchanged; a summary failure fails the job after the transcript is already available.
+- [x] The job view exposes `jobKind`, `segmentsDone`/`segmentsTotal`, `summary`, parsed `decisions`, timestamped `transcriptSegments`, `audioRetained`, `archivedAt` and the conversion state, so a client can render progress and the result.
+- [x] Long-form transcription never starves interactive work: the embedded engine uses a two-lane FIFO scheduler where one worker dequeues the `interactive` lane (dialog, inline, quick capture, voice comments) before the `batch` lane (import chunks). Order is preserved within each lane and a failed transcription does not stall the queue.
+- [x] Retention: imported audio is deleted as soon as the job reaches a terminal state unless the caller (or the stored `keepAudio` preference) asked to keep it. Kept audio is removed after `DICTATION_AUDIO_RETENTION_DAYS` (default 30) and oldest-first while a user's total exceeds `DICTATION_AUDIO_KEEP_MAX_MB` (default 500 MB); the sweep updates `audioDeletedAt` and clears `audioPath`. Deleting an inbox job also deletes its kept audio.
+- [x] Temporary uploads, chunk files and work directories are removed after processing; no audio, transcript, summary, decision or action-item content is logged.
+
 ### Web
 
 - [x] A global dictation button in the navigation opens the dictation dialog (hidden when the feature is disabled, disabled with a tooltip when STT is not configured or the app is offline, or while the engine is preparing).
@@ -118,6 +170,7 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
 - [x] After an apply, the review offers "Undo applied actions" for the latest batch (newest-first) and a "Done" action; a retry of the same request id is idempotent. When the capability is absent, the legacy client-side creation flow is unchanged.
 - [x] When the server advertises `ask`, the review has an Ask tab: a read-only question box with optional project scope, inline dictation for the question, loading/error states and an answer with linked items plus a "Computed from your data" / "Rephrased by AI" source line and a truncation hint. The tab is hidden when the capability is absent.
 - [x] Settings manages custom command phrases: a list with project/template targets and labels, an add form (project or template target, optional comma-separated labels) capped by `phrasesMax`, deletion and inline errors; the editor explains that a phrase applies deterministically before the AI.
+- [x] Settings → Dictation offers **Keep audio after transcription** (default off, persisted through `PUT /api/dictation/preferences`) with the retention duration and storage cap, and Settings → Notifications offers **Dictation ready** (default on), described as a content-free notification that opens the inbox.
 - [x] On confirm, the client applies the selected structured actions server-side, or—when the server does not advertise `applyActions`—creates the confirmed tasks and note via the existing authenticated APIs; proposals are never executed automatically by the server.
 - [x] Failures when creating the selected items or saving the review text as a note are shown in an inline dismissible banner in the dialog (never a browser `alert()`).
 - [x] A "recent dictations" list opens a previous job in the dialog, so an interrupted review can be found again after a reload.
@@ -126,6 +179,30 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
 - [x] A dictation with no usable speech is reported as "no speech detected" with a retry hint instead of an empty review.
 - [x] The web client long-polls the job endpoint (30 s client timeout, `wait=1&since=<revision>`) and falls back to short polling when the long poll fails, instead of a fixed 1.5 s burst.
 - [x] `GET /api/status/config` advertises `dictation.inlineJobs: true` when the server supports inline jobs; older servers leave it absent and the web client keeps every inline microphone hidden.
+
+### Web — Voice inbox, capture and share target
+
+- [x] The navigation has an **Inbox** entry with a badge: it shows the unread count of settled jobs since the user last opened the inbox, or the processing count when nothing is unread (always `9+` above nine). The badge refreshes once a minute, after a push message and after a conversion; opening the inbox clears the unread part while the processing count stays.
+- [x] `/inbox` lists the user's voice items with filter tabs (All, Processing, Ready, Failed, Archived), newest first, 20 per page with a **Load more** action and an "N of total" counter. The list refreshes silently every 5 s only while a processing item is visible and the tab is visible; archived items are filtered client-side in the Archived tab.
+- [x] Each inbox entry shows its source, status, age, language, conversion/archived chips and a two-line preview; a processing entry shows a progress bar. Expanding an entry loads the full detail: summary, decisions, action items and the timestamped transcript (or the plain polished/raw text for short recordings).
+- [x] Entry actions: **Review** opens the job in the dictation dialog, **Convert** opens the conversion dialog, **Archive/Unarchive** persists the state through the server and **Delete** asks for confirmation and is disabled while the job is processing. Failures are surfaced as toasts.
+- [x] The conversion dialog offers task, note, comment and checklist targets; task/note require a project selector, comment/checklist a project-filtered task selector; the title (task/note) and text are editable before the server-side conversion runs. On success the client navigates to the created task or note.
+- [x] A push notification or a `?jobId=` link opens `/inbox` and immediately opens that job in the dictation dialog, so the "Dictation ready"/"Meeting ready" notification leads straight to the finished transcript.
+- [x] **Quick capture** is available from the navigation and with `Ctrl/Cmd+Shift+D` when dictation is enabled and STT is configured. The dialog records (same recorder, timer and auto-stop as dictation, optional language and project), and on stop/save it closes immediately and uploads in the background with `source=quick_capture`; the outcome is reported with a toast ("Saved to your inbox", "Queued offline" or an error). Nothing is lost when the user navigates away or closes the app.
+- [x] **Offline queue**: recordings that cannot be uploaded (offline, unreachable server) are persisted in IndexedDB (`planner-dictation-queue`) and retried automatically at app start, after login and when the browser comes back online; an in-memory fallback keeps the UI working when IndexedDB is unavailable. Limits are **20 recordings / 100 MB**, oldest evicted first; a recording larger than the queue cap alone is refused with an explicit error (never silently dropped).
+  - [x] Each queued item keeps its client-generated `clientId`, so a retry returns the existing job instead of creating a duplicate. A permanent rejection (4xx other than 401/408/429) drops the item with one toast; network errors, 401, 408, 429 and 5xx keep it for a later attempt, preserving order.
+  - [x] The queue is only flushed for a signed-in browser, so recordings queued while signed out belong to the next signed-in user instead of being discarded.
+  - [x] The queued count is visible in the capture UI and the inbox; a successful flush reports how many recordings were uploaded.
+- [x] **PWA share target** (best effort): the manifest registers `POST /share-target` for shared audio (`audio/*`, `video/mp4`). When the service worker is active it reads the shared file, stores it in the same IndexedDB queue and redirects to `/inbox?shared=1`, which flushes the queue and confirms the capture; without worker support the server drains the POST and redirects to `/inbox?shared=unsupported`, which explains that the browser cannot share audio to Planner. Files above the queue cap or without an audio type are not queued. iOS Safari does not support share targets; "Import meeting" remains the fallback.
+
+### Web — Long-form meeting import
+
+- [x] The inbox and the navigation offer **Import meeting** when `DICTATION_IMPORT_ENABLED` is on (the navigation button is disabled offline). The dialog accepts `wav/mp3/m4a/webm`, enforces the configured `importMaxMb` client-side, and lets the user choose the language, an optional project for the action items and whether to keep the audio after transcription.
+- [x] Upload progress is shown while the file is sent; a `409` "an import is already in progress" is surfaced with the running job id instead of failing silently.
+- [x] After the `202`, the dialog follows the job and shows the current stage (queued, chunking, transcribing, summarizing, done), `segmentsDone/segmentsTotal`, the elapsed time and an estimated remaining time derived from the configured real-time factor. It polls every 3 s only while the import is still processing.
+- [x] On completion the dialog closes with a toast and the inbox opens the meeting entry, where the timestamped segments, summary, decisions and action-item proposals can be reviewed and promoted through the existing structured-action cards. A failure keeps the partial transcript and reports a content-free error.
+- [x] The dialog explains that embedded transcription is CPU-bound and can take a long time for a 30–60 minute recording, and that interactive dictation keeps priority over the import.
+- [x] Imported/quick-capture audio is kept only when the user asked for it (globally in Settings or per import); otherwise it is deleted as soon as transcription finishes, and the UI states which applies.
 
 ### Inline dictation
 
@@ -162,6 +239,11 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
 - [x] Structured preview/apply/undo, ask and custom phrases emit counters and spans with metadata only (action type, status, intent, counts); transcript, question, answer and phrase content are never logged or exported.
 - [x] A repeatable benchmark harness (`planner-server/src/dictation/bench/BenchStt.ts`, `npm run bench:stt`) measures RTF, p50/p95 latency, peak RSS and optional WER for the production flags; results and model selection are documented in [`docs/dictation-benchmark.md`](../dictation-benchmark.md).
 - [x] The reference deployment runs the embedded engine with 2 CPU / 2 GiB limits (250m / 512Mi requests), sized from the benchmark.
+- [x] Inbox, import, chunking, summary and notification work emit content-free spans and counters (job id, source, kind, status, counts, durations, priority, chunk result, push result) and never export transcripts, summaries, decisions, action items, titles or file names.
+- [x] The feature is additive in `init-0029.sql` (SQLite and PostgreSQL): job kind, client id, archive state, meeting segments/summary/decisions/chunk progress, durable audio/retention, conversion state and the two user preferences; indexes back the inbox listing, client-id idempotency and kind/status recovery. Older servers ignore the new columns, so a rollback works once in-flight imports are drained.
+- [x] Single-replica assumption is explicit: the STT two-lane scheduler, the per-user single-flight checks and the meeting worker are in-process. Jobs are durable and resume after a restart, but a multi-replica deployment would need a shared queue and coordination (out of scope).
+- [x] Tests cover chunk-plan splitting/coverage, silence parsing, progress/revision persistence, restart resume, summary bounds, import limits and idempotency, inbox filters/pagination/permissions/archive/delete/conversion, badge counts, notification gating and content-free payloads, the interactive-before-batch scheduler, and the IndexedDB queue bounds/flush plus the inbox store on the web side. Telemetry helpers only accept scalar metadata (ids, kinds, statuses, counts, durations), so transcript or audio content cannot be attached to a span or metric.
+- [ ] Diarization and real-time streaming during a meeting are out of scope; the timestamped segment shape leaves room for a future speaker field. Sharing transcripts with other users is out of scope.
 - [ ] Lazy action proposals (deferring stage C until the review is opened) are deferred: progressive raw → polished → actions delivery already keeps actions off the critical path.
 
 ## Implementation Status

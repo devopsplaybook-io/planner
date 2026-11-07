@@ -31,12 +31,58 @@
           <span class="nav-label">Dictation</span>
         </button>
       </li>
+      <li v-if="captureAvailable" class="dictation-entry">
+        <button
+          class="dictation-button"
+          title="Quick capture"
+          aria-label="Quick capture"
+          @click="openQuickCapture()"
+        >
+          <i class="bi bi-lightning-charge"></i>
+          <span class="nav-label">Capture</span>
+        </button>
+      </li>
+      <li v-if="importAvailable" class="dictation-entry">
+        <button
+          class="dictation-button"
+          :disabled="!online"
+          :title="
+            online
+              ? 'Import a meeting recording'
+              : 'Importing needs a network connection'
+          "
+          aria-label="Import a meeting recording"
+          @click="openMeetingImport()"
+        >
+          <i class="bi bi-file-earmark-music"></i>
+          <span class="nav-label">Import</span>
+        </button>
+      </li>
     </ul>
     <ul class="menu-links">
       <li>
         <NuxtLink to="/" :class="activeRoute == '/' ? 'active' : 'inactive'"
           ><i class="bi bi-speedometer2"></i>
           <span class="nav-label">Dashboard</span></NuxtLink
+        >
+      </li>
+      <li>
+        <NuxtLink
+          to="/inbox"
+          :class="activeRoute == '/inbox' ? 'active' : 'inactive'"
+          :title="
+            processingCount
+              ? `${processingCount} recording(s) processing`
+              : 'Inbox'
+          "
+          ><i class="bi bi-inbox"></i>
+          <span class="nav-label">Inbox</span>
+          <span
+            v-if="badgeCount || processingCount"
+            class="nav-badge"
+            :class="{ 'nav-badge--processing': !badgeCount && processingCount }"
+            >{{ badgeCount > 9 ? "9+" : badgeCount || processingCount }}</span
+          ></NuxtLink
         >
       </li>
       <li>
@@ -87,7 +133,10 @@
 const authStore = useAuthStore();
 const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
+const inboxStore = useInboxStore();
 const commandPaletteStore = useCommandPaletteStore();
+const { openQuickCapture } = useQuickCapture();
+const { openMeetingImport } = useMeetingImport();
 const route = useRoute();
 
 const paletteHint = computed(() => {
@@ -108,8 +157,19 @@ onMounted(() => {
   if (authStore.isAuthenticated) {
     recommendationStore.fetchConfig();
     dictationStore.fetchPreferences().catch(() => undefined);
+    inboxStore.fetchBadge().catch(() => undefined);
   }
 });
+
+// Unread/processing badge: refreshed periodically and when the tab returns
+useRegularRefresh(() => {
+  if (authStore.isAuthenticated) {
+    return inboxStore.fetchBadge();
+  }
+}, 60 * 1000);
+
+const badgeCount = computed(() => inboxStore.badge.unread);
+const processingCount = computed(() => inboxStore.badge.processing);
 
 const online = ref(typeof navigator === "undefined" || navigator.onLine);
 function updateOnlineStatus() {
@@ -126,6 +186,15 @@ onUnmounted(() => {
 
 const dictationAvailable = computed(
   () => authStore.isAuthenticated && recommendationStore.isDictationEnabled,
+);
+const captureAvailable = computed(
+  () => authStore.isAuthenticated && recommendationStore.isDictationEnabled,
+);
+const importAvailable = computed(
+  () =>
+    authStore.isAuthenticated &&
+    recommendationStore.isDictationEnabled &&
+    recommendationStore.dictationImportEnabled,
 );
 const dictationDisabled = computed(
   () => !recommendationStore.isDictationSttConfigured || !online.value,
@@ -226,6 +295,33 @@ const dictationTooltip = computed(() => {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
+}
+
+.nav-badge {
+  min-width: 1.4em;
+  padding: 0 0.35em;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-on-primary, #fff);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.nav-badge--processing {
+  background: var(--color-text-muted);
+  animation: nav-badge-pulse 1.4s infinite ease-in-out;
+}
+
+@keyframes nav-badge-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Hide brand name on mobile and intermediate screens */

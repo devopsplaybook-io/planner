@@ -28,7 +28,10 @@ import { RecommendationInit } from "./recommendation/Recommendation";
 import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
 import { TaskImproveInit } from "./tasks/TaskImprove";
 import { DictationInit } from "./dictation/Dictation";
+import { DictationLongformInit } from "./dictation/DictationLongform";
 import { DictationRoutes } from "./dictation/DictationRoutes";
+import { DictationInboxRoutes } from "./dictation/DictationInboxRoutes";
+import { DictationImportRoutes } from "./dictation/DictationImportRoutes";
 import { DictationVocabularyRoutes } from "./dictation/DictationVocabularyRoutes";
 import { DictationPhrasesRoutes } from "./dictation/DictationPhrasesRoutes";
 import { DictationTelemetryInit } from "./dictation/DictationTelemetry";
@@ -99,6 +102,7 @@ Promise.resolve()
     await StatusesCatalogSeedIfEmpty();
     await RecommendationInit(config);
     await TaskImproveInit(config);
+    DictationLongformInit(config);
     await DictationInit(config);
     await TaskVoiceCommentsInit(config);
     await NotificationsInit(config);
@@ -235,6 +239,18 @@ Promise.resolve()
           applyActions: true,
           ask: true,
           phrasesMax: config.DICTATION_PHRASES_MAX,
+          importEnabled:
+            config.DICTATION_ENABLED && config.DICTATION_IMPORT_ENABLED,
+          importMaxMb: config.DICTATION_IMPORT_MAX_MB,
+          importMaxDurationSeconds:
+            config.DICTATION_IMPORT_MAX_DURATION_SECONDS,
+          segmentSeconds: config.DICTATION_IMPORT_SEGMENT_SECONDS,
+          inboxTtlHours: config.DICTATION_INBOX_TTL_HOURS,
+          meetingTtlDays: config.DICTATION_MEETING_TTL_DAYS,
+          keepAudioDefault: false,
+          audioKeepMaxMb: config.DICTATION_AUDIO_KEEP_MAX_MB,
+          audioRetentionDays: config.DICTATION_AUDIO_RETENTION_DAYS,
+          notificationsSupported: config.DICTATION_NOTIFY_READY,
         },
       });
     });
@@ -323,6 +339,22 @@ Promise.resolve()
 
     await fastify.register(
       async (instance) => {
+        await new DictationInboxRoutes(
+          config.RATE_LIMIT_DICTATION_MAX,
+        ).getRoutes(instance);
+      },
+      { prefix: "/api/dictation/inbox" },
+    );
+
+    await fastify.register(
+      async (instance) => {
+        await new DictationImportRoutes(config).getRoutes(instance);
+      },
+      { prefix: "/api/dictation/import" },
+    );
+
+    await fastify.register(
+      async (instance) => {
         await new DictationRoutes(config).getRoutes(instance);
       },
       { prefix: "/api/dictation" },
@@ -348,6 +380,15 @@ Promise.resolve()
       },
       { prefix: "/api/task-templates" },
     );
+
+    // PWA share target: a shared audio file lands on the inbox, where the
+    // client picks it up (browsers that support share-target POST files)
+    const shareTargetRedirect = (
+      req: { query?: unknown },
+      res: { redirect: (url: string, code: number) => unknown },
+    ) => res.redirect("/inbox", 303);
+    fastify.get("/share-target", shareTargetRedirect);
+    fastify.post("/share-target", shareTargetRedirect);
 
     fastify.register(fastifyStatic, {
       root: path.join(__dirname, "../web"),

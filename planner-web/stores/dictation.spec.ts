@@ -457,7 +457,11 @@ describe("dictation store helpers", () => {
 
     const result = await store.uploadJob(new Blob(["audio"]), "audio/webm");
 
-    expect(result).toEqual({ error: "Invalid: an audio file is expected" });
+    expect(result).toEqual({
+      error: "Invalid: an audio file is expected",
+      offline: false,
+      status: 400,
+    });
   });
 
   it("should fall back to a generic upload error", async () => {

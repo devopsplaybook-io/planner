@@ -9,15 +9,26 @@ import {
 } from "../utils/DbUtils";
 import {
   DictationDataCreate,
+  DictationDataCountUnreadSince,
+  DictationDataDelete,
   DictationDataDeleteExpired,
   DictationDataGet,
+  DictationDataGetByClientId,
   DictationDataGetForUser,
   DictationDataGetInFlightForUser,
   DictationDataGetLatestByAttachment,
+  DictationDataListInbox,
+  DictationDataListKeptAudio,
   DictationDataListRecent,
   DictationDataListResumable,
+  DictationDataListResumableMeeting,
+  DictationDataMarkConverted,
   DictationDataMarkInterruptedBeforeStt,
+  DictationDataSetArchived,
+  DictationDataSetAudioState,
+  DictationDataSetSummaryResult,
   DictationDataUpdate,
+  DictationDataUpdateProgress,
 } from "./DictationData";
 
 describe("DictationData (sqlite)", () => {
@@ -62,6 +73,12 @@ describe("DictationData (sqlite)", () => {
     db.exec(
       await fs.readFile(
         path.join(__dirname, "..", "..", "sql", "sqlite", "init-0027.sql"),
+        "utf-8",
+      ),
+    );
+    db.exec(
+      await fs.readFile(
+        path.join(__dirname, "..", "..", "sql", "sqlite", "init-0029.sql"),
         "utf-8",
       ),
     );
@@ -326,5 +343,168 @@ describe("DictationData (sqlite)", () => {
       ),
     ).resolves.toBeUndefined();
     expect((await DictationDataGet("job-second"))?.status).toBe("processing");
+  });
+
+  it("should persist inbox and meeting fields with defaults", async () => {
+    await DictationDataCreate(
+      createInput({
+        id: "job-meeting",
+        source: "import",
+        jobKind: "meeting",
+        clientId: "client-1",
+        projectId: "project-1",
+        stage: "queued",
+        audioPath: "/tmp/audio.wav",
+        audioRetained: true,
+      }),
+    );
+
+    const job = await DictationDataGet("job-meeting");
+    expect(job).toMatchObject({
+      source: "import",
+      jobKind: "meeting",
+      clientId: "client-1",
+      projectId: "project-1",
+      audioPath: "/tmp/audio.wav",
+      audioRetained: true,
+      archivedAt: null,
+      transcriptSegments: null,
+      summary: null,
+      decisions: [],
+      chunkPlan: null,
+      segmentsDone: 0,
+      segmentsTotal: 0,
+      convertedAt: null,
+    });
+    expect(await DictationDataGetByClientId("user-1", "client-1")).toMatchObject({
+      id: "job-meeting",
+    });
+    expect(
+      await DictationDataGetByClientId("user-2", "client-1"),
+    ).toBeNull();
+  });
+
+  it("should reject a duplicate clientId per user", async () => {
+    await DictationDataCreate(createInput({ id: "job-1", clientId: "dup" }));
+    await expect(
+      DictationDataCreate(createInput({ id: "job-2", clientId: "dup" })),
+    ).rejects.toBeTruthy();
+  });
+
+  it("should archive, list and count inbox entries", async () => {
+    await DictationDataCreate(
+      createInput({ id: "job-open", source: "quick_capture" }),
+    );
+    await DictationDataCreate(
+      createInput({ id: "job-done", status: "done", stage: null }),
+    );
+    await DictationDataCreate(
+      createInput({
+        id: "job-voice",
+        source: "voice_comment",
+        status: "done",
+        stage: null,
+      }),
+    );
+    await DictationDataSetArchived(
+      "job-done",
+      "user-1",
+      new Date().toISOString(),
+    );
+
+    const visible = await DictationDataListInbox("user-1", { limit: 10 });
+    expect(visible.total).toBe(1);
+    expect(visible.jobs.map((job) => job.id)).toEqual(["job-open"]);
+
+    const withArchived = await DictationDataListInbox("user-1", {
+      limit: 10,
+      includeArchived: true,
+    });
+    expect(withArchived.total).toBe(2);
+
+    const page = await DictationDataListInbox("user-1", {
+      limit: 1,
+      offset: 1,
+      includeArchived: true,
+    });
+    expect(page.jobs).toHaveLength(1);
+
+    const counts = await DictationDataCountUnreadSince(
+      "user-1",
+      new Date(0).toISOString(),
+    );
+    expect(counts).toEqual({ unread: 0, processing: 1 });
+  });
+
+  it("should persist progress, transcript segments and the summary", async () => {
+    await DictationDataCreate(
+      createInput({ id: "job-meeting", source: "import", jobKind: "meeting" }),
+    );
+
+    await DictationDataUpdateProgress("job-meeting", {
+      segmentsDone: 2,
+      segmentsTotal: 4,
+      transcriptSegments: [
+        { fromMs: 0, toMs: 1000, text: "hello" },
+        { fromMs: 1000, toMs: 2000, text: "world" },
+      ],
+      stage: "transcribing",
+    });
+
+    let job = await DictationDataGet("job-meeting");
+    expect(job).toMatchObject({
+      segmentsDone: 2,
+      segmentsTotal: 4,
+      stage: "transcribing",
+      revision: 1,
+    });
+    expect(job?.transcriptSegments).toHaveLength(2);
+
+    await DictationDataSetSummaryResult("job-meeting", {
+      summary: "A short meeting",
+      decisions: ["Ship it"],
+      actions: [{ type: "create_task", title: "Ship", description: "" }],
+    });
+    job = await DictationDataGet("job-meeting");
+    expect(job?.summary).toBe("A short meeting");
+    expect(job?.decisions).toEqual(["Ship it"]);
+    expect(job?.actionsAvailable).toBe(true);
+
+    await expect(
+      DictationDataListResumableMeeting(),
+    ).resolves.toMatchObject([{ id: "job-meeting" }]);
+    await DictationDataMarkConverted("job-meeting", "task", "task-9");
+    expect((await DictationDataGet("job-meeting"))?.convertedTargetId).toBe(
+      "task-9",
+    );
+  });
+
+  it("should track kept audio and delete a settled job", async () => {
+    await DictationDataCreate(
+      createInput({
+        id: "job-audio",
+        status: "done",
+        stage: null,
+        audioPath: "/data/a.wav",
+        audioRetained: true,
+      }),
+    );
+    await DictationDataCreate(
+      createInput({ id: "job-b", source: "import", jobKind: "meeting" }),
+    );
+
+    expect(
+      (await DictationDataListKeptAudio("user-1")).map((job) => job.id),
+    ).toEqual(["job-audio"]);
+
+    await DictationDataSetAudioState("job-audio", {
+      audioPath: null,
+      audioDeletedAt: new Date().toISOString(),
+    });
+    expect((await DictationDataGet("job-audio"))?.audioPath).toBeNull();
+
+    await expect(DictationDataDelete("job-b", "user-1")).resolves.toBe(1);
+    expect(await DictationDataGet("job-b")).toBeNull();
+    await expect(DictationDataDelete("job-b", "user-1")).resolves.toBe(0);
   });
 });

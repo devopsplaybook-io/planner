@@ -5,7 +5,7 @@ import webpush from "web-push";
 import { Config } from "../Config";
 import { Task } from "../model/Task";
 import { DbUtilsGetType, DbUtilsQuerySQL } from "../utils/DbUtils";
-import { UsersDataList, UsersDataListNotificationDigestOptIn } from "../users/UsersData";
+import { UsersDataGet, UsersDataList, UsersDataListNotificationDigestOptIn } from "../users/UsersData";
 import {
   NotificationsDataDeleteSubscriptionByEndpoint,
   NotificationsDataListAssigneesByTaskIds,
@@ -417,6 +417,61 @@ export async function NotificationsTaskUpdated(
     logger.error(
       `[Notifications] Failed to send task update notifications: ${(error as Error).message}`,
     );
+  }
+}
+
+// ── Dictation ready notifications ────────────────────────────────────────────
+
+/**
+ * Informs the user that a dictation or long-form job finished. Content-free:
+ * the payload never includes audio, transcript, summary or error text. The
+ * kill switch, the feature availability and the user's preference are all
+ * required; failures are logged, never propagated to the job.
+ */
+export async function NotificationsDictationReady(
+  userId: string,
+  job: { id: string; jobKind: "short" | "meeting" },
+): Promise<boolean> {
+  if (
+    !NotificationsIsEnabled() ||
+    !config?.DICTATION_NOTIFY_READY ||
+    !job?.id
+  ) {
+    return false;
+  }
+  try {
+    const user = await UsersDataGet(userId);
+    if (!user || !user.notificationDictation) {
+      return false;
+    }
+    const subscriptions =
+      await NotificationsDataListSubscriptionsByUser(userId);
+    if (subscriptions.length === 0) {
+      return false;
+    }
+    const isMeeting = job.jobKind === "meeting";
+    const payload = JSON.stringify({
+      title: isMeeting ? "Meeting ready" : "Dictation ready",
+      body: isMeeting
+        ? "Open the inbox to review the summary"
+        : "Open the inbox to review",
+      url: `/inbox?jobId=${encodeURIComponent(job.id)}`,
+      tag: `planner-dictation-${job.id}`,
+      // Lets an open page show an in-app toast and refresh the inbox badge
+      kind: "dictation",
+    });
+    for (const subscription of subscriptions) {
+      await sendPushToSubscription(subscription, payload);
+    }
+    logger.info(
+      `[Notifications] Sent dictation-ready push for job ${job.id} (${job.jobKind})`,
+    );
+    return true;
+  } catch (error) {
+    logger.error(
+      `[Notifications] Failed to send dictation-ready notification: ${(error as Error).message}`,
+    );
+    return false;
   }
 }
 

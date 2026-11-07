@@ -215,7 +215,7 @@ describe("DictationRoutes", () => {
       "audio/webm",
       "fr",
       "dictation",
-      { prompt: null, hotwordsCount: 0, targetLanguage: null },
+      { prompt: null, hotwordsCount: 0, targetLanguage: null, clientId: null },
     );
   });
 
@@ -241,7 +241,7 @@ describe("DictationRoutes", () => {
       "audio/webm",
       "en",
       "inline",
-      { prompt: null, hotwordsCount: 0, targetLanguage: null },
+      { prompt: null, hotwordsCount: 0, targetLanguage: null, clientId: null },
     );
   });
 
@@ -267,7 +267,7 @@ describe("DictationRoutes", () => {
       "audio/webm",
       null,
       "dictation",
-      { prompt: null, hotwordsCount: 0, targetLanguage: null },
+      { prompt: null, hotwordsCount: 0, targetLanguage: null, clientId: null },
     );
   });
 
@@ -293,7 +293,7 @@ describe("DictationRoutes", () => {
       "audio/webm",
       "en",
       "dictation",
-      { prompt: null, hotwordsCount: 0, targetLanguage: null },
+      { prompt: null, hotwordsCount: 0, targetLanguage: null, clientId: null },
     );
     config.DICTATION_LANGUAGE = "auto";
   });
@@ -468,13 +468,13 @@ describe("DictationRoutes", () => {
     });
     const res = await app.inject({ method: "GET", url: "/preferences" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ targetLanguage: "de" });
+    expect(res.json()).toEqual({ targetLanguage: "de", keepAudio: false });
   });
 
   it("should default the translation preference to off", async () => {
     const res = await app.inject({ method: "GET", url: "/preferences" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ targetLanguage: null });
+    expect(res.json()).toEqual({ targetLanguage: null, keepAudio: false });
   });
 
   it("should store the translation preference", async () => {

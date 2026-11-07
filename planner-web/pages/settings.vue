@@ -81,6 +81,39 @@
           {{ translationError }}
         </p>
 
+        <div class="setting-row">
+          <span class="setting-label"
+            ><i class="bi bi-hdd" /> Keep audio</span
+          >
+          <button
+            class="btn-theme"
+            :disabled="keepAudioSaving"
+            @click="toggleKeepAudio"
+          >
+            <i
+              :class="
+                dictationStore.keepAudio
+                  ? 'bi bi-toggle-on'
+                  : 'bi bi-toggle-off'
+              "
+            />
+            {{ dictationStore.keepAudio ? "On" : "Off" }}
+          </button>
+        </div>
+        <p class="setting-hint">
+          <i class="bi bi-shield-lock" />
+          Off by default: audio is deleted right after transcription. When on,
+          imported meeting and quick-capture audio is kept for
+          {{ audioRetentionDays }} days, up to {{ audioKeepMaxMb }} MB per user.
+          Applies to every signed-in device.
+        </p>
+        <p
+          v-if="audioPreferenceError"
+          class="notification-status notification-status--error"
+        >
+          {{ audioPreferenceError }}
+        </p>
+
         <h3 class="setting-subtitle">Custom vocabulary</h3>
         <p class="setting-hint">
           <i class="bi bi-info-circle" />
@@ -103,8 +136,9 @@
 
         <p class="setting-hint retention-hint">
           <i class="bi bi-shield-lock" />
-          Dictation audio is deleted right after transcription. Voice-comment
-          audio is kept as a task attachment and can be deleted with it.
+          Kept audio (when enabled above) is removed automatically after the
+          retention period. Voice-comment audio is kept as a task attachment
+          and can be deleted with it.
         </p>
       </section>
 
@@ -148,11 +182,32 @@
             {{ notificationsStore.digest ? "On" : "Off" }}
           </button>
         </div>
+        <div class="setting-row">
+          <span class="setting-label"
+            ><i class="bi bi-mic" /> Dictation ready</span
+          >
+          <button
+            class="btn-theme"
+            :disabled="!notificationsStore.serverEnabled"
+            @click="toggleDictationNotifications"
+          >
+            <i
+              :class="
+                notificationsStore.dictation
+                  ? 'bi bi-toggle-on'
+                  : 'bi bi-toggle-off'
+              "
+            />
+            {{ notificationsStore.dictation ? "On" : "Off" }}
+          </button>
+        </div>
         <p class="setting-hint">
           <i class="bi bi-info-circle" />
           Group the day's task reminders into a single daily notification
           instead of one notification per task. Applies to every signed-in
-          device.
+          device. "Dictation ready" pushes a content-free notice when a
+          dictation or meeting finishes; the transcript itself is never sent
+          in a notification.
         </p>
         <p
           class="notification-status"
@@ -377,6 +432,24 @@ const translationLanguages = computed(
 );
 
 const translationError = ref("");
+const audioPreferenceError = ref("");
+const audioRetentionDays = computed(
+  () => recommendationStore.dictationAudioRetentionDays,
+);
+const audioKeepMaxMb = computed(
+  () => recommendationStore.dictationAudioKeepMaxMb,
+);
+const keepAudioSaving = ref(false);
+
+async function toggleKeepAudio() {
+  audioPreferenceError.value = "";
+  keepAudioSaving.value = true;
+  const res = await dictationStore.setKeepAudio(!dictationStore.keepAudio);
+  keepAudioSaving.value = false;
+  if (res?.error) {
+    audioPreferenceError.value = res.error;
+  }
+}
 const translateTo = computed({
   get: () => dictationStore.targetLanguage || "",
   set: async (value) => {
@@ -431,6 +504,10 @@ async function toggleNotifications() {
 
 async function toggleDigest() {
   await notificationsStore.setDigest(!notificationsStore.digest);
+}
+
+async function toggleDictationNotifications() {
+  await notificationsStore.setDictation(!notificationsStore.dictation);
 }
 
 const themeLabel = computed(() => {

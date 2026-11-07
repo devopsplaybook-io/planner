@@ -13,8 +13,13 @@ It is installable on mobile and desktop devices and works offline.
 
 - [x] There is a **left side menu** to switch between views
 - [x] On mobile, the menu auto-collapses to save screen space
-- [x] The menu provides access to: Tasks, Notes, Calendar, Kanban, Update Feed, and Settings (projects are managed by admins in the Settings admin tabs, see [ADMIN.md](ADMIN.md))
+- [x] The menu provides access to: Dashboard, Inbox, Tasks, Notes, Calendar, Kanban, Update Feed, and Settings (projects are managed by admins in the Settings admin tabs, see [ADMIN.md](ADMIN.md))
 - [x] A global dictation button opens the shared dictation dialog when the dictation feature is enabled (see [DICTATION.md](DICTATION.md))
+- [x] An **Inbox** entry with a badge (unread settled voice jobs, or the processing count when nothing is unread) opens the voice inbox; **Capture** opens quick capture and **Import** opens the meeting import dialog when the respective features are enabled. The capture shortcut `Ctrl/Cmd+Shift+D` works from anywhere and stays disabled when dictation is not configured
+- [x] The `/inbox` page lists voice items with filter tabs (All, Processing, Ready, Failed, Archived), pagination, per-entry archive/delete/convert actions, a deep link that opens a specific job, and a silent refresh only while something is processing
+- [x] Quick capture closes as soon as the recording is saved and continues in the background; an offline recording is queued locally and uploaded on reconnect with a visible queued state (limits: 20 recordings / 100 MB, per device)
+- [x] The PWA manifest registers an audio share target: supported browsers can share an audio file to the installed app and land in the inbox (best effort; iOS Safari has no share-target support and the UI explains the fallback)
+- [x] Settings → Profile exposes the dictation retention choice ("Keep audio after transcription") and the "Dictation ready" notification toggle, next to the existing dictation and notification preferences
 - [x] On mobile, the menu's buttons (dictation and the command-palette search) get the same comfortable touch-target padding as the menu links, so taps near the icon always land on the button
 - [x] The Settings entry in the menu uses a gear icon, consistent with the other navigation icons
 - [x] Offline support (PWA configured with service worker, cache strategies)
@@ -79,4 +84,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-07_

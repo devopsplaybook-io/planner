@@ -46,6 +46,8 @@ export const useNotificationsStore = defineStore("notifications", {
     loading: false,
     // Daily digest preference, persisted server-side (applies to every device)
     digest: false,
+    // Push when a dictation/meeting job is ready (content-free), server-side
+    dictation: true,
     // Message of the last failed enable/disable attempt, shown to the user
     lastError: "",
   }),
@@ -74,6 +76,7 @@ export const useNotificationsStore = defineStore("notifications", {
       try {
         const res = await api.get("/notifications/preferences");
         this.digest = !!res.data.digest;
+        this.dictation = res.data.dictation !== false;
       } catch {
         this.digest = false;
       }
@@ -158,6 +161,20 @@ export const useNotificationsStore = defineStore("notifications", {
         await api.put("/notifications/preferences", { digest: value });
       } catch {
         this.digest = previous;
+      }
+    },
+
+    /**
+     * Toggles the content-free "dictation ready" push. Optimistic, with the
+     * previous value restored when the save fails.
+     */
+    async setDictation(value: boolean) {
+      const previous = this.dictation;
+      this.dictation = value;
+      try {
+        await api.put("/notifications/preferences", { dictation: value });
+      } catch {
+        this.dictation = previous;
       }
     },
 

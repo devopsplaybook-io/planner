@@ -97,6 +97,42 @@ export async function UsersDataSetDictationTargetLanguage(
   );
 }
 
+/** Toggles the "dictation ready" push without logging the user out. */
+export async function UsersDataSetNotificationDictation(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  if (DbUtilsGetType() === "postgres") {
+    await DbUtilsExecSQL(SQL_QUERIES.SET_NOTIFICATION_DICTATION.postgres, [
+      enabled,
+      id,
+    ]);
+  } else {
+    await DbUtilsExecSQL(SQL_QUERIES.SET_NOTIFICATION_DICTATION.sqlite, [
+      enabled ? 1 : 0,
+      id,
+    ]);
+  }
+}
+
+/** Stores the "keep audio after transcription" preference of a user. */
+export async function UsersDataSetDictationKeepAudio(
+  id: string,
+  keepAudio: boolean,
+): Promise<void> {
+  if (DbUtilsGetType() === "postgres") {
+    await DbUtilsExecSQL(SQL_QUERIES.SET_DICTATION_KEEP_AUDIO.postgres, [
+      keepAudio,
+      id,
+    ]);
+  } else {
+    await DbUtilsExecSQL(SQL_QUERIES.SET_DICTATION_KEEP_AUDIO.sqlite, [
+      keepAudio ? 1 : 0,
+      id,
+    ]);
+  }
+}
+
 /** Ids of the users who opted in to the daily notification digest. */
 export async function UsersDataListNotificationDigestOptIn(): Promise<string[]> {
   const rows = await DbUtilsQuerySQL(
@@ -173,6 +209,14 @@ const SQL_QUERIES = {
     postgres:
       'UPDATE users SET "dictationTargetLanguage" = $1 WHERE "id" = $2',
     sqlite: "UPDATE users SET dictationTargetLanguage = ? WHERE id = ?",
+  },
+  SET_NOTIFICATION_DICTATION: {
+    postgres: 'UPDATE users SET "notificationDictation" = $1 WHERE "id" = $2',
+    sqlite: "UPDATE users SET notificationDictation = ? WHERE id = ?",
+  },
+  SET_DICTATION_KEEP_AUDIO: {
+    postgres: 'UPDATE users SET "dictationKeepAudio" = $1 WHERE "id" = $2',
+    sqlite: "UPDATE users SET dictationKeepAudio = ? WHERE id = ?",
   },
   LIST_DIGEST_OPT_IN: {
     postgres: 'SELECT "id" FROM users WHERE "notificationDigest" = TRUE',

@@ -73,7 +73,7 @@ describe("NotificationsRoutes preferences", () => {
     const res = await app.inject({ method: "GET", url: "/preferences" });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ digest: true });
+    expect(res.json()).toEqual({ digest: true, dictation: true });
     expect(UsersDataGet).toHaveBeenCalledWith("user-1");
   });
 
@@ -83,7 +83,7 @@ describe("NotificationsRoutes preferences", () => {
     const res = await app.inject({ method: "GET", url: "/preferences" });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ digest: false });
+    expect(res.json()).toEqual({ digest: false, dictation: true });
   });
 
   // ==================== PUT PREFERENCES ====================
