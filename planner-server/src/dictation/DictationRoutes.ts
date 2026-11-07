@@ -20,9 +20,28 @@ import {
   DictationStartJob,
   DictationWaitForJob,
 } from "./Dictation";
-import { DictationJobSource } from "./DictationData";
+import {
+  DictationDataGetForUser,
+  DictationJobRecord,
+  DictationJobSource,
+} from "./DictationData";
 import { DictationVocabularyResolveForPrompt } from "./DictationVocabularyData";
 import { ComposeHotwordPrompt } from "./DictationHotwords";
+import {
+  BuildActionPreviews,
+  LoadDictationResolutionContext,
+} from "./DictationResolution";
+import {
+  ApplyDictationActions,
+  NormalizeActionSelections,
+  ParseStoredActions,
+  UndoDictationActions,
+} from "./DictationActionApply";
+import { DictationActionDataListForJob } from "./DictationActionData";
+import {
+  DICTATION_ASK_QUESTION_MAX_LENGTH,
+  DictationAskQuestion,
+} from "./DictationAsk";
 
 /**
  * Resolves the STT language for an upload: the language field sent by the
@@ -83,6 +102,18 @@ export class DictationRoutes {
     }
     const user = await UsersDataGet(userId);
     return this.normalizeTargetLanguage(user?.dictationTargetLanguage ?? null);
+  }
+
+  /** Owned, non-expired job record; null makes the route answer 404. */
+  private async getOwnedJob(
+    userId: string,
+    jobId: string,
+  ): Promise<DictationJobRecord | null> {
+    const record = await DictationDataGetForUser(userId, jobId);
+    if (!record || Date.parse(record.expiresAt) < Date.now()) {
+      return null;
+    }
+    return record;
   }
 
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
@@ -266,6 +297,63 @@ export class DictationRoutes {
       },
     );
 
+    interface AskBody extends RequestGenericInterface {
+      Body: { question?: unknown; projectId?: unknown };
+    }
+    // POST /api/dictation/ask — read-only question about the caller's
+    // visible data. Never writes; deterministic answers with optional LLM
+    // rephrasing behind a strict timeout.
+    fastify.post<AskBody>(
+      "/ask",
+      {
+        config: {
+          rateLimit: {
+            max: this.config.RATE_LIMIT_DICTATION_ASK_MAX,
+            timeWindow: "1 hour",
+            keyGenerator: (req) => AuthRateLimitKey(req),
+          },
+        },
+      },
+      async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
+        if (!userSession.isAuthenticated) {
+          return res.status(401).send({ error: "Access Denied" });
+        }
+        if (!this.config.DICTATION_ENABLED) {
+          return res.status(404).send({ error: "Dictation Not Available" });
+        }
+        const question =
+          typeof req.body?.question === "string"
+            ? req.body.question.trim()
+            : "";
+        if (!question) {
+          return res.status(400).send({ error: "Missing: question" });
+        }
+        if (question.length > DICTATION_ASK_QUESTION_MAX_LENGTH) {
+          return res.status(400).send({
+            error: `Invalid: question (max ${DICTATION_ASK_QUESTION_MAX_LENGTH} characters)`,
+          });
+        }
+        const projectId =
+          typeof req.body?.projectId === "string" && req.body.projectId.trim()
+            ? req.body.projectId.trim()
+            : undefined;
+        if (projectId) {
+          const project = await ProjectsDataGet(projectId);
+          if (!project || !isProjectVisible(project, userSession)) {
+            return res.status(404).send({ error: "Project Not Found" });
+          }
+        }
+        const answer = await DictationAskQuestion(
+          this.config,
+          userSession,
+          question,
+          projectId,
+        );
+        return res.status(200).send(answer);
+      },
+    );
+
     // GET/PUT /api/dictation/preferences — the user's translation target
     fastify.get("/preferences", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
@@ -321,6 +409,166 @@ export class DictationRoutes {
           source,
         );
         return res.status(200).send({ jobs });
+      },
+    );
+
+    // POST /api/dictation/:jobId/actions/preview — resolve every stored
+    // proposal against the caller-visible data. Read-only: nothing is
+    // written and each card is resolved independently.
+    fastify.post<{ Params: { jobId: string } }>(
+      "/:jobId/actions/preview",
+      async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
+        if (!userSession.isAuthenticated) {
+          return res.status(401).send({ error: "Access Denied" });
+        }
+        const record = await this.getOwnedJob(
+          userSession.userId,
+          req.params.jobId,
+        );
+        if (!record) {
+          return res.status(404).send({ error: "Dictation Job Not Found" });
+        }
+        const actions = ParseStoredActions(record);
+        const context = await LoadDictationResolutionContext(userSession);
+        return res.status(200).send({
+          jobId: record.id,
+          actions: BuildActionPreviews(actions, context),
+        });
+      },
+    );
+
+    // GET /api/dictation/:jobId/actions — applied batches, grouped by the
+    // client requestId so the dialog can restore the Undo button after a
+    // reload. Undo snapshots are never exposed.
+    fastify.get<{ Params: { jobId: string } }>(
+      "/:jobId/actions",
+      async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
+        if (!userSession.isAuthenticated) {
+          return res.status(401).send({ error: "Access Denied" });
+        }
+        const record = await this.getOwnedJob(
+          userSession.userId,
+          req.params.jobId,
+        );
+        if (!record) {
+          return res.status(404).send({ error: "Dictation Job Not Found" });
+        }
+        const rows = await DictationActionDataListForJob(record.id);
+        const batches = new Map<
+          string,
+          {
+            requestId: string;
+            dateCreated: string;
+            actions: {
+              index: number;
+              type: string;
+              status: string;
+              targetId: string | null;
+              targetType: string | null;
+              undoneAt: string | null;
+              error: string | null;
+            }[];
+          }
+        >();
+        for (const row of rows) {
+          let batch = batches.get(row.requestId);
+          if (!batch) {
+            batch = {
+              requestId: row.requestId,
+              dateCreated: row.dateCreated,
+              actions: [],
+            };
+            batches.set(row.requestId, batch);
+          }
+          batch.actions.push({
+            index: row.actionIndex,
+            type: row.type,
+            status: row.status,
+            targetId: row.targetId,
+            targetType: row.targetType,
+            undoneAt: row.undoneAt,
+            error: row.error,
+          });
+        }
+        return res.status(200).send({
+          jobId: record.id,
+          batches: [...batches.values()],
+        });
+      },
+    );
+
+    interface ApplyActionsBody extends RequestGenericInterface {
+      Body: { requestId?: unknown; selections?: unknown };
+    }
+    // POST /api/dictation/:jobId/actions/apply — applies the selected
+    // proposals server-side with the caller's permissions. Idempotent per
+    // (requestId, action index); one failure never rolls back the batch.
+    fastify.post<{ Params: { jobId: string } } & ApplyActionsBody>(
+      "/:jobId/actions/apply",
+      async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
+        if (!userSession.isAuthenticated) {
+          return res.status(401).send({ error: "Access Denied" });
+        }
+        const record = await this.getOwnedJob(
+          userSession.userId,
+          req.params.jobId,
+        );
+        if (!record) {
+          return res.status(404).send({ error: "Dictation Job Not Found" });
+        }
+        const requestId =
+          typeof req.body?.requestId === "string"
+            ? req.body.requestId.trim()
+            : "";
+        const selections = NormalizeActionSelections(req.body?.selections);
+        if (selections.length === 0) {
+          return res.status(400).send({ error: "Missing: selections" });
+        }
+        const outcome = await ApplyDictationActions(
+          userSession,
+          record,
+          requestId || uuidv4(),
+          selections,
+        );
+        return res.status(200).send(outcome);
+      },
+    );
+
+    interface UndoActionsBody extends RequestGenericInterface {
+      Body: { requestId?: unknown };
+    }
+    // POST /api/dictation/:jobId/actions/undo — best-effort reversal of one
+    // applied batch, newest action first.
+    fastify.post<{ Params: { jobId: string } } & UndoActionsBody>(
+      "/:jobId/actions/undo",
+      async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
+        if (!userSession.isAuthenticated) {
+          return res.status(401).send({ error: "Access Denied" });
+        }
+        const record = await this.getOwnedJob(
+          userSession.userId,
+          req.params.jobId,
+        );
+        if (!record) {
+          return res.status(404).send({ error: "Dictation Job Not Found" });
+        }
+        const requestId =
+          typeof req.body?.requestId === "string"
+            ? req.body.requestId.trim()
+            : "";
+        if (!requestId) {
+          return res.status(400).send({ error: "Missing: requestId" });
+        }
+        const outcome = await UndoDictationActions(
+          userSession,
+          record.id,
+          requestId,
+        );
+        return res.status(200).send(outcome);
       },
     );
 

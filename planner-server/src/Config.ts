@@ -127,6 +127,12 @@ export class Config {
   public DICTATION_VOCABULARY_MAX: number;
   /** UI threshold under which a segment is highlighted as low confidence */
   public DICTATION_CONFIDENCE_THRESHOLD: number;
+  /** Max stored custom command phrases per user */
+  public DICTATION_PHRASES_MAX: number;
+  /** Per-user hourly limit of read-only questions */
+  public RATE_LIMIT_DICTATION_ASK_MAX: number;
+  /** Hard timeout of the optional answer-phrasing LLM call */
+  public DICTATION_ASK_TIMEOUT_MS: number;
 
   // Web Push Notifications
   public WEB_PUSH_ENABLED: boolean;
@@ -177,6 +183,9 @@ export class Config {
     this.DICTATION_HOTWORDS_MAX = 50;
     this.DICTATION_VOCABULARY_MAX = 200;
     this.DICTATION_CONFIDENCE_THRESHOLD = 0.6;
+    this.DICTATION_PHRASES_MAX = 50;
+    this.RATE_LIMIT_DICTATION_ASK_MAX = 30;
+    this.DICTATION_ASK_TIMEOUT_MS = 15000;
     this.WEB_PUSH_ENABLED = true;
     this.WEB_PUSH_SUBJECT = "mailto:admin@localhost";
     this.WEB_PUSH_NOTIFY_HOUR = 9; // send notifications from 9:00
@@ -262,6 +271,20 @@ export class Config {
       0.05,
       0.95,
       0.6,
+    );
+    this.DICTATION_PHRASES_MAX = clampInteger(
+      config.DICTATION_PHRASES_MAX,
+      1,
+      500,
+      50,
+    );
+    this.RATE_LIMIT_DICTATION_ASK_MAX =
+      config.RATE_LIMIT_DICTATION_ASK_MAX || 30;
+    this.DICTATION_ASK_TIMEOUT_MS = clampInteger(
+      config.DICTATION_ASK_TIMEOUT_MS,
+      1000,
+      60000,
+      15000,
     );
     this.WEB_PUSH_ENABLED = config.WEB_PUSH_ENABLED ?? true;
     this.WEB_PUSH_SUBJECT = config.WEB_PUSH_SUBJECT || "mailto:admin@localhost";
@@ -411,6 +434,27 @@ export class Config {
         0.05,
         0.95,
         this.DICTATION_CONFIDENCE_THRESHOLD,
+      );
+    }
+    if (process.env.DICTATION_PHRASES_MAX) {
+      this.DICTATION_PHRASES_MAX = clampInteger(
+        process.env.DICTATION_PHRASES_MAX,
+        1,
+        500,
+        this.DICTATION_PHRASES_MAX,
+      );
+    }
+    if (process.env.RATE_LIMIT_DICTATION_ASK_MAX) {
+      this.RATE_LIMIT_DICTATION_ASK_MAX =
+        parseInt(process.env.RATE_LIMIT_DICTATION_ASK_MAX) ||
+        this.RATE_LIMIT_DICTATION_ASK_MAX;
+    }
+    if (process.env.DICTATION_ASK_TIMEOUT_MS) {
+      this.DICTATION_ASK_TIMEOUT_MS = clampInteger(
+        process.env.DICTATION_ASK_TIMEOUT_MS,
+        1000,
+        60000,
+        this.DICTATION_ASK_TIMEOUT_MS,
       );
     }
     if (process.env.WEB_PUSH_ENABLED) {

@@ -30,6 +30,10 @@ export interface TaskListFilters {
   doneSince?: string;
   /** When true, restricts results to tasks that have a due date. */
   hasDueDate?: boolean;
+  /** Inclusive lower bound on the ISO due date ("YYYY-MM-DD"). */
+  dueFrom?: string;
+  /** Inclusive upper bound on the ISO due date ("YYYY-MM-DD"). */
+  dueTo?: string;
   /** Case-insensitive substring matched against title and description. */
   q?: string;
   /** Matches tasks assigned to this user, in all statuses (EXISTS). */
@@ -77,6 +81,16 @@ export function buildListTasksQuery(
   }
   if (filters.hasDueDate) {
     conditions.push(`${quote("dueDate")} IS NOT NULL`);
+  }
+  if (filters.dueFrom) {
+    // ISO dates compare lexicographically, so a plain string range works on
+    // both engines without any date parsing.
+    conditions.push(`${quote("dueDate")} >= ?`);
+    params.push(filters.dueFrom);
+  }
+  if (filters.dueTo) {
+    conditions.push(`${quote("dueDate")} <= ?`);
+    params.push(filters.dueTo);
   }
   const term = filters.q?.trim();
   if (term) {

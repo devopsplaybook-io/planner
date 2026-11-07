@@ -27,7 +27,8 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
 - [x] The background pipeline runs three stages progressively:
   - [x] Stage A: transcription of the recorded audio by the configured STT engine. The raw transcript becomes available as soon as it exists.
   - [x] Stage B: the transcript is polished by the LLM (punctuation, casing, wording, light markdown), keeping the original language and meaning. The polished text replaces the raw text when it arrives.
-  - [x] Stage C: a second LLM call proposes follow-up actions (`create_task` or `create_note`), strictly schema-validated and clamped to at most 5 actions. Actions become available without blocking the raw/polished text.
+  - [x] Stage C: a second LLM call proposes follow-up actions, strictly schema-validated against action schema v2 and clamped to at most 10 actions. Actions become available without blocking the raw/polished text.
+  - [x] Action schema v2 supports `create_task`, `create_note`, `update_task`, `append_to_task`, `append_to_note`, `add_comment`, `add_checklist_items` and `instantiate_template`; `create_multiple` is flattened into individual actions, and `update_task`/`append_to_*` carry an explicit target. Proposals never include deletion or archiving.
   - [x] `max_tokens` for the polish and action calls scales with the transcript length instead of using a small fixed constant, so long recordings are not truncated.
 - [x] Dictation jobs are persisted in the database (`dictation_jobs` table, SQLite and PostgreSQL migrations) with their status, stage, result, availability flags, timings and a monotonically increasing revision.
   - [x] Job state survives a restart: a job interrupted by a restart is reported as an `INTERRUPTED` error after startup instead of hanging forever; the audio was deleted before the restart.
@@ -56,6 +57,21 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
 - [x] External jobs report `segments: null`; the review degrades gracefully without confidence.
 - [x] `GET/PUT /api/dictation/preferences` store the optional target output language in `users.dictationTargetLanguage` (a preference change does not bump `tokenVersion`), validating it against `DICTATION_LANGUAGES`.
 - [x] The polish prompt preserves proper nouns, product names and technical terms exactly, keeps every part of mixed-language input in its original language, and only adds translation instructions when a target language differs from the source.
+
+### Server — Structured action proposals, apply/undo and read-only ask
+
+- [x] `POST /api/dictation/:jobId/actions/preview` resolves every proposed action against the caller's data and returns one preview per action: `status` (`resolved`, `ambiguous` or `unresolved`), the resolved target, ambiguity `candidates` (projects, tasks, notes, templates), a field-level `diff` for updates, and a human-readable `error`. Resolution re-checks project visibility and write permissions server-side; proposals are never applied during preview.
+- [x] `POST /api/dictation/:jobId/actions/apply` applies a user selection (`index` plus optional `title`, `description`, `projectId`, `status`, `targetId`) with a client `requestId`. Only allowlisted override fields are merged; unknown fields are ignored and selections are deduped/capped at `MAX_ACTIONS`.
+  - [x] Apply is idempotent per `(jobId, requestId, actionIndex)`: a retried request returns the stored outcome instead of applying twice (`dictation_job_actions` table, migration `init-0028.sql`, SQLite and PostgreSQL).
+  - [x] Each action applies independently and reports `applied`, `failed` or `skipped`, so one failure does not roll back the others. The apply snapshots (`beforeJson`) are stored for undo and never exposed through the API.
+  - [x] Undo (`POST /api/dictation/:jobId/actions/undo`) reverts the caller's applied actions newest-first, skips already-undone rows and reports per-action results; an action whose target changed after apply is reported as failed rather than partially reverted.
+- [x] `POST /api/dictation/ask` answers a read-only question (max 500 characters, optional project scope). Deterministic intents (`due_today`, `due_this_week`, `project_summary`, `recent_dictations`) are computed from visible tasks, projects and the caller's dictations; the answer lists linked items and a `truncated` flag.
+  - [x] An optional LLM rephrase runs with a strict timeout and strict JSON validation; any failure falls back to the deterministic answer. Ask never writes data and never proposes actions.
+  - [x] Asking is advertised through `/api/status/config` (`ask: true`); when disabled or unsupported the endpoint answers 404.
+- [x] Per-user custom command phrases (`dictation_phrases` table, migration `init-0028.sql`) map one spoken prefix to exactly one project XOR template, with optional labels; a normalized form backs case/whitespace-insensitive uniqueness per user.
+  - [x] `GET/POST/PUT/DELETE /api/dictation/phrases` manage the caller's phrases: `400` for invalid input, `404` for a missing/invisible project or template, `409` for a duplicate normalized phrase and `400` when `DICTATION_PHRASES_MAX` (default 50) is reached.
+  - [x] Matching is deterministic and runs before the LLM: the longest normalized phrase matching at a word boundary wins, and the remainder of the dictation becomes the task title/description or template instance input. Phrase text and matched content are never logged or exported.
+- [x] `/api/status/config` advertises the capability set for older/newer clients: `actionSchema: 2`, `applyActions: true`, `ask: true` and `phrasesMax`. Absent capabilities make the web client use the legacy client-side creation flow.
 
 ### Server — Embedded STT mode
 
@@ -97,7 +113,12 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
 - [x] Settings manages the custom vocabulary: a scope selector (Personal plus visible active projects), term chips with deletion, an add input capped by `DICTATION_VOCABULARY_MAX`, plain-text import ("one term per line", replaces the selected scope), client-side `.txt` export and inline errors/limits.
 - [x] Retention is explicit in the UI: the dialog's recording mode says "Audio is deleted right after transcription" and the review repeats it; the comment composer says voice-comment audio is kept as a task attachment that can be deleted.
 - [x] Task proposal cards offer a project selector (active projects only, shared project selection component) and a status selector listing the selected project's statuses; changing the project resets an incompatible status to the target project's first status; note proposals and "Save as note" keep using the default project.
-- [x] On confirm, the client creates the confirmed tasks and note via the existing authenticated APIs; proposals are never executed automatically by the server.
+- [x] When the server advertises `applyActions`, the review renders the structured previews instead of the legacy cards: one card per proposed action shows its type, resolution badge (`Ready`, `Needs a choice`, `Cannot apply`), target, field-level diff and optional inline error. Resolved actions are selected by default; ambiguous actions become selectable once the user picks one of the proposed matches (project, task, note or template) or overrides the project.
+- [x] Cards let the user edit the title/description and override the project and status before applying; overrides are sent with the selection and re-validated server-side. Applying sends one request id, shows per-card results (`Applied`, `Failed`, `Skipped`) and never auto-applies anything the user did not select.
+- [x] After an apply, the review offers "Undo applied actions" for the latest batch (newest-first) and a "Done" action; a retry of the same request id is idempotent. When the capability is absent, the legacy client-side creation flow is unchanged.
+- [x] When the server advertises `ask`, the review has an Ask tab: a read-only question box with optional project scope, inline dictation for the question, loading/error states and an answer with linked items plus a "Computed from your data" / "Rephrased by AI" source line and a truncation hint. The tab is hidden when the capability is absent.
+- [x] Settings manages custom command phrases: a list with project/template targets and labels, an add form (project or template target, optional comma-separated labels) capped by `phrasesMax`, deletion and inline errors; the editor explains that a phrase applies deterministically before the AI.
+- [x] On confirm, the client applies the selected structured actions server-side, or—when the server does not advertise `applyActions`—creates the confirmed tasks and note via the existing authenticated APIs; proposals are never executed automatically by the server.
 - [x] Failures when creating the selected items or saving the review text as a note are shown in an inline dismissible banner in the dialog (never a browser `alert()`).
 - [x] A "recent dictations" list opens a previous job in the dialog, so an interrupted review can be found again after a reload.
 - [x] The dictation language setting (settings page and the dialog selector) is populated from the server configuration and persisted locally.
@@ -138,6 +159,7 @@ Accuracy and trust features sit on top of that pipeline: a per-user and per-proj
 ### Operations
 
 - [x] Dictation and voice-comment work is instrumented with OpenTelemetry spans and metrics (decode, STT, polish, actions, queue and total durations, job outcome, threads, model, engine); no audio/transcript/prompt content is exported.
+- [x] Structured preview/apply/undo, ask and custom phrases emit counters and spans with metadata only (action type, status, intent, counts); transcript, question, answer and phrase content are never logged or exported.
 - [x] A repeatable benchmark harness (`planner-server/src/dictation/bench/BenchStt.ts`, `npm run bench:stt`) measures RTF, p50/p95 latency, peak RSS and optional WER for the production flags; results and model selection are documented in [`docs/dictation-benchmark.md`](../dictation-benchmark.md).
 - [x] The reference deployment runs the embedded engine with 2 CPU / 2 GiB limits (250m / 512Mi requests), sized from the benchmark.
 - [ ] Lazy action proposals (deferring stage C until the review is opened) are deferred: progressive raw → polished → actions delivery already keeps actions off the critical path.

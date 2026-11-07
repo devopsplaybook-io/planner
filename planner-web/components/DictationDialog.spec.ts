@@ -11,6 +11,8 @@ import {
 } from "vue";
 
 import DictationDialog from "./DictationDialog.vue";
+import DictationActionCard from "./DictationActionCard.vue";
+import DictationAskPanel from "./DictationAskPanel.vue";
 import DictationConfidenceReview from "./DictationConfidenceReview.vue";
 import DictationDiff from "./DictationDiff.vue";
 
@@ -97,11 +99,39 @@ function makeDictationStore() {
       actionsAvailable: true,
     } as Record<string, unknown> | null,
     recentJobs: [] as Record<string, unknown>[],
+    previews: [] as Record<string, unknown>[],
+    previewLoading: false,
+    previewError: "",
+    applyResults: [] as Record<string, unknown>[],
+    appliedBatches: [] as Record<string, unknown>[],
+    latestBatch: null as Record<string, unknown> | null,
+    askAnswer: null as Record<string, unknown> | null,
+    askLoading: false,
+    askError: "",
     submitAudio: vi.fn(async () => undefined),
     poll: vi.fn(async () => true),
     openJob: vi.fn(async () => undefined),
     fetchRecentJobs: vi.fn(async () => undefined),
     fetchPreferences: vi.fn(async () => undefined),
+    previewActions: vi.fn(async (_jobId: string) => ({})),
+    applyActions: vi.fn(
+      async (
+        _jobId: string,
+        _requestId: string,
+        _selections: unknown[],
+      ) => ({
+        outcome: {
+          requestId: "req-x",
+          alreadyApplied: false,
+          results: [] as Record<string, unknown>[],
+        },
+      }),
+    ),
+    undoActions: vi.fn(async (_jobId: string, _requestId: string) => ({
+      outcome: { requestId: "req-x", results: [] as Record<string, unknown>[] },
+    })),
+    fetchAppliedActions: vi.fn(async (_jobId: string) => undefined),
+    ask: vi.fn(async (_payload: unknown) => ({ answer: {} })),
     reset: vi.fn(),
     setLanguage: vi.fn((value: string) => {
       store.language = value;
@@ -128,6 +158,9 @@ async function openDialog() {
     global: {
       components: {
         ProjectSelect: defineComponent({ render: () => null }),
+        InlineDictationButton: defineComponent({ render: () => null }),
+        DictationActionCard,
+        DictationAskPanel,
         DictationConfidenceReview,
         DictationDiff,
       },
@@ -625,5 +658,221 @@ describe("DictationDialog accuracy review", () => {
     expect(wrapper.text()).toContain(
       "Audio is deleted right after transcription",
     );
+  });
+});
+
+describe("DictationDialog structured actions", () => {
+  function seedStructuredReview() {
+    dictationStore.status = "done";
+    dictationStore.stage = null;
+    dictationStore.isProcessing = false;
+    dictationStore.hasRawTranscript = true;
+    dictationStore.hasPolishedText = true;
+    dictationStore.jobId = "job-1";
+    dictationStore.availability = {
+      rawTranscript: true,
+      polishedText: true,
+      actions: true,
+    };
+    dictationStore.result = {
+      rawTranscript: "buy milk and note the login bug",
+      polishedText: "Buy milk and note the login bug",
+      polished: true,
+      actions: [
+        { type: "create_task", title: "Buy milk", description: "" },
+        { type: "append_to_task", target: "Login", text: "More" },
+      ],
+      actionsAvailable: true,
+      segments: null,
+    };
+    (recommendationStore as Record<string, unknown>).dictationApplyActions = true;
+    (recommendationStore as Record<string, unknown>).dictationAskEnabled = true;
+  }
+
+  function resolvedPreview(index = 0) {
+    return {
+      index,
+      type: "create_task",
+      action: { type: "create_task", title: "Buy milk", description: "" },
+      status: "resolved",
+      target: null,
+      candidates: [],
+      diff: [],
+      resolvedProjectId: "p1",
+      resolvedStatus: "To Do",
+    };
+  }
+
+  function ambiguousPreview(index = 1) {
+    return {
+      index,
+      type: "append_to_task",
+      action: { type: "append_to_task", target: "Login", text: "More" },
+      status: "ambiguous",
+      target: null,
+      candidates: [
+        { kind: "task", id: "t1", label: "Login bug", projectName: "Planner" },
+      ],
+      diff: [],
+      error: "Several tasks match this name",
+    };
+  }
+
+  it("loads previews, selects resolved actions and applies them", async () => {
+    seedStructuredReview();
+    dictationStore.previewActions = vi.fn(async () => {
+      dictationStore.previews = [resolvedPreview(), ambiguousPreview()];
+      return {};
+    });
+    dictationStore.applyActions = vi.fn(async () => {
+      dictationStore.applyResults = [
+        { index: 0, type: "create_task", status: "applied", targetId: "t-9" },
+      ];
+      dictationStore.latestBatch = {
+        requestId: "req-1",
+        actions: [{ status: "applied", undoneAt: null }],
+      };
+      return {
+        outcome: {
+          requestId: "req-1",
+          alreadyApplied: false,
+          results: [
+            {
+              index: 0,
+              type: "create_task",
+              status: "applied",
+              targetId: "t-9",
+            },
+          ],
+        },
+      };
+    });
+
+    const wrapper = await openDialog();
+
+    expect(dictationStore.previewActions).toHaveBeenCalledWith("job-1");
+    expect(wrapper.findAll(".action-card")).toHaveLength(2);
+    expect(wrapper.find(".resolution-badge").text()).toBe("Ready");
+
+    const apply = findButton(wrapper, "Apply action");
+    expect(apply).toBeTruthy();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(dictationStore.applyActions).toHaveBeenCalledTimes(1);
+    const [jobId, requestId, selections] =
+      dictationStore.applyActions.mock.calls[0]!;
+    expect(jobId).toBe("job-1");
+    expect(typeof requestId).toBe("string");
+    expect(requestId.length).toBeGreaterThan(0);
+    expect(selections).toEqual([{ index: 0 }]);
+
+    expect(findButton(wrapper, "Done")).toBeTruthy();
+    const undo = findButton(wrapper, "Undo applied actions");
+    expect(undo).toBeTruthy();
+
+    await undo!.trigger("click");
+    await flushPromises();
+    expect(dictationStore.undoActions).toHaveBeenCalledWith("job-1", "req-1");
+  });
+
+  it("lets the user pick an ambiguous match before applying", async () => {
+    seedStructuredReview();
+    dictationStore.previewActions = vi.fn(async () => {
+      dictationStore.previews = [ambiguousPreview(0)];
+      return {};
+    });
+
+    const wrapper = await openDialog();
+    await wrapper.find(".action-candidates button").trigger("click");
+    await flushPromises();
+
+    const apply = findButton(wrapper, "Apply action");
+    expect(apply).toBeTruthy();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(dictationStore.applyActions).toHaveBeenCalledWith(
+      "job-1",
+      expect.any(String),
+      [{ index: 0, targetId: "t1" }],
+    );
+  });
+
+  it("shows the preview error instead of actions", async () => {
+    seedStructuredReview();
+    dictationStore.previewActions = vi.fn(async () => {
+      dictationStore.previewError = "The actions could not be previewed.";
+      return { error: "The actions could not be previewed." };
+    });
+
+    const wrapper = await openDialog();
+
+    expect(wrapper.text()).toContain("could not be previewed");
+    expect(wrapper.findAll(".action-card")).toHaveLength(0);
+  });
+});
+
+describe("DictationDialog ask", () => {
+  function seedAskReview() {
+    dictationStore.status = "done";
+    dictationStore.stage = null;
+    dictationStore.isProcessing = false;
+    dictationStore.hasRawTranscript = true;
+    dictationStore.jobId = "job-1";
+    dictationStore.availability = {
+      rawTranscript: true,
+      polishedText: true,
+      actions: false,
+    };
+    dictationStore.result = {
+      rawTranscript: "hello",
+      polishedText: "Hello",
+      polished: true,
+      actions: [],
+      actionsAvailable: false,
+      segments: null,
+    };
+    (recommendationStore as Record<string, unknown>).dictationApplyActions = true;
+    (recommendationStore as Record<string, unknown>).dictationAskEnabled = true;
+  }
+
+  it("asks a read-only question from the Ask tab", async () => {
+    seedAskReview();
+    dictationStore.ask = vi.fn(async () => {
+      dictationStore.askAnswer = {
+        intent: "due_today",
+        answer: "1 open task is due today.",
+        items: [],
+        truncated: false,
+        generatedBy: "deterministic",
+      };
+      return { answer: dictationStore.askAnswer };
+    });
+
+    const wrapper = await openDialog();
+    await findButton(wrapper, "Ask")!.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".ask-panel").exists()).toBe(true);
+    await wrapper.find(".ask-question textarea").setValue("What is due today?");
+    await wrapper.find(".ask-form").trigger("submit");
+    await flushPromises();
+
+    expect(dictationStore.ask).toHaveBeenCalledWith("What is due today?", null);
+    expect(wrapper.find(".ask-text").text()).toContain(
+      "1 open task is due today.",
+    );
+    expect(wrapper.text()).toContain("Read-only");
+  });
+
+  it("hides the Ask tab when the server does not advertise it", async () => {
+    seedAskReview();
+    (recommendationStore as Record<string, unknown>).dictationAskEnabled = false;
+
+    const wrapper = await openDialog();
+
+    expect(wrapper.find(".review-tabs").exists()).toBe(false);
+    expect(wrapper.find(".ask-panel").exists()).toBe(false);
   });
 });

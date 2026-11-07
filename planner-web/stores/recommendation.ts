@@ -33,6 +33,11 @@ export interface DictationConfig {
   confidenceThreshold?: number;
   confidenceAvailable?: boolean;
   translationLanguages?: string[];
+  // Structured actions / read-only questions / custom phrases capabilities
+  actionSchema?: number;
+  applyActions?: boolean;
+  ask?: boolean;
+  phrasesMax?: number;
 }
 
 export interface AppConfig {
@@ -78,6 +83,10 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     translationLanguages: DEFAULT_DICTATION_LANGUAGES.filter(
       (language) => language !== "auto",
     ),
+    actionSchema: 1,
+    applyActions: false,
+    ask: false,
+    phrasesMax: 50,
   },
 };
 
@@ -142,6 +151,21 @@ export const useRecommendationStore = defineStore("recommendation", {
         DEFAULT_DICTATION_LANGUAGES.filter((language) => language !== "auto")
       );
     },
+    dictationActionSchema: (state) =>
+      state.config?.dictation?.actionSchema ??
+      DEFAULT_APP_CONFIG.dictation!.actionSchema ??
+      1,
+    dictationApplyActions: (state) =>
+      state.config?.dictation?.applyActions ??
+      DEFAULT_APP_CONFIG.dictation!.applyActions ??
+      false,
+    dictationAskEnabled: (state) =>
+      state.config?.dictation?.ask ??
+      DEFAULT_APP_CONFIG.dictation!.ask ??
+      false,
+    dictationPhrasesMax: (state) =>
+      state.config?.dictation?.phrasesMax ??
+      DEFAULT_APP_CONFIG.dictation!.phrasesMax!,
   },
 
   actions: {

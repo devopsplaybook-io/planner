@@ -33,13 +33,15 @@ export function buildDatedTitle(title: string, date: Date): string {
 export function buildTaskFromTemplate(
   template: TaskTemplate,
   project: Project,
-  options: { addDateSuffix: boolean },
+  options: { addDateSuffix: boolean; titleOverride?: string | null },
 ): Task {
   const task = new Task();
   task.projectId = template.projectId;
-  task.title = options.addDateSuffix
-    ? buildDatedTitle(template.title, new Date())
-    : template.title;
+  task.title = options.titleOverride
+    ? options.titleOverride
+    : options.addDateSuffix
+      ? buildDatedTitle(template.title, new Date())
+      : template.title;
   task.description = template.description;
   task.status =
     template.instanceStatus && project.statuses.includes(template.instanceStatus)
@@ -79,9 +81,11 @@ export function buildTemplateAttachmentCopyPath(
 export async function createInstanceFromTemplate(
   template: TaskTemplate,
   project: Project,
+  options: { titleOverride?: string | null } = {},
 ): Promise<Task> {
   const task = buildTaskFromTemplate(template, project, {
     addDateSuffix: template.addDateToTitle,
+    titleOverride: options.titleOverride,
   });
   const copies: { attachmentId: string; fileName: string; copyPath: string }[] =
     [];

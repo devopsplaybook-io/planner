@@ -30,6 +30,7 @@ import { TaskImproveInit } from "./tasks/TaskImprove";
 import { DictationInit } from "./dictation/Dictation";
 import { DictationRoutes } from "./dictation/DictationRoutes";
 import { DictationVocabularyRoutes } from "./dictation/DictationVocabularyRoutes";
+import { DictationPhrasesRoutes } from "./dictation/DictationPhrasesRoutes";
 import { DictationTelemetryInit } from "./dictation/DictationTelemetry";
 import { SttWhisperCppGetStatus } from "./dictation/SttWhisperCpp";
 import { TaskVoiceCommentsInit } from "./tasks/TaskVoiceComments";
@@ -230,6 +231,10 @@ Promise.resolve()
           // Segment confidence exists only with the embedded JSON output
           confidenceAvailable: embeddedEngine,
           translationLanguages: [...config.DICTATION_LANGUAGES],
+          actionSchema: 2,
+          applyActions: true,
+          ask: true,
+          phrasesMax: config.DICTATION_PHRASES_MAX,
         },
       });
     });
@@ -307,6 +312,13 @@ Promise.resolve()
         await new DictationVocabularyRoutes(config).getRoutes(instance);
       },
       { prefix: "/api/dictation/vocabulary" },
+    );
+
+    await fastify.register(
+      async (instance) => {
+        await new DictationPhrasesRoutes(config).getRoutes(instance);
+      },
+      { prefix: "/api/dictation/phrases" },
     );
 
     await fastify.register(

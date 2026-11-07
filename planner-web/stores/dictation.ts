@@ -6,12 +6,163 @@ export type DictationStage = "transcribing" | "polishing" | "actions";
 export type DictationStatus = "processing" | "done" | "error";
 export type DictationEngineState = "idle" | "downloading" | "ready" | "error";
 
+export type DictationActionType =
+  | "create_task"
+  | "create_note"
+  | "update_task"
+  | "append_to_task"
+  | "append_to_note"
+  | "add_comment"
+  | "add_checklist_items"
+  | "instantiate_template"
+  | "create_multiple";
+
+export interface DictationTaskChanges {
+  title?: string;
+  description?: string;
+  status?: string;
+  priority?: "high" | "medium" | "low";
+  dueDate?: string | null;
+  project?: string;
+  addLabels?: string[];
+  removeLabels?: string[];
+  addAssignees?: string[];
+  removeAssignees?: string[];
+}
+
+// Schema v2 (a v1 server only sends create_task/create_note); every optional
+// field is validated again server-side before anything is written.
 export interface DictationActionProposal {
-  type: "create_task" | "create_note";
-  title: string;
-  description: string;
+  type: DictationActionType;
+  title?: string;
+  description?: string;
   priority?: "high" | "medium" | "low";
   dueDate?: string;
+  project?: string;
+  status?: string;
+  labels?: string[];
+  assignees?: string[];
+  target?: string;
+  targetType?: "task" | "note";
+  changes?: DictationTaskChanges;
+  text?: string;
+  items?: string[];
+  template?: string;
+  // create_multiple input envelope (flattened server-side)
+  actions?: DictationActionProposal[];
+}
+
+export type DictationResolutionStatus =
+  | "resolved"
+  | "ambiguous"
+  | "unresolved";
+
+export interface DictationEntityCandidate {
+  kind: "project" | "task" | "note" | "template" | "user";
+  id: string;
+  label: string;
+  projectId?: string;
+  projectName?: string;
+}
+
+export interface DictationTargetInfo {
+  kind: "task" | "note" | "project" | "template";
+  id: string;
+  label: string;
+  projectId: string | null;
+  projectName: string | null;
+}
+
+export interface DictationFieldDiff {
+  field: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface DictationActionPreview {
+  index: number;
+  type: DictationActionType;
+  action: DictationActionProposal;
+  status: DictationResolutionStatus;
+  target: DictationTargetInfo | null;
+  candidates: DictationEntityCandidate[];
+  diff: DictationFieldDiff[];
+  error?: string;
+  resolvedProjectId?: string;
+  resolvedStatus?: string;
+  resolvedTargetId?: string;
+  resolvedAssigneeIds?: string[];
+  resolvedAddAssigneeIds?: string[];
+  resolvedRemoveAssigneeIds?: string[];
+}
+
+export interface DictationActionSelection {
+  index: number;
+  projectId?: string;
+  status?: string;
+  targetId?: string;
+  title?: string;
+  description?: string;
+}
+
+export interface DictationActionApplyResult {
+  index: number;
+  type: string;
+  status: "applied" | "failed" | "skipped";
+  targetId?: string;
+  error?: string;
+}
+
+export interface DictationApplyOutcome {
+  requestId: string;
+  alreadyApplied: boolean;
+  results: DictationActionApplyResult[];
+}
+
+export interface DictationActionUndoResult {
+  index: number;
+  type: string;
+  status: "undone" | "failed" | "skipped";
+  error?: string;
+}
+
+export interface DictationUndoOutcome {
+  requestId: string;
+  results: DictationActionUndoResult[];
+}
+
+export interface DictationAppliedBatchAction {
+  index: number;
+  type: string;
+  status: "applied" | "failed";
+  targetId: string | null;
+  targetType: string | null;
+  undoneAt: string | null;
+  error: string | null;
+}
+
+export interface DictationAppliedBatch {
+  requestId: string;
+  dateCreated: string;
+  actions: DictationAppliedBatchAction[];
+}
+
+export interface DictationAskItem {
+  kind: "task" | "note";
+  id: string;
+  title: string;
+  projectId: string;
+  projectName: string;
+  dueDate?: string | null;
+  status?: string;
+}
+
+export interface DictationAskAnswer {
+  intent: string;
+  answer: string;
+  items: DictationAskItem[];
+  truncated: boolean;
+  generatedBy: "deterministic" | "llm";
 }
 
 export interface DictationSegment {
@@ -118,6 +269,18 @@ export const useDictationStore = defineStore("dictation", {
     // Translation target of the job currently open in the dialog
     jobTargetLanguage: null as string | null,
     recentJobs: [] as DictationJobView[],
+    // Structured actions (schema v2 servers only)
+    previews: [] as DictationActionPreview[],
+    previewLoading: false,
+    previewError: "",
+    applyResults: [] as DictationActionApplyResult[],
+    lastRequestId: null as string | null,
+    appliedBatches: [] as DictationAppliedBatch[],
+    batchesLoading: false,
+    // Read-only questions
+    askAnswer: null as DictationAskAnswer | null,
+    askLoading: false,
+    askError: "",
   }),
 
   getters: {
@@ -126,6 +289,11 @@ export const useDictationStore = defineStore("dictation", {
     hasRawTranscript: (state) => !!state.availability?.rawTranscript,
     hasPolishedText: (state) => !!state.availability?.polishedText,
     hasActions: (state) => !!state.availability?.actions,
+    hasStructuredActions: (state) => state.previews.length > 0,
+    latestBatch: (state) =>
+      state.appliedBatches.length > 0
+        ? state.appliedBatches[state.appliedBatches.length - 1]
+        : null,
   },
 
   actions: {
@@ -198,6 +366,16 @@ export const useDictationStore = defineStore("dictation", {
       this.error = null;
       this.dateUpdated = null;
       this.jobTargetLanguage = null;
+      this.previews = [];
+      this.previewLoading = false;
+      this.previewError = "";
+      this.applyResults = [];
+      this.lastRequestId = null;
+      this.appliedBatches = [];
+      this.batchesLoading = false;
+      this.askAnswer = null;
+      this.askLoading = false;
+      this.askError = "";
     },
     reset() {
       this.resetJob();
@@ -352,6 +530,109 @@ export const useDictationStore = defineStore("dictation", {
       }
       // Other errors are transient: keep polling
       return false;
+    },
+    /** Resolves the stored proposals against the caller-visible data. */
+    async previewActions(
+      jobId: string,
+    ): Promise<{ error?: string }> {
+      this.previewLoading = true;
+      this.previewError = "";
+      try {
+        const res = await api.post(`/dictation/${jobId}/actions/preview`);
+        this.previews = res.data?.actions || [];
+        return {};
+      } catch (err) {
+        this.previews = [];
+        this.previewError =
+          (err as { response?: { data?: { error?: string } } })?.response
+            ?.data?.error || "The actions could not be previewed.";
+        return { error: this.previewError };
+      } finally {
+        this.previewLoading = false;
+      }
+    },
+    /**
+     * Applies the selected proposals server-side. The requestId makes a
+     * retried confirm idempotent: the server never applies an action twice.
+     */
+    async applyActions(
+      jobId: string,
+      requestId: string,
+      selections: DictationActionSelection[],
+    ): Promise<{ outcome?: DictationApplyOutcome; error?: string }> {
+      this.applyResults = [];
+      this.previewError = "";
+      try {
+        const res = await api.post(`/dictation/${jobId}/actions/apply`, {
+          requestId,
+          selections,
+        });
+        const outcome = res.data as DictationApplyOutcome;
+        this.applyResults = outcome?.results || [];
+        this.lastRequestId = outcome?.requestId || requestId;
+        await this.fetchAppliedActions(jobId);
+        return { outcome };
+      } catch (err) {
+        return {
+          error:
+            (err as { response?: { data?: { error?: string } } })?.response
+              ?.data?.error || "The selected actions could not be applied.",
+        };
+      }
+    },
+    /** Best-effort reversal of one applied batch. */
+    async undoActions(
+      jobId: string,
+      requestId: string,
+    ): Promise<{ outcome?: DictationUndoOutcome; error?: string }> {
+      try {
+        const res = await api.post(`/dictation/${jobId}/actions/undo`, {
+          requestId,
+        });
+        await this.fetchAppliedActions(jobId);
+        return { outcome: res.data as DictationUndoOutcome };
+      } catch (err) {
+        return {
+          error:
+            (err as { response?: { data?: { error?: string } } })?.response
+              ?.data?.error || "The actions could not be undone.",
+        };
+      }
+    },
+    /** Applied batches of a job (drives the Undo button after a reload). */
+    async fetchAppliedActions(jobId: string): Promise<void> {
+      this.batchesLoading = true;
+      try {
+        const res = await api.get(`/dictation/${jobId}/actions`);
+        this.appliedBatches = res.data?.batches || [];
+      } catch {
+        // The batch list is an enhancement: keep the previous one
+      } finally {
+        this.batchesLoading = false;
+      }
+    },
+    /** Read-only question answered from the caller's visible data. */
+    async ask(
+      question: string,
+      projectId?: string | null,
+    ): Promise<{ answer?: DictationAskAnswer; error?: string }> {
+      this.askLoading = true;
+      this.askError = "";
+      try {
+        const res = await api.post("/dictation/ask", {
+          question,
+          ...(projectId ? { projectId } : {}),
+        });
+        this.askAnswer = res.data as DictationAskAnswer;
+        return { answer: this.askAnswer };
+      } catch (err) {
+        this.askError =
+          (err as { response?: { data?: { error?: string } } })?.response
+            ?.data?.error || "The question could not be answered.";
+        return { error: this.askError };
+      } finally {
+        this.askLoading = false;
+      }
     },
     async fetchRecentJobs(limit = 20): Promise<void> {
       try {

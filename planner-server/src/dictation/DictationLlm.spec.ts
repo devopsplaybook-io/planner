@@ -54,7 +54,7 @@ describe("system prompts", () => {
   });
 
   it("should cap the number of actions in the actions prompt", () => {
-    expect(ACTIONS_SYSTEM_PROMPT).toContain("at most 5");
+    expect(ACTIONS_SYSTEM_PROMPT).toContain("at most 10");
   });
 
   it("should resolve relative due dates against the current date", () => {
@@ -124,13 +124,42 @@ describe("ParseActionProposals", () => {
     expect(ParseActionProposals('{"actions": []}')).toEqual([]);
   });
 
-  it("should clamp the proposals to 5 entries", () => {
+  it("should clamp the proposals to 10 entries", () => {
     const entries = Array.from(
-      { length: 8 },
+      { length: 15 },
       (_, i) => `{"type": "create_task", "title": "Task ${i}"}`,
     ).join(",");
     const proposals = ParseActionProposals(`{"actions": [${entries}]}`);
-    expect(proposals).toHaveLength(5);
+    expect(proposals).toHaveLength(10);
+  });
+
+  it("should parse schema v2 actions and flatten create_multiple", () => {
+    const content =
+      '{"actions": [' +
+      '{"type": "update_task", "target": "task-1", "changes": {"status": "Done"}},' +
+      '{"type": "add_comment", "target": "task-1", "text": "Looks good"},' +
+      '{"type": "create_multiple", "actions": [' +
+      '{"type": "create_task", "title": "One"},' +
+      '{"type": "create_note", "title": "Two"}]}]}';
+    expect(ParseActionProposals(content)).toEqual([
+      {
+        type: "update_task",
+        target: "task-1",
+        changes: { status: "Done" },
+      },
+      { type: "add_comment", target: "task-1", targetType: "task", text: "Looks good" },
+      { type: "create_task", title: "One", description: "" },
+      { type: "create_note", title: "Two", description: "" },
+    ]);
+  });
+
+  it("should reject v2 actions without their required fields", () => {
+    const content =
+      '{"actions": [' +
+      '{"type": "update_task", "target": "task-1"},' +
+      '{"type": "add_comment", "text": "orphan"},' +
+      '{"type": "add_checklist_items", "target": "task-1", "items": []}]}';
+    expect(ParseActionProposals(content)).toEqual([]);
   });
 
   it("should drop entries with an unknown type or an empty title", () => {
