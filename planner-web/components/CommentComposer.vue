@@ -45,14 +45,6 @@
       aria-live="polite"
     >
       <span class="composer-voice-timer">{{ formattedVoiceElapsed }}</span>
-      <label v-if="voiceLanguages.length > 1" class="composer-voice-language">
-        <span class="visually-hidden">Voice comment language</span>
-        <select v-model="voiceLanguage">
-          <option v-for="lang in voiceLanguages" :key="lang" :value="lang">
-            {{ languageLabel(lang) }}
-          </option>
-        </select>
-      </label>
       <button
         type="button"
         class="composer-tab"
@@ -143,7 +135,6 @@ const {
   isRecording,
   elapsedSeconds: voiceElapsedSeconds,
   error: inlineError,
-  languages: voiceLanguages,
   language: voiceLanguage,
 } = inline;
 
@@ -156,21 +147,6 @@ const isVoiceMessageActive = computed(
 const isInlineDictationActive = computed(
   () => recordingMode.value === "dictation" && phase.value !== "idle",
 );
-
-const LANGUAGE_LABELS = {
-  auto: "Automatic detection",
-  en: "English",
-  fr: "French",
-  de: "German",
-  es: "Spanish",
-  it: "Italian",
-  pt: "Portuguese",
-  nl: "Dutch",
-};
-
-function languageLabel(code) {
-  return LANGUAGE_LABELS[code] || code.toUpperCase();
-}
 
 // MediaRecorder APIs are probed once; SSR is disabled in this app
 const voiceSupported = isVoiceRecordingSupported();
@@ -337,24 +313,6 @@ function onKeydown(event) {
   font-variant-numeric: tabular-nums;
   color: var(--color-danger);
   font-size: var(--text-sm);
-}
-
-.composer-voice-language select {
-  margin: 0;
-  width: auto;
-  font-size: var(--text-sm);
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 .composer-voice-error {

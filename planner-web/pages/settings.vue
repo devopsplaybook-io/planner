@@ -54,7 +54,9 @@
         <p class="setting-hint">
           <i class="bi bi-info-circle" />
           Picking the language explicitly is recommended: short clips can be
-          misdetected when the language is set to automatic detection.
+          misdetected when the language is set to automatic detection. Applies
+          to the dictation dialog and to every microphone button next to a task,
+          note or comment field.
         </p>
         <label>
           Translate to

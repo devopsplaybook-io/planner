@@ -1,22 +1,6 @@
 <template>
   <span v-if="visible" class="inline-dictation" data-inline-dictation>
     <span class="inline-dictation-main">
-      <label
-        v-if="languages.length > 1"
-        class="inline-dictation-language"
-        :title="'Dictation language'"
-      >
-        <span class="visually-hidden">Dictation language</span>
-        <select
-          v-model="language"
-          :disabled="isRecording || phase === 'transcribing'"
-          aria-label="Dictation language"
-        >
-          <option v-for="lang in languages" :key="lang" :value="lang">
-            {{ languageLabel(lang) }}
-          </option>
-        </select>
-      </label>
       <button
         type="button"
         class="inline-dictation-btn"
@@ -166,29 +150,12 @@ const {
   elapsedSeconds,
   level,
   error,
-  languages,
-  language,
   pendingInsert,
   canApplyPolished,
   hasJob,
   isAvailable,
   isOnline,
 } = inline;
-
-const LANGUAGE_LABELS = {
-  auto: "Auto",
-  en: "EN",
-  fr: "FR",
-  de: "DE",
-  es: "ES",
-  it: "IT",
-  pt: "PT",
-  nl: "NL",
-};
-
-function languageLabel(code) {
-  return LANGUAGE_LABELS[code] || String(code).toUpperCase();
-}
 
 const visible = computed(
   () =>
@@ -407,11 +374,6 @@ onBeforeUnmount(() => {
 .inline-dictation-btn:disabled {
   cursor: not-allowed;
   opacity: 0.45;
-}
-
-.inline-dictation-language select {
-  font-size: var(--text-xs);
-  padding: 0.1em 0.2em;
 }
 
 .inline-dictation-status {
