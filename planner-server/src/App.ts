@@ -29,6 +29,7 @@ import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
 import { TaskImproveInit } from "./tasks/TaskImprove";
 import { DictationInit } from "./dictation/Dictation";
 import { DictationRoutes } from "./dictation/DictationRoutes";
+import { DictationVocabularyRoutes } from "./dictation/DictationVocabularyRoutes";
 import { DictationTelemetryInit } from "./dictation/DictationTelemetry";
 import { SttWhisperCppGetStatus } from "./dictation/SttWhisperCpp";
 import { TaskVoiceCommentsInit } from "./tasks/TaskVoiceComments";
@@ -223,6 +224,12 @@ Promise.resolve()
           model: embeddedEngine
             ? config.STT_EMBEDDED_MODEL
             : config.STT_MODEL,
+          hotwordsMax: config.DICTATION_HOTWORDS_MAX,
+          vocabularyMax: config.DICTATION_VOCABULARY_MAX,
+          confidenceThreshold: config.DICTATION_CONFIDENCE_THRESHOLD,
+          // Segment confidence exists only with the embedded JSON output
+          confidenceAvailable: embeddedEngine,
+          translationLanguages: [...config.DICTATION_LANGUAGES],
         },
       });
     });
@@ -293,6 +300,13 @@ Promise.resolve()
         ).getRoutes(instance);
       },
       { prefix: "/api/recommendation" },
+    );
+
+    await fastify.register(
+      async (instance) => {
+        await new DictationVocabularyRoutes(config).getRoutes(instance);
+      },
+      { prefix: "/api/dictation/vocabulary" },
     );
 
     await fastify.register(

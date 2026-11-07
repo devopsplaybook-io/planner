@@ -43,6 +43,12 @@ reports per run: audio duration, STT wall time, RTF, peak RSS and the transcript
 p50/p95 use linear interpolation; WER is computed for the clips listed in
 `--references`.
 
+Production embedded runs additionally request full JSON output (`-ojf -of <base>`)
+to derive per-word confidence for the review UI; the benchmark keeps the
+text-only flags above, so its figures represent the transcription cost without
+that extra JSON write. A custom vocabulary also adds a short `--prompt` to the
+call; the benchmark uses no prompt.
+
 Each configuration runs 3× per clip; **the first (cold page-cache) run is
 discarded** from the aggregates. The final matrix command:
 

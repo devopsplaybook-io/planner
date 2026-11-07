@@ -4,6 +4,8 @@
 
 Planner offers advanced voice dictation: the user dictates from a global mic button, the audio is recorded in the browser and transcribed by a speech-to-text engine, an LLM polishes the transcript, and a second LLM call proposes follow-up actions (create tasks or notes). The user reviews everything before anything is created ("the LLM proposes, the user disposes"). Processing is asynchronous with progressive results and stage timings, and the server supports two STT engines: any OpenAI-compatible endpoint (`STT_MODE=external`) or a bundled whisper.cpp engine (`STT_MODE=embedded`).
 
+Accuracy and trust features sit on top of that pipeline: a per-user and per-project custom vocabulary biases both STT engines, embedded jobs expose per-segment confidence so the review can highlight uncertain words, the review offers a word-level raw-versus-polished comparison with explicit actions, an optional target output language can translate the polished text, and the UI states exactly what is retained.
+
 ## Functional Requirements
 
 ### Server
@@ -16,8 +18,12 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
   - [x] The endpoint is rate-limited per user (hourly voice quota shared with voice-comment transcriptions).
   - [x] It returns 202 with a job id and processes the dictation in the background; only one job may run at a time per user.
   - [x] An optional `source` field distinguishes the origin of the job: `dictation` (the full dialog, default) or `inline` (a text-surface microphone). Unknown values fall back to `dictation`; the source is persisted with the job and exported only as a telemetry attribute.
+  - [x] An optional `projectId` field scopes the dictation to a visible project: it selects the project vocabulary and is validated with the usual project visibility rules (`404` deletes the temporary audio when the project is missing or invisible).
+  - [x] An optional `targetLanguage` field sets the output language of the polish stage: absent → the caller's stored preference; `""`, `none` or `off` → translation explicitly off (overriding the stored preference); an unknown language → `400`.
   - [x] The single-flight rule is shared by dialog and inline jobs, so starting a second dictation answers 409 with the running job id instead of transcribing two recordings at once.
   - [x] The audio is deleted immediately after transcription — no audio is ever persisted or logged.
+- [x] Custom vocabulary biases transcription (see below); project terms come first, then personal terms, and are composed into a prompt that is passed to the STT engine for both dialog and inline jobs.
+- [x] Embedded jobs expose per-segment confidence (see below); the job view reports it alongside the transcript without changing the plain text for older clients.
 - [x] The background pipeline runs three stages progressively:
   - [x] Stage A: transcription of the recorded audio by the configured STT engine. The raw transcript becomes available as soon as it exists.
   - [x] Stage B: the transcript is polished by the LLM (punctuation, casing, wording, light markdown), keeping the original language and meaning. The polished text replaces the raw text when it arrives.
@@ -27,13 +33,29 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
   - [x] Job state survives a restart: a job interrupted by a restart is reported as an `INTERRUPTED` error after startup instead of hanging forever; the audio was deleted before the restart.
   - [x] A per-user in-flight job is recovered from the database, so duplicate uploads still answer 409 with the existing job id.
   - [x] Expired jobs are purged after their TTL by the periodic maintenance job.
-- [x] `GET /api/dictation/:jobId` returns the job view (`status`, `stage`, `engine`, `language`, `revision`, `result`, `availability`, `timings`, `engineState`, `error`); each user can only see their own jobs.
+- [x] `GET /api/dictation/:jobId` returns the job view (`status`, `stage`, `engine`, `language`, `targetLanguage`, `revision`, `result` — including optional `segments` —, `availability`, `timings`, `engineState`, `error`); each user can only see their own jobs.
   - [x] `?wait=1&since=<revision>` long-polls up to 25 s server-side and returns as soon as a newer revision exists (or the timeout elapses), so the client receives progressive updates without a 1.5 s polling burst.
   - [x] Unknown or expired jobs answer 404 with a machine-readable error, which the web client maps to "this dictation expired".
 - [x] `GET /api/dictation/jobs?limit=&source=` lists the user's recent jobs (default 20) for the "recent dictations" panel, optionally filtered by source (`dictation`, `voice_comment` or `inline`).
 - [x] Failures are graceful: an STT failure is surfaced to the client for retry; a polish or actions LLM failure falls back to the raw transcript and skips action proposals; a recording with no detectable speech after trimming is reported as `NO_SPEECH`.
 - [x] The dictation language can be set per request (`auto` by default, meaning engine-side detection; explicit languages are forwarded to the STT engine); the accepted language list comes from `DICTATION_LANGUAGES`.
 - [x] Per-stage timings (`queueMs`, `sttMs`, `polishMs`, `actionsMs`, `totalMs`, `audioDurationMs`) are stored with the job and exported as OpenTelemetry span attributes and metrics; transcript, audio and prompt content are never exported or logged.
+
+### Server — Custom vocabulary, confidence and translation
+
+- [x] A `dictation_vocabulary` table (migration `init-0027.sql`, SQLite and PostgreSQL) stores terms per user and optionally per project, with a case-insensitive unique constraint per scope (stored normalized term) and cascade cleanup when the user or project is deleted.
+- [x] Authenticated CRUD API scoped to the caller:
+  - [x] `GET /api/dictation/vocabulary` lists the caller's terms (`id`, `term`, `projectId`, `dateCreated`).
+  - [x] `POST /api/dictation/vocabulary` adds a term: `400` for empty/invalid input or when `DICTATION_VOCABULARY_MAX` (default 200) is reached, `404` for a missing/invisible project, `409` for a case-insensitive duplicate in the same scope.
+  - [x] `PUT /api/dictation/vocabulary` replaces one scope from a plain-text list: trims, drops empty lines and dedupes, answers `400` when the user total would exceed the stored limit.
+  - [x] `DELETE /api/dictation/vocabulary/:id` answers `204`, or `404` when the term is not owned by the caller.
+- [x] Prompt composition takes project terms first, then personal terms, dedupes case-insensitively, strips newlines/control characters and caps the result at `DICTATION_HOTWORDS_MAX` (default 50) terms and a hard character limit.
+- [x] The composed prompt biases both engines: whisper.cpp receives it through `--prompt`, external OpenAI-compatible endpoints receive it as the `prompt` form field; when an external endpoint rejects `prompt` (`400`/`422`) the transcription is retried once without it, so vocabulary can never break a previously working endpoint.
+- [x] Vocabulary terms, prompts and transcripts are never logged or exported; only aggregate counters (`hotwords.count`, `segments.count`, `low_confidence.count`) reach telemetry.
+- [x] Embedded STT requests full JSON from `whisper-cli` (`-ojf -of <base>`) and derives optional `segments: [{ text, fromMs, toMs, confidence }]` by averaging usable token probabilities (clamped to 0..1, `null` when no usable token), capped in count; a missing or malformed JSON file yields `segments: null` and never fails the job, while the plain stdout transcript is unchanged for existing clients.
+- [x] External jobs report `segments: null`; the review degrades gracefully without confidence.
+- [x] `GET/PUT /api/dictation/preferences` store the optional target output language in `users.dictationTargetLanguage` (a preference change does not bump `tokenVersion`), validating it against `DICTATION_LANGUAGES`.
+- [x] The polish prompt preserves proper nouns, product names and technical terms exactly, keeps every part of mixed-language input in its original language, and only adds translation instructions when a target language differs from the source.
 
 ### Server — Embedded STT mode
 
@@ -55,6 +77,7 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 - [x] `POST /api/tasks/:taskId/attachments/:attachmentId/transcribe` retries a failed or skipped transcription (`202`), returning `409` when one is already in flight, `429` when the hourly voice quota is exhausted and `503` when dictation/STT is not configured.
 - [x] The transcript is posted as a task comment attributed to the uploading user and referencing the voice message file name; a failed transcription never fails the upload and never deletes the audio.
 - [x] Transcripts are corrected by editing the generated comment: there is no separate "edit transcript" API.
+- [x] Voice-comment transcriptions are biased by the task project's vocabulary plus the caller's personal terms; they never translate (the spoken language is kept) so comments stay in the language they were recorded in.
 
 ### Web
 
@@ -66,6 +89,13 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
   - [x] Action proposals are appended once they become available, without discarding edits made to the text or to existing cards.
   - [x] Stage timings are summarized in the review ("Transcribed in X s · Improved in Y s · Actions in Z s").
 - [x] The review step shows the polished text (editable) and the raw transcript (collapsible), plus action proposal cards (include checkbox, editable title and text).
+  - [x] A text-source badge tells which stage produced the current text (`Polished`, `Raw transcript`, `Edited by you`), plus a `Translated to <language>` badge when the job used a target language.
+  - [x] When the job exposes low-confidence segments, the review lists at most 20 words below the configured threshold (`DICTATION_CONFIDENCE_THRESHOLD`, default 0.6) with their confidence percentage; clicking one opens a prefilled correction input whose `Apply` replaces the first case-insensitive occurrence in the current text (and marks it edited), while `Add to vocabulary` stores the correction in the personal vocabulary. A not-found correction shows an inline notice instead of failing.
+  - [x] "Compare with raw transcript" renders a word-level diff between the raw transcript and the current review text (`<del>`/`<ins>`, side-by-side fallback above 800 tokens), next to explicit `Use polished text` and `Revert to raw` actions. A revert or any edit is never overwritten by a late polish patch.
+  - [x] External-engine jobs that carry no confidence show a one-line "Word confidence is not available with the external engine" note, without errors.
+- [x] The optional target language is selected in Settings and in the dialog-adjacent configuration, persisted through the server preference (with a local fallback), and applies to dialog and inline dictations; when unset the original language is preserved.
+- [x] Settings manages the custom vocabulary: a scope selector (Personal plus visible active projects), term chips with deletion, an add input capped by `DICTATION_VOCABULARY_MAX`, plain-text import ("one term per line", replaces the selected scope), client-side `.txt` export and inline errors/limits.
+- [x] Retention is explicit in the UI: the dialog's recording mode says "Audio is deleted right after transcription" and the review repeats it; the comment composer says voice-comment audio is kept as a task attachment that can be deleted.
 - [x] Task proposal cards offer a project selector (active projects only, shared project selection component) and a status selector listing the selected project's statuses; changing the project resets an incompatible status to the target project's first status; note proposals and "Save as note" keep using the default project.
 - [x] On confirm, the client creates the confirmed tasks and note via the existing authenticated APIs; proposals are never executed automatically by the server.
 - [x] Failures when creating the selected items or saving the review text as a note are shown in an inline dismissible banner in the dialog (never a browser `alert()`).
@@ -79,7 +109,8 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 ### Inline dictation
 
 - [x] A reusable inline dictation control (composable + button component) sits next to every text field where free text is entered: task create (title, description, every checklist item), task edit (title, description), note create (title, content), note edit (title, content), task template create/edit (title, description) and the comment composer textarea.
-- [x] The control records with the same recorder and limits as the dialog, submits the audio to `POST /api/dictation` with `source=inline`, and long-polls its own job without touching the dialog's job state.
+- [x] The control records with the same recorder and limits as the dialog, submits the audio to `POST /api/dictation` with `source=inline`, and long-polls its own job without touching the dialog's job state. Hosts that belong to a project pass its id, so project vocabulary biases the transcription; the comment composer has no project id and relies on personal terms (voice comments use the task project server-side).
+- [x] Inline dictations use the persisted target output language: the host can explicitly turn translation off, while the default follows the stored preference.
 - [x] The raw transcript is inserted as soon as it arrives, at the caret captured when recording started (replacing the active selection). The polished text replaces that exact range only while the field still holds the untouched insertion; after any user edit the control offers "Use improved text" instead of overwriting the edit.
 - [x] Insertion uses `document.execCommand("insertText")` when available so a single native undo restores the field to its state before dictation; the `setRangeText` fallback and the polish patch still fire input events so form state and `v-model` stay in sync. A single separator space is added only when the caret sits between two non-whitespace characters.
 - [x] Deterministic client-side formatting turns spoken commands into layout without an LLM round-trip: "new line", "new paragraph", "bullet"/"bullet point", "comma", "period", "question mark" and "scratch that" (removing the last dictated segment).

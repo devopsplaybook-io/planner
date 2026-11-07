@@ -44,6 +44,7 @@ import {
   DictationTelemetryRecordStage,
   DictationTelemetryStartSpan,
 } from "./DictationTelemetry";
+import { DictationSegment } from "./DictationTypes";
 
 const logger = console;
 
@@ -69,6 +70,8 @@ export interface DictationResult {
   polished: boolean;
   actions: DictationActionProposal[];
   actionsAvailable: boolean;
+  /** Per-segment confidence (embedded engine only; null otherwise) */
+  segments: DictationSegment[] | null;
 }
 
 export interface DictationAvailability {
@@ -93,6 +96,8 @@ export interface DictationJobView {
   stage: DictationStage | null;
   engine: string;
   language: string | null;
+  /** Optional "speak X, write Y" target (null = keep the original language) */
+  targetLanguage: string | null;
   revision: number;
   result: DictationResult | null;
   availability: DictationAvailability;
@@ -108,6 +113,15 @@ export interface DictationAudioResult {
   audioDurationMs: number | null;
   threads: number;
   sttMs: number;
+  segments: DictationSegment[] | null;
+}
+
+export interface DictationStartJobOptions {
+  /** Composed vocabulary prompt (never persisted or logged) */
+  prompt?: string | null;
+  /** Number of terms in the prompt, exported as an aggregate counter only */
+  hotwordsCount?: number;
+  targetLanguage?: string | null;
 }
 
 export async function DictationInit(configIn: Config): Promise<void> {
@@ -156,6 +170,7 @@ function buildView(record: DictationJobRecord): DictationJobView {
         polished: record.polished,
         actions: record.actions,
         actionsAvailable: record.actionsAvailable,
+        segments: record.segments,
       }
     : null;
   let engineState: DictationJobView["engineState"] = "ready";
@@ -169,6 +184,7 @@ function buildView(record: DictationJobRecord): DictationJobView {
     stage: record.stage as DictationStage | null,
     engine: record.engine,
     language: record.language,
+    targetLanguage: record.targetLanguage,
     revision: record.revision,
     result,
     availability: {
@@ -215,6 +231,7 @@ export async function DictationStartJob(
   audioMimeType: string,
   language: string | null,
   source: DictationJobSource = "dictation",
+  options: DictationStartJobOptions = {},
 ): Promise<string> {
   const jobId = uuidv4();
   const startedAt = Date.now();
@@ -225,6 +242,7 @@ export async function DictationStartJob(
     status: "processing",
     stage: "transcribing",
     language,
+    targetLanguage: options.targetLanguage ?? null,
     engine: currentEngine(),
     model: currentModel(),
     expiresAt: new Date(startedAt + DICTATION_JOB_TTL_MS).toISOString(),
@@ -237,6 +255,7 @@ export async function DictationStartJob(
     language,
     startedAt,
     source,
+    options,
   )
     .catch((error) => {
       logger.error(
@@ -399,6 +418,7 @@ export async function DictationResumeJob(jobId: string): Promise<void> {
       jobId,
       record.rawTranscript,
       record.language,
+      record.targetLanguage,
       createdAt,
       root,
       record.source,
@@ -504,11 +524,13 @@ async function runDictationJob(
   language: string | null,
   startedAt: number,
   source: DictationJobSource,
+  options: DictationStartJobOptions = {},
 ): Promise<void> {
   const root = DictationTelemetryStartSpan("dictation.job", undefined, {
     "dictation.job_id": jobId,
     "dictation.source": source,
   });
+  root.setAttribute("stt.hotwords.count", options.hotwordsCount ?? 0);
   try {
     const queueMs = Math.max(0, Date.now() - startedAt);
     const queueSpan = DictationTelemetryStartSpan("dictation.queue");
@@ -523,6 +545,7 @@ async function runDictationJob(
         audioFilePath,
         audioMimeType,
         language,
+        { prompt: options.prompt },
       );
     } finally {
       // No audio retention: delete the temp file right after the STT call,
@@ -530,9 +553,11 @@ async function runDictationJob(
       await deleteAudioFile(audioFilePath);
     }
     DictationTelemetryRecordStage("stt", Date.now() - sttStart, source);
+    annotateConfidence(root, transcription.segments);
 
     await DictationDataUpdate(jobId, {
       rawTranscript: transcription.text,
+      segments: transcription.segments,
       audioDurationMs: transcription.audioDurationMs,
       sttMs: transcription.sttMs,
       queueMs,
@@ -544,6 +569,7 @@ async function runDictationJob(
       jobId,
       transcription.text,
       language,
+      options.targetLanguage ?? null,
       startedAt,
       root,
       source,
@@ -558,10 +584,29 @@ async function runDictationJob(
   }
 }
 
+/**
+ * Adds aggregate confidence counters to the job span: only counts are
+ * exported, never segment text (privacy requirement).
+ */
+function annotateConfidence(
+  root: ReturnType<typeof DictationTelemetryStartSpan>,
+  segments: DictationSegment[] | null,
+): void {
+  const list = segments || [];
+  root.setAttribute("stt.segments.count", list.length);
+  const threshold = config?.DICTATION_CONFIDENCE_THRESHOLD ?? 0.6;
+  const low = list.filter(
+    (segment) =>
+      segment.confidence !== null && segment.confidence < threshold,
+  ).length;
+  root.setAttribute("stt.low_confidence.count", low);
+}
+
 async function runPostTranscription(
   jobId: string,
   rawTranscript: string,
   language: string | null,
+  targetLanguage: string | null,
   startedAt: number,
   root: ReturnType<typeof DictationTelemetryStartSpan>,
   source: DictationJobSource,
@@ -578,6 +623,7 @@ async function runPostTranscription(
   const { polishedText, polished } = await DictationPolishTranscript(
     rawTranscript,
     language,
+    targetLanguage,
   );
   const polishMs = Date.now() - polishStart;
   DictationTelemetryRecordStage("polish", polishMs, source);
@@ -681,6 +727,7 @@ export async function DictationTranscribeAudio(
   audioFilePath: string,
   audioMimeType: string,
   language: string | null,
+  options: { prompt?: string | null } = {},
 ): Promise<DictationAudioResult> {
   if (config.STT_MODE === "embedded") {
     return SttWhisperCppTranscribe(
@@ -688,6 +735,7 @@ export async function DictationTranscribeAudio(
       audioFilePath,
       audioMimeType,
       language,
+      { prompt: options.prompt ?? null },
     );
   }
   const span = DictationTelemetryStartSpan("dictation.stt", undefined, {
@@ -698,20 +746,46 @@ export async function DictationTranscribeAudio(
   try {
     const url = `${config.STT_API_URL.replace(/\/+$/, "")}/v1/audio/transcriptions`;
     const audioBuffer = await fs.readFile(audioFilePath);
-    const form = new FormData();
-    form.append("model", config.STT_MODEL);
-    form.append("file", new Blob([audioBuffer], { type: audioMimeType }), "audio");
-    if (language) {
-      form.append("language", language);
+    const postTranscription = async (withPrompt: boolean) => {
+      const form = new FormData();
+      form.append("model", config.STT_MODEL);
+      form.append(
+        "file",
+        new Blob([audioBuffer], { type: audioMimeType }),
+        "audio",
+      );
+      if (language) {
+        form.append("language", language);
+      }
+      if (withPrompt && options.prompt) {
+        form.append("prompt", options.prompt);
+      }
+      return axios.post(url, form, {
+        headers: {
+          Authorization: `Bearer ${config.STT_API_KEY}`,
+        },
+        timeout: 120000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
+    };
+    let response;
+    try {
+      response = await postTranscription(!!options.prompt);
+    } catch (error) {
+      // Vocabulary must never break a previously working endpoint: retry
+      // once without the optional prompt when the field is rejected.
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (options.prompt && (status === 400 || status === 422)) {
+        logger.warn(
+          "[Dictation] STT endpoint rejected the vocabulary prompt, retrying without it",
+        );
+        response = await postTranscription(false);
+      } else {
+        throw error;
+      }
     }
-    const response = await axios.post(url, form, {
-      headers: {
-        Authorization: `Bearer ${config.STT_API_KEY}`,
-      },
-      timeout: 120000,
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity,
-    });
     const text = response.data?.text;
     if (typeof text !== "string" || !text.trim()) {
       throw new Error("STT returned an empty transcript");
@@ -723,6 +797,8 @@ export async function DictationTranscribeAudio(
       audioDurationMs: null,
       threads: 0,
       sttMs: Date.now() - start,
+      // The OpenAI-compatible API returns text only: no confidence data
+      segments: null,
     };
   } catch (error) {
     span.fail(error);
@@ -740,6 +816,7 @@ export async function DictationTranscribeAudio(
 export async function DictationPolishTranscript(
   transcript: string,
   language: string | null,
+  targetLanguage: string | null = null,
 ): Promise<{ polishedText: string; polished: boolean }> {
   if (!config.LLM_API_KEY) {
     return { polishedText: transcript, polished: false };
@@ -747,7 +824,7 @@ export async function DictationPolishTranscript(
   try {
     const content = await callLLMWithRetry(
       POLISH_SYSTEM_PROMPT,
-      BuildPolishPrompt(transcript, language),
+      BuildPolishPrompt(transcript, language, targetLanguage),
       ComputeMaxTokens(transcript),
     );
     const parsed = ParsePolishedText(content);
@@ -774,6 +851,7 @@ export async function DictationTranscribeAndPolish(
   audioFilePath: string,
   audioMimeType: string,
   language: string | null,
+  options: { prompt?: string | null } = {},
 ): Promise<{
   rawTranscript: string;
   polishedText: string;
@@ -782,16 +860,21 @@ export async function DictationTranscribeAndPolish(
   polishMs: number;
   audioDurationMs: number | null;
   threads: number;
+  segments: DictationSegment[] | null;
 }> {
   const transcription = await DictationTranscribeAudio(
     audioFilePath,
     audioMimeType,
     language,
+    options,
   );
   const polishStart = Date.now();
+  // Voice comments keep the spoken language: comments on existing content
+  // are never translated.
   const { polishedText, polished } = await DictationPolishTranscript(
     transcription.text,
     language,
+    null,
   );
   return {
     rawTranscript: transcription.text,
@@ -801,6 +884,7 @@ export async function DictationTranscribeAndPolish(
     polishMs: Date.now() - polishStart,
     audioDurationMs: transcription.audioDurationMs,
     threads: transcription.threads,
+    segments: transcription.segments,
   };
 }
 

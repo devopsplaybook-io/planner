@@ -82,6 +82,21 @@ export async function UsersDataSetNotificationDigest(
   }
 }
 
+/**
+ * Stores the dictation translation target preference (null = no
+ * translation). Like the digest toggle this must not bump tokenVersion: a
+ * settings change cannot log the user out.
+ */
+export async function UsersDataSetDictationTargetLanguage(
+  id: string,
+  language: string | null,
+): Promise<void> {
+  await DbUtilsExecSQL(
+    SQL_QUERIES.SET_DICTATION_TARGET_LANGUAGE[DbUtilsGetType()],
+    [language, id],
+  );
+}
+
 /** Ids of the users who opted in to the daily notification digest. */
 export async function UsersDataListNotificationDigestOptIn(): Promise<string[]> {
   const rows = await DbUtilsQuerySQL(
@@ -110,6 +125,10 @@ export async function UsersDataDelete(id: string): Promise<void> {
     ]);
     await DbUtilsExecSQL(
       SQL_QUERIES.DELETE_USER_PUSH_SUBSCRIPTIONS[DbUtilsGetType()],
+      [id],
+    );
+    await DbUtilsExecSQL(
+      SQL_QUERIES.DELETE_USER_DICTATION_VOCABULARY[DbUtilsGetType()],
       [id],
     );
     await DbUtilsExecSQL(SQL_QUERIES.DELETE_USER[DbUtilsGetType()], [id]);
@@ -150,6 +169,11 @@ const SQL_QUERIES = {
     postgres: 'UPDATE users SET "notificationDigest" = $1 WHERE "id" = $2',
     sqlite: "UPDATE users SET notificationDigest = ? WHERE id = ?",
   },
+  SET_DICTATION_TARGET_LANGUAGE: {
+    postgres:
+      'UPDATE users SET "dictationTargetLanguage" = $1 WHERE "id" = $2',
+    sqlite: "UPDATE users SET dictationTargetLanguage = ? WHERE id = ?",
+  },
   LIST_DIGEST_OPT_IN: {
     postgres: 'SELECT "id" FROM users WHERE "notificationDigest" = TRUE',
     sqlite: "SELECT id FROM users WHERE notificationDigest = 1",
@@ -173,5 +197,9 @@ const SQL_QUERIES = {
   DELETE_USER_PUSH_SUBSCRIPTIONS: {
     postgres: 'DELETE FROM push_subscriptions WHERE "userId" = $1',
     sqlite: "DELETE FROM push_subscriptions WHERE userId = ?",
+  },
+  DELETE_USER_DICTATION_VOCABULARY: {
+    postgres: 'DELETE FROM dictation_vocabulary WHERE "userId" = $1',
+    sqlite: "DELETE FROM dictation_vocabulary WHERE userId = ?",
   },
 };

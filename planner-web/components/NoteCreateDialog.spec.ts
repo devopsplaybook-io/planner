@@ -29,6 +29,7 @@ const InlineDictationButtonStub = defineComponent({
     ariaLabel: { type: String, default: "" },
     disabled: { type: Boolean, default: false },
     showButton: { type: Boolean, default: true },
+    projectId: { type: String, default: null },
   },
   render: () => h("span", { class: "inline-dictation-stub" }),
 });
@@ -109,6 +110,10 @@ describe("NoteCreateDialog inline dictation", () => {
     expect(buttons.map((button) => button.props("ariaLabel"))).toEqual([
       "Dictate note title",
       "Dictate note content",
+    ]);
+    expect(buttons.map((button) => button.props("projectId"))).toEqual([
+      "project-1",
+      "project-1",
     ]);
   });
 });

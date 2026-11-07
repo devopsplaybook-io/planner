@@ -11,6 +11,8 @@ import {
 } from "vue";
 
 import DictationDialog from "./DictationDialog.vue";
+import DictationConfidenceReview from "./DictationConfidenceReview.vue";
+import DictationDiff from "./DictationDiff.vue";
 
 const hoisted = vi.hoisted(() => ({
   options: null as Record<string, unknown> | null,
@@ -64,6 +66,10 @@ const statusesStore = {
   fetchAll: vi.fn().mockResolvedValue(undefined),
   colorFor: vi.fn().mockReturnValue("#000000"),
 };
+const vocabularyStore = {
+  terms: [],
+  add: vi.fn().mockResolvedValue({ term: { id: "term-1" } }),
+};
 
 function makeDictationStore() {
   const store = reactive({
@@ -74,7 +80,9 @@ function makeDictationStore() {
     hasPolishedText: true,
     jobId: "job-1" as string | null,
     engineState: "ready",
+    engine: "embedded",
     language: "auto",
+    jobTargetLanguage: null as string | null,
     availability: {
       rawTranscript: true,
       polishedText: true,
@@ -93,6 +101,7 @@ function makeDictationStore() {
     poll: vi.fn(async () => true),
     openJob: vi.fn(async () => undefined),
     fetchRecentJobs: vi.fn(async () => undefined),
+    fetchPreferences: vi.fn(async () => undefined),
     reset: vi.fn(),
     setLanguage: vi.fn((value: string) => {
       store.language = value;
@@ -107,6 +116,7 @@ vi.stubGlobal("useProjectsStore", () => projectsStore);
 vi.stubGlobal("useTasksStore", () => tasksStore);
 vi.stubGlobal("useNotesStore", () => notesStore);
 vi.stubGlobal("useStatusesStore", () => statusesStore);
+vi.stubGlobal("useDictationVocabularyStore", () => vocabularyStore);
 
 function findButton(wrapper: ReturnType<typeof mount>, text: string) {
   return wrapper.findAll("button").find((button) => button.text() === text);
@@ -116,7 +126,11 @@ async function openDialog() {
   const wrapper = mount(DictationDialog, {
     props: { open: false },
     global: {
-      components: { ProjectSelect: defineComponent({ render: () => null }) },
+      components: {
+        ProjectSelect: defineComponent({ render: () => null }),
+        DictationConfidenceReview,
+        DictationDiff,
+      },
     },
   });
   await wrapper.setProps({ open: true });
@@ -127,6 +141,7 @@ async function openDialog() {
 beforeEach(() => {
   tasksStore.create.mockReset();
   notesStore.create.mockReset();
+  vocabularyStore.add.mockReset().mockResolvedValue({ term: { id: "term-1" } });
   dictationStore = makeDictationStore();
   recommendationStore = {
     config: {},
@@ -138,6 +153,9 @@ beforeEach(() => {
     dictationDefaultLanguage: "auto",
     dictationEstimatedRtf: 0.5,
     dictationEngineState: "ready",
+    dictationConfidenceThreshold: 0.6,
+    dictationConfidenceAvailable: true,
+    dictationTranslationLanguages: ["en", "fr"],
     fetchConfig: vi.fn().mockResolvedValue(undefined),
   };
 });
@@ -450,5 +468,162 @@ describe("DictationDialog recording configuration", () => {
 
     expect(dictationStore.openJob).toHaveBeenCalledWith("job-old");
     expect(wrapper.find(".dictation-review").exists()).toBe(true);
+  });
+});
+
+describe("DictationDialog accuracy review", () => {
+  function seedReview(overrides = {}) {
+    dictationStore.status = "done";
+    dictationStore.stage = null;
+    dictationStore.isProcessing = false;
+    dictationStore.hasRawTranscript = true;
+    dictationStore.hasPolishedText = true;
+    dictationStore.jobId = "job-1";
+    dictationStore.engine = "embedded";
+    dictationStore.availability = {
+      rawTranscript: true,
+      polishedText: true,
+      actions: false,
+    };
+    dictationStore.result = {
+      rawTranscript: "kubernets is great and kubernets is old",
+      polishedText: "kubernets is great and kubernets is old",
+      polished: true,
+      actions: [],
+      actionsAvailable: false,
+      segments: [
+        { text: "kubernets", fromMs: 0, toMs: 800, confidence: 0.3 },
+      ],
+      ...overrides,
+    };
+  }
+
+  async function applyCorrection(
+    wrapper: ReturnType<typeof mount>,
+    value: string,
+  ) {
+    await wrapper.find(".confidence-span").trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper
+      .find('input[aria-label="Correction for kubernets"]')
+      .setValue(value);
+    await wrapper.find(".confidence-editor").trigger("submit");
+    await flushPromises();
+  }
+
+  it("replaces only the first low-confidence occurrence and marks the text edited", async () => {
+    seedReview();
+    const wrapper = await openDialog();
+    expect(wrapper.find(".text-badge").text()).toBe("Polished");
+
+    await applyCorrection(wrapper, "kubernetes");
+
+    const textarea = wrapper.find(".dictation-review textarea");
+    expect((textarea.element as HTMLTextAreaElement).value).toBe(
+      "kubernetes is great and kubernets is old",
+    );
+    expect(wrapper.find(".text-badge").text()).toBe("Edited by you");
+  });
+
+  it("explains when the corrected word is not in the text", async () => {
+    seedReview({ polishedText: "something else", rawTranscript: "kubernets" });
+    const wrapper = await openDialog();
+
+    await applyCorrection(wrapper, "kubernetes");
+
+    const textarea = wrapper.find(".dictation-review textarea");
+    expect((textarea.element as HTMLTextAreaElement).value).toBe(
+      "something else",
+    );
+    expect(wrapper.find(".confidence-notice").text()).toContain(
+      "Could not find",
+    );
+  });
+
+  it("adds a corrected word to the personal vocabulary", async () => {
+    seedReview();
+    const wrapper = await openDialog();
+
+    await wrapper.find(".confidence-span").trigger("click");
+    await wrapper.vm.$nextTick();
+    const add = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Add to vocabulary");
+    await add!.trigger("click");
+    await flushPromises();
+
+    expect(vocabularyStore.add).toHaveBeenCalledWith("kubernets", null);
+    expect(wrapper.find(".confidence-notice").text()).toContain(
+      "personal vocabulary",
+    );
+  });
+
+  it("keeps a revert to raw when the polished text arrives later", async () => {
+    seedReview({ polishedText: "Hello raw!", rawTranscript: "hello raw" });
+    const wrapper = await openDialog();
+
+    const textarea = wrapper.find(".dictation-review textarea");
+    expect((textarea.element as HTMLTextAreaElement).value).toBe("Hello raw!");
+
+    await findButton(wrapper, "Revert to raw")!.trigger("click");
+    expect((textarea.element as HTMLTextAreaElement).value).toBe("hello raw");
+
+    dictationStore.result = {
+      ...dictationStore.result,
+      polishedText: "Hello raw, improved.",
+    };
+    await flushPromises();
+
+    expect((textarea.element as HTMLTextAreaElement).value).toBe("hello raw");
+  });
+
+  it("shows the raw-versus-current diff", async () => {
+    seedReview({ polishedText: "Hello world.", rawTranscript: "hello wrld" });
+    const wrapper = await openDialog();
+
+    expect(wrapper.find(".transcript-diff").text()).toContain(
+      "Compare with raw transcript",
+    );
+    expect(wrapper.find(".dictation-diff").exists()).toBe(true);
+  });
+
+  it("shows the translation badge of the job", async () => {
+    dictationStore.jobTargetLanguage = "en";
+    seedReview({ polishedText: "Hello", rawTranscript: "Bonjour" });
+    const wrapper = await openDialog();
+
+    const badge = wrapper.find(".text-badge.is-translation");
+    expect(badge.text()).toContain("Translated to English");
+  });
+
+  it("explains the missing confidence on external jobs", async () => {
+    seedReview({ segments: null });
+    dictationStore.engine = "external";
+    const wrapper = await openDialog();
+
+    expect(wrapper.text()).toContain(
+      "Word confidence is not available with the external engine.",
+    );
+    expect(wrapper.find(".confidence-review").exists()).toBe(false);
+  });
+
+  it("states the audio retention in record and review modes", async () => {
+    dictationStore.status = null;
+    dictationStore.stage = null;
+    dictationStore.isProcessing = false;
+    dictationStore.hasRawTranscript = false;
+    dictationStore.jobId = null;
+    dictationStore.result = null;
+    dictationStore.availability = null;
+    let wrapper = await openDialog();
+    expect(wrapper.text()).toContain(
+      "Audio is deleted right after transcription",
+    );
+
+    seedReview();
+    wrapper = await openDialog();
+    expect(wrapper.text()).toContain(
+      "Audio is deleted right after transcription",
+    );
   });
 });

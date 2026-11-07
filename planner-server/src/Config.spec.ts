@@ -62,6 +62,9 @@ describe("Config", () => {
       expect(config.DICTATION_MAX_DURATION_SECONDS).toBe(120);
       expect(config.DICTATION_MAX_UPLOAD_MB).toBe(10);
       expect(config.RATE_LIMIT_DICTATION_MAX).toBe(30);
+      expect(config.DICTATION_HOTWORDS_MAX).toBe(50);
+      expect(config.DICTATION_VOCABULARY_MAX).toBe(200);
+      expect(config.DICTATION_CONFIDENCE_THRESHOLD).toBe(0.6);
     });
 
     it("should respect environment variables in constructor", () => {
@@ -181,6 +184,9 @@ describe("Config", () => {
         DICTATION_MAX_DURATION_SECONDS: 60,
         DICTATION_MAX_UPLOAD_MB: 5,
         RATE_LIMIT_DICTATION_MAX: 12,
+        DICTATION_HOTWORDS_MAX: 20,
+        DICTATION_VOCABULARY_MAX: 100,
+        DICTATION_CONFIDENCE_THRESHOLD: 0.75,
       });
       expect(config.RATE_LIMIT_LLM_IMPROVE_MAX).toBe(7);
       expect(config.RATE_LIMIT_LLM_REGENERATE_MAX).toBe(2);
@@ -200,6 +206,9 @@ describe("Config", () => {
       expect(config.DICTATION_MAX_DURATION_SECONDS).toBe(60);
       expect(config.DICTATION_MAX_UPLOAD_MB).toBe(5);
       expect(config.RATE_LIMIT_DICTATION_MAX).toBe(12);
+      expect(config.DICTATION_HOTWORDS_MAX).toBe(20);
+      expect(config.DICTATION_VOCABULARY_MAX).toBe(100);
+      expect(config.DICTATION_CONFIDENCE_THRESHOLD).toBe(0.75);
     });
 
     it("should let env variables override the rate limits", async () => {
@@ -221,6 +230,9 @@ describe("Config", () => {
       process.env.DICTATION_MAX_DURATION_SECONDS = "90";
       process.env.DICTATION_MAX_UPLOAD_MB = "7";
       process.env.RATE_LIMIT_DICTATION_MAX = "21";
+      process.env.DICTATION_HOTWORDS_MAX = "12";
+      process.env.DICTATION_VOCABULARY_MAX = "80";
+      process.env.DICTATION_CONFIDENCE_THRESHOLD = "0.8";
       const config = await writeConfig({
         JWT_KEY: "k",
         RATE_LIMIT_LLM_IMPROVE_MAX: 7,
@@ -244,6 +256,32 @@ describe("Config", () => {
       expect(config.DICTATION_MAX_DURATION_SECONDS).toBe(90);
       expect(config.DICTATION_MAX_UPLOAD_MB).toBe(7);
       expect(config.RATE_LIMIT_DICTATION_MAX).toBe(21);
+      expect(config.DICTATION_HOTWORDS_MAX).toBe(12);
+      expect(config.DICTATION_VOCABULARY_MAX).toBe(80);
+      expect(config.DICTATION_CONFIDENCE_THRESHOLD).toBe(0.8);
+    });
+
+    it("should clamp the dictation tuning values", async () => {
+      process.env.DEV_MODE = "true";
+      const low = await writeConfig({
+        JWT_KEY: "k",
+        DICTATION_HOTWORDS_MAX: 0,
+        DICTATION_VOCABULARY_MAX: -5,
+        DICTATION_CONFIDENCE_THRESHOLD: 2,
+      });
+      expect(low.DICTATION_HOTWORDS_MAX).toBe(1);
+      expect(low.DICTATION_VOCABULARY_MAX).toBe(1);
+      expect(low.DICTATION_CONFIDENCE_THRESHOLD).toBe(0.95);
+
+      const high = await writeConfig({
+        JWT_KEY: "k",
+        DICTATION_HOTWORDS_MAX: 5000,
+        DICTATION_VOCABULARY_MAX: 5000,
+        DICTATION_CONFIDENCE_THRESHOLD: 0,
+      });
+      expect(high.DICTATION_HOTWORDS_MAX).toBe(200);
+      expect(high.DICTATION_VOCABULARY_MAX).toBe(1000);
+      expect(high.DICTATION_CONFIDENCE_THRESHOLD).toBe(0.05);
     });
 
     it("should default CORS to no origin (same-origin only)", async () => {

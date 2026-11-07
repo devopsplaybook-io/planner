@@ -37,6 +37,7 @@ const InlineDictationButtonStub = defineComponent({
     ariaLabel: { type: String, default: "" },
     disabled: { type: Boolean, default: false },
     showButton: { type: Boolean, default: true },
+    projectId: { type: String, default: null },
   },
   render: () => h("span", { class: "inline-dictation-stub" }),
 });
@@ -131,6 +132,10 @@ describe("TaskCreateDialog inline dictation", () => {
       "Dictate task title",
       "Dictate task description",
     ]);
+    expect(buttons.map((button) => button.props("projectId"))).toEqual([
+      "project-1",
+      "project-1",
+    ]);
   });
 
   it("should offer a microphone on every checklist item", async () => {
@@ -144,6 +149,7 @@ describe("TaskCreateDialog inline dictation", () => {
     const buttons = wrapper.findAllComponents(InlineDictationButtonStub);
     expect(buttons).toHaveLength(3);
     expect(buttons[2]!.props("ariaLabel")).toBe("Dictate checklist item");
+    expect(buttons[2]!.props("projectId")).toBe("project-1");
     expect(typeof buttons[2]!.props("target")).toBe("function");
   });
 });

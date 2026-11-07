@@ -69,6 +69,7 @@ const InlineDictationButtonStub = defineComponent({
     ariaLabel: { type: String, default: "" },
     disabled: { type: Boolean, default: false },
     showButton: { type: Boolean, default: true },
+    projectId: { type: String, default: null },
   },
   render: () => null,
 });
@@ -184,6 +185,10 @@ describe("TaskTemplateDialog inline dictation", () => {
     expect(buttons.map((button) => button.props("ariaLabel"))).toEqual([
       "Dictate template title",
       "Dictate template description",
+    ]);
+    expect(buttons.map((button) => button.props("projectId"))).toEqual([
+      "project-1",
+      "project-1",
     ]);
   });
 });

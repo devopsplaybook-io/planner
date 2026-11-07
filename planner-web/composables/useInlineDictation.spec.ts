@@ -80,6 +80,7 @@ function jobView(
     stage: status === "processing" ? "transcribing" : null,
     engine: "embedded",
     language: "auto",
+    targetLanguage: null,
     revision: options.revision ?? 1,
     result:
       raw === null
@@ -90,6 +91,7 @@ function jobView(
             polished: polished !== null,
             actions: [],
             actionsAvailable: false,
+            segments: null,
           },
     availability: {
       rawTranscript: raw !== null,
@@ -413,6 +415,17 @@ describe("useInlineDictation", () => {
 
     expect(uploadJob.mock.calls[0]![2]).toBe("fr");
     expect(localStorage.getItem("dictation-language")).toBe("fr");
+  });
+
+  it("should pass the project scope and translation target to the upload", async () => {
+    dictationStore.targetLanguage = "en";
+    inline = createInline({ projectId: () => "project-7" });
+    await inline.start();
+    await inline.stop();
+
+    const call = uploadJob.mock.calls[0]!;
+    expect(call[4]).toBe("project-7");
+    expect(call[5]).toBe("en");
   });
 
   it("should keep the audio while the transcript arrives (voice message)", async () => {

@@ -27,6 +27,12 @@ export interface DictationConfig {
   model: string;
   // Inline dictation advertises itself so older servers keep the control hidden
   inlineJobs?: boolean;
+  // Accuracy capabilities (absent on older servers; safe fallbacks below)
+  hotwordsMax?: number;
+  vocabularyMax?: number;
+  confidenceThreshold?: number;
+  confidenceAvailable?: boolean;
+  translationLanguages?: string[];
 }
 
 export interface AppConfig {
@@ -65,6 +71,13 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     engineState: "ready",
     model: "",
     inlineJobs: false,
+    hotwordsMax: 50,
+    vocabularyMax: 200,
+    confidenceThreshold: 0.6,
+    confidenceAvailable: false,
+    translationLanguages: DEFAULT_DICTATION_LANGUAGES.filter(
+      (language) => language !== "auto",
+    ),
   },
 };
 
@@ -106,6 +119,29 @@ export const useRecommendationStore = defineStore("recommendation", {
       state.config?.dictation?.inlineJobs ??
       DEFAULT_APP_CONFIG.dictation!.inlineJobs ??
       false,
+    dictationHotwordsMax: (state) =>
+      state.config?.dictation?.hotwordsMax ??
+      DEFAULT_APP_CONFIG.dictation!.hotwordsMax!,
+    dictationVocabularyMax: (state) =>
+      state.config?.dictation?.vocabularyMax ??
+      DEFAULT_APP_CONFIG.dictation!.vocabularyMax!,
+    dictationConfidenceThreshold: (state) =>
+      state.config?.dictation?.confidenceThreshold ??
+      DEFAULT_APP_CONFIG.dictation!.confidenceThreshold!,
+    dictationConfidenceAvailable: (state) =>
+      state.config?.dictation?.confidenceAvailable ??
+      DEFAULT_APP_CONFIG.dictation!.confidenceAvailable ??
+      false,
+    dictationTranslationLanguages: (state) => {
+      const configured = state.config?.dictation?.translationLanguages;
+      if (configured?.length) {
+        return configured.filter((language) => language !== "auto");
+      }
+      return (
+        DEFAULT_APP_CONFIG.dictation!.translationLanguages ||
+        DEFAULT_DICTATION_LANGUAGES.filter((language) => language !== "auto")
+      );
+    },
   },
 
   actions: {

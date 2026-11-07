@@ -17,6 +17,13 @@ import {
   DictationStartJob,
   DictationWaitForJob,
 } from "./Dictation";
+import {
+  UsersDataGet,
+  UsersDataSetDictationTargetLanguage,
+} from "../users/UsersData";
+import { ProjectsDataGet } from "../projects/ProjectsData";
+import { isProjectVisible } from "../projects/ProjectVisibility";
+import { DictationVocabularyResolveForPrompt } from "./DictationVocabularyData";
 
 jest.mock("../users/Auth", () => ({
   AuthGetUserSession: jest.fn(),
@@ -30,6 +37,25 @@ jest.mock("./Dictation", () => ({
   DictationGetInFlightJobId: jest.fn(() => null),
   DictationGetRecentJobs: jest.fn(async () => []),
   DictationWaitForJob: jest.fn(),
+}));
+
+jest.mock("../users/UsersData", () => ({
+  UsersDataGet: jest.fn(),
+  UsersDataSetDictationTargetLanguage: jest.fn(),
+}));
+
+jest.mock("../projects/ProjectsData", () => ({
+  ProjectsDataGet: jest.fn(),
+}));
+
+jest.mock("../projects/ProjectVisibility", () => ({
+  isProjectVisible: jest.fn(() => true),
+}));
+
+jest.mock("./DictationVocabularyData", () => ({
+  DictationVocabularyResolveForPrompt: jest.fn(async () => []),
+  NormalizeVocabularyTerm: jest.fn(),
+  DictationVocabularyAdd: jest.fn(),
 }));
 
 jest.mock("fs-extra", () => {
@@ -111,6 +137,10 @@ describe("DictationRoutes", () => {
     (AuthMustBeAuthenticated as jest.Mock).mockResolvedValue(undefined);
     (AuthRateLimitKey as jest.Mock).mockReturnValue("user:test");
     (DictationGetInFlightJobId as jest.Mock).mockReturnValue(null);
+    (UsersDataGet as jest.Mock).mockResolvedValue(null);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(null);
+    (isProjectVisible as jest.Mock).mockReturnValue(true);
+    (DictationVocabularyResolveForPrompt as jest.Mock).mockResolvedValue([]);
   });
 
   afterAll(async () => {
@@ -185,6 +215,7 @@ describe("DictationRoutes", () => {
       "audio/webm",
       "fr",
       "dictation",
+      { prompt: null, hotwordsCount: 0, targetLanguage: null },
     );
   });
 
@@ -210,6 +241,7 @@ describe("DictationRoutes", () => {
       "audio/webm",
       "en",
       "inline",
+      { prompt: null, hotwordsCount: 0, targetLanguage: null },
     );
   });
 
@@ -235,6 +267,7 @@ describe("DictationRoutes", () => {
       "audio/webm",
       null,
       "dictation",
+      { prompt: null, hotwordsCount: 0, targetLanguage: null },
     );
   });
 
@@ -260,8 +293,245 @@ describe("DictationRoutes", () => {
       "audio/webm",
       "en",
       "dictation",
+      { prompt: null, hotwordsCount: 0, targetLanguage: null },
     );
     config.DICTATION_LANGUAGE = "auto";
+  });
+
+  it("should bias the engine with the user's vocabulary", async () => {
+    (DictationVocabularyResolveForPrompt as jest.Mock).mockResolvedValue([
+      "Planner",
+      "Kubernetes",
+    ]);
+    const body = buildMultipart({
+      file: {
+        filename: "speech.webm",
+        contentType: "audio/webm",
+        content: Buffer.from("fake audio bytes"),
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": body.contentType },
+      payload: body.body,
+    });
+    expect(res.statusCode).toBe(202);
+    expect(DictationVocabularyResolveForPrompt).toHaveBeenCalledWith(
+      "user-1",
+      null,
+      config.DICTATION_HOTWORDS_MAX,
+    );
+    const options = (DictationStartJob as jest.Mock).mock.calls[0][5];
+    expect(options.hotwordsCount).toBe(2);
+    expect(options.prompt).toContain("Planner");
+    expect(options.prompt).toContain("Kubernetes");
+  });
+
+  it("should scope the vocabulary to a visible project", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue({ id: "proj-1" });
+    const body = buildMultipart({
+      fields: { projectId: "proj-1" },
+      file: {
+        filename: "speech.webm",
+        contentType: "audio/webm",
+        content: Buffer.from("fake audio bytes"),
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": body.contentType },
+      payload: body.body,
+    });
+    expect(res.statusCode).toBe(202);
+    expect(DictationVocabularyResolveForPrompt).toHaveBeenCalledWith(
+      "user-1",
+      "proj-1",
+      config.DICTATION_HOTWORDS_MAX,
+    );
+  });
+
+  it("should answer 404 for a project the caller cannot see", async () => {
+    (ProjectsDataGet as jest.Mock).mockResolvedValue({ id: "proj-1" });
+    (isProjectVisible as jest.Mock).mockReturnValue(false);
+    const body = buildMultipart({
+      fields: { projectId: "proj-1" },
+      file: {
+        filename: "speech.webm",
+        contentType: "audio/webm",
+        content: Buffer.from("fake audio bytes"),
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": body.contentType },
+      payload: body.body,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(DictationStartJob).not.toHaveBeenCalled();
+  });
+
+  it("should use the explicit target language of the upload", async () => {
+    const body = buildMultipart({
+      fields: { targetLanguage: "fr" },
+      file: {
+        filename: "speech.webm",
+        contentType: "audio/webm",
+        content: Buffer.from("fake audio bytes"),
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": body.contentType },
+      payload: body.body,
+    });
+    expect(res.statusCode).toBe(202);
+    expect((DictationStartJob as jest.Mock).mock.calls[0][5]).toMatchObject({
+      targetLanguage: "fr",
+    });
+    expect(UsersDataGet).not.toHaveBeenCalled();
+  });
+
+  it("should fall back to the stored translation preference", async () => {
+    (UsersDataGet as jest.Mock).mockResolvedValue({
+      dictationTargetLanguage: "de",
+    });
+    const body = buildMultipart({
+      file: {
+        filename: "speech.webm",
+        contentType: "audio/webm",
+        content: Buffer.from("fake audio bytes"),
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": body.contentType },
+      payload: body.body,
+    });
+    expect(res.statusCode).toBe(202);
+    expect((DictationStartJob as jest.Mock).mock.calls[0][5]).toMatchObject({
+      targetLanguage: "de",
+    });
+  });
+
+  it("should treat an off value as disabling translation", async () => {
+    (UsersDataGet as jest.Mock).mockResolvedValue({
+      dictationTargetLanguage: "de",
+    });
+    const body = buildMultipart({
+      fields: { targetLanguage: "none" },
+      file: {
+        filename: "speech.webm",
+        contentType: "audio/webm",
+        content: Buffer.from("fake audio bytes"),
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": body.contentType },
+      payload: body.body,
+    });
+    expect(res.statusCode).toBe(202);
+    expect((DictationStartJob as jest.Mock).mock.calls[0][5]).toMatchObject({
+      targetLanguage: null,
+    });
+  });
+
+  it("should answer 400 for an unsupported target language", async () => {
+    const body = buildMultipart({
+      fields: { targetLanguage: "xx" },
+      file: {
+        filename: "speech.webm",
+        contentType: "audio/webm",
+        content: Buffer.from("fake audio bytes"),
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": body.contentType },
+      payload: body.body,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "Invalid: targetLanguage" });
+    expect(DictationStartJob).not.toHaveBeenCalled();
+  });
+
+  it("should read the stored translation preference", async () => {
+    (UsersDataGet as jest.Mock).mockResolvedValue({
+      dictationTargetLanguage: "de",
+    });
+    const res = await app.inject({ method: "GET", url: "/preferences" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ targetLanguage: "de" });
+  });
+
+  it("should default the translation preference to off", async () => {
+    const res = await app.inject({ method: "GET", url: "/preferences" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ targetLanguage: null });
+  });
+
+  it("should store the translation preference", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/preferences",
+      payload: { targetLanguage: "es" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ targetLanguage: "es" });
+    expect(UsersDataSetDictationTargetLanguage).toHaveBeenCalledWith(
+      "user-1",
+      "es",
+    );
+  });
+
+  it("should clear the translation preference with an off value", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/preferences",
+      payload: { targetLanguage: "off" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ targetLanguage: null });
+    expect(UsersDataSetDictationTargetLanguage).toHaveBeenCalledWith(
+      "user-1",
+      null,
+    );
+  });
+
+  it("should reject an unsupported translation preference", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/preferences",
+      payload: { targetLanguage: "xx" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(UsersDataSetDictationTargetLanguage).not.toHaveBeenCalled();
+  });
+
+  it("should answer 401 on the preferences without a session", async () => {
+    (AuthGetUserSession as jest.Mock).mockResolvedValue({
+      isAuthenticated: false,
+    });
+    expect(
+      (await app.inject({ method: "GET", url: "/preferences" })).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: "/preferences",
+          payload: { targetLanguage: "es" },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(UsersDataSetDictationTargetLanguage).not.toHaveBeenCalled();
   });
 
   it("should answer 400 when no file is uploaded", async () => {

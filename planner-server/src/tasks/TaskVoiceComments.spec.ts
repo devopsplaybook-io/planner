@@ -76,6 +76,12 @@ jest.mock("../dictation/DictationData", () => {
 jest.mock("./TaskUpdates", () => ({
   recordTaskUpdate: jest.fn(),
 }));
+jest.mock("../dictation/DictationHotwords", () => ({
+  ComposeHotwordPrompt: jest.fn(() => null),
+}));
+jest.mock("../dictation/DictationVocabularyData", () => ({
+  DictationVocabularyResolveForPrompt: jest.fn(async () => []),
+}));
 jest.mock("fs-extra");
 
 const mockPathExists = (fs as any).pathExists as jest.Mock;
@@ -100,9 +106,14 @@ import { SttNoSpeechError } from "../dictation/SttWhisperCpp";
 import { UsersDataGet } from "../users/UsersData";
 import { TasksDataGet, addComment, TasksDataTouch } from "./TasksData";
 import { recordTaskUpdate } from "./TaskUpdates";
+import { ComposeHotwordPrompt } from "../dictation/DictationHotwords";
+import { DictationVocabularyResolveForPrompt } from "../dictation/DictationVocabularyData";
 
 const mockTranscribeAudio = DictationTranscribeAudio as jest.Mock;
 const mockPolish = DictationPolishTranscript as jest.Mock;
+const mockComposeHotwordPrompt = ComposeHotwordPrompt as jest.Mock;
+const mockResolveVocabulary =
+  DictationVocabularyResolveForPrompt as jest.Mock;
 const mockTasksDataGet = TasksDataGet as jest.Mock;
 const mockAddComment = addComment as jest.Mock;
 const mockTasksDataTouch = TasksDataTouch as jest.Mock;
@@ -164,6 +175,8 @@ describe("TaskVoiceComments", () => {
     mockPolish.mockResolvedValue({ polishedText: "Polished text", polished: true });
     mockTasksDataGet.mockResolvedValue({ id: "task-1", comments: [] });
     mockUsersDataGet.mockResolvedValue({ name: "Alice" });
+    mockResolveVocabulary.mockResolvedValue([]);
+    mockComposeHotwordPrompt.mockReturnValue(null);
   });
 
   // Runs before any other test: the module state is still uninitialized
@@ -197,8 +210,9 @@ describe("TaskVoiceComments", () => {
         "/data/attachments/tasks/att-1.webm",
         "audio/webm",
         "en",
+        { prompt: null },
       );
-      expect(mockPolish).toHaveBeenCalledWith("raw words", "en");
+      expect(mockPolish).toHaveBeenCalledWith("raw words", "en", null);
       expect(mockAddComment).toHaveBeenCalledTimes(1);
       const [taskId, comment] = mockAddComment.mock.calls[0];
       expect(taskId).toBe("task-1");
@@ -269,6 +283,7 @@ describe("TaskVoiceComments", () => {
         expect.any(String),
         expect.any(String),
         "fr",
+        { prompt: null },
       );
 
       await TaskVoiceCommentsEnqueue(
@@ -283,7 +298,53 @@ describe("TaskVoiceComments", () => {
         expect.any(String),
         expect.any(String),
         null,
+        { prompt: null },
       );
+    });
+
+    it("should bias the transcription with the project vocabulary", async () => {
+      mockTasksDataGet.mockResolvedValue({
+        id: "task-1",
+        projectId: "proj-1",
+        comments: [],
+      });
+      mockResolveVocabulary.mockResolvedValue(["Planner"]);
+      mockComposeHotwordPrompt.mockReturnValue("Vocabulary: Planner.");
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({ requestedLanguage: "en" }),
+      );
+      await flush();
+
+      expect(mockResolveVocabulary).toHaveBeenCalledWith(
+        "user-1",
+        "proj-1",
+        expect.any(Number),
+      );
+      expect(mockTranscribeAudio).toHaveBeenCalledWith(
+        "/data/attachments/tasks/att-1.webm",
+        "audio/webm",
+        "en",
+        { prompt: "Vocabulary: Planner." },
+      );
+      // Voice comments are never translated
+      expect(mockPolish).toHaveBeenCalledWith("raw words", "en", null);
+    });
+
+    it("should tolerate a vocabulary lookup failure", async () => {
+      mockResolveVocabulary.mockRejectedValue(
+        new Error("vocabulary lookup failed"),
+      );
+      const result = await TaskVoiceCommentsEnqueue(voiceRequest());
+      await flush();
+
+      expect(result.queued).toBe(true);
+      expect(mockTranscribeAudio).toHaveBeenCalledWith(
+        "/data/attachments/tasks/att-1.webm",
+        "audio/webm",
+        null,
+        { prompt: null },
+      );
+      expect(mockAddComment).toHaveBeenCalledTimes(1);
     });
 
     it("should not transcribe when dictation is disabled", async () => {

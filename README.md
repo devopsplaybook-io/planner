@@ -126,9 +126,14 @@ The server is engine-agnostic in `external` mode: `STT_API_URL` is the base URL 
 | `DICTATION_ESTIMATED_RTF`        | Real-time factor used for the processing ETA (`0` = engine default) | `0`                      |
 | `DICTATION_MAX_DURATION_SECONDS` | Maximum recording duration (client-side auto-stop)       | `120`                     |
 | `DICTATION_MAX_UPLOAD_MB`        | Maximum audio upload size in megabytes                   | `10`                      |
+| `DICTATION_HOTWORDS_MAX`         | Maximum vocabulary terms injected into the STT prompt    | `50`                      |
+| `DICTATION_VOCABULARY_MAX`       | Maximum stored vocabulary terms per user                 | `200`                     |
+| `DICTATION_CONFIDENCE_THRESHOLD` | Confidence below which the review highlights a word      | `0.6`                     |
 | `RATE_LIMIT_DICTATION_MAX`       | Max dictation uploads per user per hour                  | `30`                      |
 
-Audio is never persisted: the uploaded file is deleted immediately after transcription, and transcripts are never logged. The web client gets the recording/upload limits, the language list and the engine state from `GET /api/status/config`, so a configuration change does not require a web rebuild.
+Audio is never persisted: the uploaded file is deleted immediately after transcription, and transcripts are never logged. Vocabulary terms and the prompt composed from them are never logged either; only aggregate counters reach telemetry. The web client gets the recording/upload limits, the language list, the vocabulary/confidence limits and the engine state from `GET /api/status/config`, so a configuration change does not require a web rebuild.
+
+Users can manage a custom vocabulary (personal and per-project) that biases transcription, choose an optional target output language, and review low-confidence words. Vocabulary is available through `GET/POST/PUT /api/dictation/vocabulary` and `DELETE /api/dictation/vocabulary/:id`; the target language is stored per user through `GET/PUT /api/dictation/preferences`. A `projectId` and an optional `targetLanguage` can be sent with a dictation upload.
 
 Example setups:
 
@@ -213,9 +218,15 @@ Planner exposes a RESTful API under the `/api/` prefix:
 | GET /api/status      | Health check endpoint                                   |
 | GET /api/statuses    | Get the global, ordered status catalog (any user)       |
 | PUT /api/statuses    | Replace the global status catalog (admin only)          |
-| POST /api/dictation  | Upload a dictation audio clip and start a job           |
+| POST /api/dictation  | Upload a dictation audio clip and start a job (`projectId` and `targetLanguage` optional) |
 | GET /api/dictation/jobs | List the authenticated user's recent dictation jobs |
 | GET /api/dictation/:jobId | Poll the state/stage/result of a dictation job; `?wait=1&since=<revision>` long-polls for progressive updates |
+| GET /api/dictation/vocabulary | List the caller's custom vocabulary terms |
+| POST /api/dictation/vocabulary | Add a vocabulary term (personal or project scope) |
+| PUT /api/dictation/vocabulary | Replace one vocabulary scope from a plain-text list |
+| DELETE /api/dictation/vocabulary/:id | Delete a vocabulary term owned by the caller |
+| GET /api/dictation/preferences | Read the stored dictation preferences (target output language) |
+| PUT /api/dictation/preferences | Update the target output language preference |
 | GET /api/tasks/:taskId/voice-transcriptions | Latest voice-transcription status per audio attachment |
 | POST /api/tasks/:taskId/attachments/:attachmentId/transcribe | Retry a failed or skipped voice transcription |
 | GET /api/users/calendar.ics | ICS calendar feed of the authenticated user's visible task due dates (API key required) |

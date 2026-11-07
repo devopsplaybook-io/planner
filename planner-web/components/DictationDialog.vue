@@ -50,6 +50,10 @@
             </option>
           </select>
         </label>
+        <p class="review-note retention-note">
+          <i class="bi bi-shield-lock" /> Audio is deleted right after
+          transcription.
+        </p>
         <footer class="dialog-footer">
           <button
             type="button"
@@ -136,17 +140,37 @@
               @input="reviewDirty = true"
             />
           </label>
+          <p v-if="textSourceLabel || translatedToLabel" class="text-badges">
+            <span v-if="textSourceLabel" class="text-badge">
+              {{ textSourceLabel }}
+            </span>
+            <span v-if="translatedToLabel" class="text-badge is-translation">
+              <i class="bi bi-translate" /> {{ translatedToLabel }}
+            </span>
+          </p>
           <p v-if="reviewProgress" class="review-progress" role="status">
             <span class="inline-spinner" aria-hidden="true" />
             {{ reviewProgress }}
           </p>
-          <p v-if="canUsePolishedText" class="review-note">
+          <p
+            v-if="canUsePolishedText || canRevertToRaw"
+            class="review-note review-actions"
+          >
             <button
+              v-if="canUsePolishedText"
               type="button"
               class="secondary small-btn"
               @click="usePolishedText"
             >
               <i class="bi bi-stars" /> Use polished text
+            </button>
+            <button
+              v-if="canRevertToRaw"
+              type="button"
+              class="secondary small-btn"
+              @click="revertToRaw"
+            >
+              <i class="bi bi-arrow-counterclockwise" /> Revert to raw
             </button>
           </p>
           <p class="stage-timings" v-if="stageSummary">
@@ -161,10 +185,28 @@
             <i class="bi bi-info-circle" />
             Action proposals are not available for this dictation.
           </p>
+          <p v-if="showConfidenceUnavailable" class="review-note">
+            <i class="bi bi-info-circle" />
+            Word confidence is not available with the external engine.
+          </p>
+
+          <DictationConfidenceReview
+            v-if="hasSegments"
+            :segments="segments"
+            :threshold="confidenceThreshold"
+            :notice="correctionNotice"
+            @apply="applyCorrection"
+            @add-vocabulary="addVocabulary"
+          />
 
           <details v-if="rawTranscript" class="raw-transcript">
             <summary>Raw transcript</summary>
             <p class="raw-transcript-text">{{ rawTranscript }}</p>
+          </details>
+
+          <details v-if="rawTranscript" class="transcript-diff">
+            <summary>Compare with raw transcript</summary>
+            <DictationDiff :raw="rawTranscript" :polished="reviewText" />
           </details>
 
           <template v-if="includedActions.length > 0">
@@ -256,6 +298,10 @@
             </ul>
           </template>
 
+          <p class="review-note retention-note">
+            <i class="bi bi-shield-lock" /> Audio is deleted right after
+            transcription.
+          </p>
           <footer class="dialog-footer">
             <button
               type="submit"
@@ -302,6 +348,7 @@ const tasksStore = useTasksStore();
 const notesStore = useNotesStore();
 const statusesStore = useStatusesStore();
 const recommendationStore = useRecommendationStore();
+const vocabularyStore = useDictationVocabularyStore();
 
 const POLL_FALLBACK_MS = 1500;
 
@@ -420,6 +467,7 @@ const etaLabel = computed(() => {
 const reviewText = ref("");
 const reviewDirty = ref(false);
 const includedActions = ref([]);
+const correctionNotice = ref("");
 let reviewInitialized = false;
 let actionsPatched = false;
 
@@ -436,6 +484,37 @@ const canUsePolishedText = computed(
     reviewDirty.value &&
     reviewText.value !== polishedText.value,
 );
+const canRevertToRaw = computed(
+  () => !!rawTranscript.value && reviewText.value !== rawTranscript.value,
+);
+const segments = computed(() => dictationStore.result?.segments || []);
+const hasSegments = computed(() => segments.value.length > 0);
+const confidenceThreshold = computed(
+  () => recommendationStore.dictationConfidenceThreshold,
+);
+const showConfidenceUnavailable = computed(
+  () =>
+    dictationStore.status === "done" &&
+    !!dictationStore.result &&
+    !hasSegments.value &&
+    dictationStore.engine === "external",
+);
+const textSourceLabel = computed(() => {
+  if (reviewDirty.value) {
+    return "Edited by you";
+  }
+  if (polishedAvailable.value && reviewText.value === polishedText.value) {
+    return "Polished";
+  }
+  if (rawTranscript.value && reviewText.value === rawTranscript.value) {
+    return "Raw transcript";
+  }
+  return "";
+});
+const translatedToLabel = computed(() => {
+  const target = dictationStore.jobTargetLanguage;
+  return target ? `Translated to ${languageLabel(target)}` : "";
+});
 const reviewProgress = computed(() => {
   if (dictationStore.status !== "processing") {
     return "";
@@ -528,6 +607,7 @@ function resetReviewState() {
   reviewText.value = "";
   reviewDirty.value = false;
   includedActions.value = [];
+  correctionNotice.value = "";
 }
 
 function enterReview() {
@@ -552,6 +632,41 @@ function usePolishedText() {
     reviewText.value = polishedText.value;
     reviewDirty.value = false;
   }
+}
+
+function revertToRaw() {
+  reviewText.value = rawTranscript.value;
+  reviewDirty.value = true;
+  correctionNotice.value = "";
+}
+
+// Replaces only the first case-insensitive occurrence, so a correction never
+// touches repeated words elsewhere in the text.
+function applyCorrection({ original, replacement }) {
+  correctionNotice.value = "";
+  const needle = (original || "").toLowerCase();
+  const index = needle
+    ? reviewText.value.toLowerCase().indexOf(needle)
+    : -1;
+  if (index === -1) {
+    correctionNotice.value = `Could not find “${original}” in the text. You can add it to your vocabulary instead.`;
+    return;
+  }
+  reviewText.value =
+    reviewText.value.slice(0, index) +
+    replacement +
+    reviewText.value.slice(index + original.length);
+  reviewDirty.value = true;
+}
+
+async function addVocabulary(term) {
+  correctionNotice.value = "";
+  const res = await vocabularyStore.add(term, null);
+  if (res?.error) {
+    correctionNotice.value = res.error;
+    return;
+  }
+  correctionNotice.value = `Added “${term}” to your personal vocabulary.`;
 }
 
 // Progressive delivery: patch the polished text and actions as they arrive,
@@ -861,6 +976,7 @@ watch(
         recommendationStore.fetchConfig().catch(() => undefined);
       }
       dictationStore.fetchRecentJobs().catch(() => undefined);
+      dictationStore.fetchPreferences().catch(() => undefined);
       if (dictationStore.isProcessing) {
         if (dictationStore.hasRawTranscript) {
           enterReview();
@@ -1094,6 +1210,37 @@ onUnmounted(() => {
   opacity: 0.85;
 }
 
+.text-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  margin: var(--space-2xs) 0 0;
+}
+
+.text-badge {
+  font-size: var(--text-xs);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 0.4em;
+  opacity: 0.85;
+}
+
+.text-badge.is-translation {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  opacity: 1;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+.retention-note {
+  margin-top: var(--space-sm);
+}
+
 .inline-spinner {
   width: 0.9em;
   height: 0.9em;
@@ -1128,6 +1275,15 @@ onUnmounted(() => {
   font-size: var(--text-sm);
   opacity: 0.85;
   white-space: pre-wrap;
+}
+
+.transcript-diff {
+  margin: var(--space-xs) 0;
+}
+
+.transcript-diff summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
 }
 
 .action-cards {

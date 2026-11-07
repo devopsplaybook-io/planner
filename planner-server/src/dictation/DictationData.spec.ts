@@ -51,10 +51,17 @@ describe("DictationData (sqlite)", () => {
     db.exec(`
       CREATE TABLE users (id VARCHAR(50) PRIMARY KEY);
       CREATE TABLE tasks (id VARCHAR(50) PRIMARY KEY);
+      CREATE TABLE projects (id VARCHAR(50) PRIMARY KEY);
     `);
     db.exec(
       await fs.readFile(
         path.join(__dirname, "..", "..", "sql", "sqlite", "init-0026.sql"),
+        "utf-8",
+      ),
+    );
+    db.exec(
+      await fs.readFile(
+        path.join(__dirname, "..", "..", "sql", "sqlite", "init-0027.sql"),
         "utf-8",
       ),
     );
@@ -95,6 +102,37 @@ describe("DictationData (sqlite)", () => {
     });
     expect(job?.dateCreated).toBeDefined();
     expect(await DictationDataGet("missing")).toBeNull();
+  });
+
+  it("should persist the translation target and confidence segments", async () => {
+    const segments = [
+      { text: "hello", fromMs: 0, toMs: 500, confidence: 0.9 },
+      { text: "world", fromMs: 500, toMs: 900, confidence: null },
+    ];
+    await DictationDataCreate(
+      createInput({ id: "job-1", targetLanguage: "fr" }),
+    );
+    await DictationDataUpdate("job-1", { segments });
+
+    const job = await DictationDataGet("job-1");
+    expect(job?.targetLanguage).toBe("fr");
+    expect(job?.segments).toEqual(segments);
+
+    await DictationDataUpdate("job-1", {
+      targetLanguage: null,
+      segments: null,
+    });
+    const updated = await DictationDataGet("job-1");
+    expect(updated?.targetLanguage).toBeNull();
+    expect(updated?.segments).toBeNull();
+  });
+
+  it("should degrade malformed stored segments to null", async () => {
+    await DictationDataCreate(createInput({ id: "job-1" }));
+    DbUtilsInitGetDatabase().exec(
+      "UPDATE dictation_jobs SET segments = 'not json' WHERE id = 'job-1'",
+    );
+    expect((await DictationDataGet("job-1"))?.segments).toBeNull();
   });
 
   it("should never return another user's job", async () => {

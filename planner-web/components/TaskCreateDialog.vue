@@ -55,6 +55,7 @@
             />
             <InlineDictationButton
               :target="titleInput"
+              :project-id="form.projectId"
               aria-label="Dictate task title"
             />
           </span>
@@ -69,6 +70,7 @@
             />
             <InlineDictationButton
               :target="descriptionInput"
+              :project-id="form.projectId"
               aria-label="Dictate task description"
             />
           </span>
@@ -113,6 +115,7 @@
               />
               <InlineDictationButton
                 :target="() => checklistInputs[idx]"
+                :project-id="form.projectId"
                 aria-label="Dictate checklist item"
               />
             </span>

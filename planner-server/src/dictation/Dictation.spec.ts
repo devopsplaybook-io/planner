@@ -18,10 +18,12 @@ jest.mock("./DictationData", () => {
       commentId: null,
       stage: null,
       language: null,
+      targetLanguage: null,
       model: null,
       rawTranscript: null,
       polishedText: null,
       polished: false,
+      segments: null,
       actions: [],
       actionsAvailable: false,
       error: null,
@@ -393,11 +395,126 @@ describe("Dictation pipeline", () => {
       "/tmp/dictation/e1.audio",
       "audio/webm",
       "en",
+      { prompt: null },
     );
     // axios is used only for the LLM stages, never for the STT call
     expect(mockAxios.post).toHaveBeenCalledTimes(2);
     expect(mockAxios.post.mock.calls[0][0]).toBe("https://llm.test/chat");
     expect(mockRemove).toHaveBeenCalledWith("/tmp/dictation/e1.audio");
+  });
+
+  it("should persist and expose the confidence segments of the embedded engine", async () => {
+    const embeddedConfig = new Config();
+    embeddedConfig.DICTATION_ENABLED = true;
+    embeddedConfig.STT_MODE = "embedded";
+    embeddedConfig.STT_EMBEDDED_MODEL = "ggml-base";
+    embeddedConfig.LLM_API_KEY = "llm-key";
+    embeddedConfig.LLM_API_URL = "https://llm.test/chat";
+    embeddedConfig.LLM_MODEL = "llm-test";
+    await DictationInit(embeddedConfig);
+
+    const segments = [
+      { text: "hello", fromMs: 0, toMs: 400, confidence: 0.9 },
+      { text: "world", fromMs: 400, toMs: 900, confidence: 0.3 },
+    ];
+    mockStt.mockResolvedValueOnce({
+      text: "hello world",
+      audioDurationMs: 900,
+      threads: 1,
+      sttMs: 5,
+      segments,
+    } as never);
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"text": "Hello world!"}') as never,
+    );
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"actions": []}') as never,
+    );
+
+    const jobId = await DictationStartJob(
+      "user-seg",
+      "/tmp/dictation/seg.audio",
+      "audio/webm",
+      "en",
+    );
+    await flush();
+
+    expect(await DictationGetJob("user-seg", jobId)).toMatchObject({
+      status: "done",
+      result: { segments },
+    });
+  });
+
+  it("should forward the vocabulary prompt to the embedded engine", async () => {
+    const embeddedConfig = new Config();
+    embeddedConfig.DICTATION_ENABLED = true;
+    embeddedConfig.STT_MODE = "embedded";
+    embeddedConfig.STT_EMBEDDED_MODEL = "ggml-base";
+    embeddedConfig.LLM_API_KEY = "";
+    await DictationInit(embeddedConfig);
+
+    mockStt.mockResolvedValueOnce({
+      text: "hello",
+      audioDurationMs: 500,
+      threads: 1,
+      sttMs: 5,
+      segments: null,
+    } as never);
+
+    await DictationStartJob(
+      "user-hot",
+      "/tmp/dictation/hot.audio",
+      "audio/webm",
+      "en",
+      "dictation",
+      { prompt: "Vocabulary: Planner.", hotwordsCount: 1 },
+    );
+    await flush();
+
+    expect(mockStt).toHaveBeenCalledWith(
+      expect.objectContaining({ STT_MODE: "embedded" }),
+      "/tmp/dictation/hot.audio",
+      "audio/webm",
+      "en",
+      { prompt: "Vocabulary: Planner." },
+    );
+  });
+
+  it("should persist the target language and translate in the polish stage", async () => {
+    const stt = deferred();
+    queueStt(stt);
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"text": "Bonjour"}') as never,
+    );
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"actions": []}') as never,
+    );
+
+    const jobId = await DictationStartJob(
+      "user-translate",
+      "/tmp/dictation/tr.audio",
+      "audio/webm",
+      "en",
+      "dictation",
+      { targetLanguage: "fr" },
+    );
+    expect(await DictationGetJob("user-translate", jobId)).toMatchObject({
+      targetLanguage: "fr",
+    });
+
+    stt.resolve(sttResponse("hello"));
+    await flush();
+
+    const polishBody = mockAxios.post.mock.calls[1][1] as {
+      messages: { content: string }[];
+    };
+    expect(polishBody.messages[1].content).toContain(
+      'Translate the polished text into language code "fr"',
+    );
+    expect(await DictationGetJob("user-translate", jobId)).toMatchObject({
+      status: "done",
+      result: { polishedText: "Bonjour" },
+    });
   });
 
   it("should omit the STT language parameter in auto mode", async () => {
@@ -856,6 +973,47 @@ describe("Dictation pipeline", () => {
     });
   });
 
+  it("should resume with the persisted target language", async () => {
+    await mockData.DictationDataCreate({
+      id: "translated-crash",
+      userId: "user-translate-resume",
+      source: "dictation",
+      status: "processing",
+      stage: "polishing",
+      language: "en",
+      targetLanguage: "fr",
+      engine: "external",
+      model: "whisper-test",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    await mockData.DictationDataUpdate("translated-crash", {
+      rawTranscript: "hello",
+    });
+
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"text": "Bonjour"}') as never,
+    );
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"actions": []}') as never,
+    );
+
+    await DictationResumeJob("translated-crash");
+
+    const polishBody = mockAxios.post.mock.calls[0][1] as {
+      messages: { content: string }[];
+    };
+    expect(polishBody.messages[1].content).toContain(
+      'Translate the polished text into language code "fr"',
+    );
+    expect(
+      await DictationGetJob("user-translate-resume", "translated-crash"),
+    ).toMatchObject({
+      status: "done",
+      targetLanguage: "fr",
+      result: { polishedText: "Bonjour" },
+    });
+  });
+
   // ==================== Shared STT / polish stages ====================
   describe("shared STT and polish stages", () => {
     it("should transcribe through the external endpoint without deleting the audio", async () => {
@@ -908,6 +1066,7 @@ describe("Dictation pipeline", () => {
         "/tmp/dictation/x2.audio",
         "audio/webm",
         null,
+        { prompt: null },
       );
       expect(mockRemove).not.toHaveBeenCalled();
     });
@@ -984,6 +1143,106 @@ describe("Dictation pipeline", () => {
         polishMs: expect.any(Number),
       });
       expect(mockRemove).not.toHaveBeenCalled();
+    });
+
+    it("should send the vocabulary prompt to the external endpoint", async () => {
+      mockAxios.post.mockResolvedValueOnce(sttResponse("hello") as never);
+
+      await DictationTranscribeAudio(
+        "/tmp/dictation/x4.audio",
+        "audio/webm",
+        "en",
+        { prompt: "Vocabulary: Planner." },
+      );
+
+      const form = mockAxios.post.mock.calls[0][1] as FormData;
+      expect(form.get("prompt")).toBe("Vocabulary: Planner.");
+      expect(form.get("language")).toBe("en");
+    });
+
+    it("should retry without the prompt when the endpoint rejects it", async () => {
+      mockAxios.post
+        .mockRejectedValueOnce(
+          Object.assign(new Error("bad request"), {
+            response: { status: 400 },
+          }) as never,
+        )
+        .mockResolvedValueOnce(sttResponse("hello") as never);
+
+      const transcript = await DictationTranscribeAudio(
+        "/tmp/dictation/x5.audio",
+        "audio/webm",
+        "en",
+        { prompt: "Vocabulary: Planner." },
+      );
+
+      expect(transcript).toMatchObject({ text: "hello", segments: null });
+      expect(mockAxios.post).toHaveBeenCalledTimes(2);
+      const retried = mockAxios.post.mock.calls[1][1] as FormData;
+      expect(retried.get("prompt")).toBeNull();
+    });
+
+    it("should not retry a failure that is not a prompt rejection", async () => {
+      mockAxios.post.mockRejectedValueOnce(
+        Object.assign(new Error("upstream down"), {
+          response: { status: 500 },
+        }) as never,
+      );
+
+      await expect(
+        DictationTranscribeAudio("/tmp/dictation/x6.audio", "audio/webm", "en", {
+          prompt: "Vocabulary: Planner.",
+        }),
+      ).rejects.toThrow("upstream down");
+      expect(mockAxios.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("should ask the polish stage to translate when a target differs", async () => {
+      mockAxios.post.mockResolvedValueOnce(
+        llmResponse('{"text": "Bonjour"}') as never,
+      );
+
+      const result = await DictationPolishTranscript("hello", "en", "fr");
+
+      expect(result).toEqual({ polishedText: "Bonjour", polished: true });
+      const body = mockAxios.post.mock.calls[0][1] as {
+        messages: { content: string }[];
+      };
+      expect(body.messages[1].content).toContain(
+        'Translate the polished text into language code "fr"',
+      );
+    });
+
+    it("should not translate when the target equals the source language", async () => {
+      mockAxios.post.mockResolvedValueOnce(
+        llmResponse('{"text": "Hello"}') as never,
+      );
+
+      await DictationPolishTranscript("hello", "en", "en");
+
+      const body = mockAxios.post.mock.calls[0][1] as {
+        messages: { content: string }[];
+      };
+      expect(body.messages[1].content).not.toContain("Translate the polished");
+    });
+
+    it("should keep voice comments in their spoken language", async () => {
+      mockAxios.post.mockResolvedValueOnce(sttResponse("hello") as never);
+      mockAxios.post.mockResolvedValueOnce(
+        llmResponse('{"text": "Hello!"}') as never,
+      );
+
+      const result = await DictationTranscribeAndPolish(
+        "/tmp/dictation/x7.audio",
+        "audio/webm",
+        "en",
+      );
+
+      expect(result).toMatchObject({ rawTranscript: "hello", segments: null });
+      const body = mockAxios.post.mock.calls[1][1] as {
+        messages: { content: string }[];
+      };
+      expect(body.messages[1].content).not.toContain("Translate the polished");
     });
   });
 });

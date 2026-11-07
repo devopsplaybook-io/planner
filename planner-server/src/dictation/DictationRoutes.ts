@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import type { RequestGenericInterface } from "fastify";
 import type { MultipartFile } from "@fastify/multipart";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs-extra";
@@ -9,6 +10,9 @@ import {
   AuthMustBeAuthenticated,
   AuthRateLimitKey,
 } from "../users/Auth";
+import { UsersDataGet, UsersDataSetDictationTargetLanguage } from "../users/UsersData";
+import { ProjectsDataGet } from "../projects/ProjectsData";
+import { isProjectVisible } from "../projects/ProjectVisibility";
 import {
   DictationGetInFlightJobId,
   DictationGetJob,
@@ -17,6 +21,8 @@ import {
   DictationWaitForJob,
 } from "./Dictation";
 import { DictationJobSource } from "./DictationData";
+import { DictationVocabularyResolveForPrompt } from "./DictationVocabularyData";
+import { ComposeHotwordPrompt } from "./DictationHotwords";
 
 /**
  * Resolves the STT language for an upload: the language field sent by the
@@ -37,9 +43,47 @@ export function NormalizeLanguage(
 
 const RECENT_JOBS_DEFAULT_LIMIT = 20;
 const RECENT_JOBS_MAX_LIMIT = 50;
+const TRANSLATION_OFF_VALUES = new Set(["", "none", "off"]);
 
 export class DictationRoutes {
   constructor(private config: Config) {}
+
+  /** Validates a translation target against DICTATION_LANGUAGES. */
+  private normalizeTargetLanguage(value: unknown): {
+    valid: boolean;
+    value: string | null;
+  } {
+    if (value === null || value === undefined) {
+      return { valid: true, value: null };
+    }
+    if (typeof value !== "string") {
+      return { valid: false, value: null };
+    }
+    const code = value.trim().toLowerCase();
+    if (TRANSLATION_OFF_VALUES.has(code)) {
+      return { valid: true, value: null };
+    }
+    if (this.config.DICTATION_LANGUAGES.includes(code)) {
+      return { valid: true, value: code };
+    }
+    return { valid: false, value: null };
+  }
+
+  /**
+   * Resolves the per-dictation translation target: an explicit value wins
+   * (an explicit empty/off value disables the stored preference), otherwise
+   * the user's stored preference applies.
+   */
+  private async resolveTargetLanguage(
+    requested: string | undefined,
+    userId: string,
+  ): Promise<{ valid: boolean; value: string | null }> {
+    if (requested !== undefined) {
+      return this.normalizeTargetLanguage(requested);
+    }
+    const user = await UsersDataGet(userId);
+    return this.normalizeTargetLanguage(user?.dictationTargetLanguage ?? null);
+  }
 
   public async getRoutes(fastify: FastifyInstance): Promise<void> {
     // POST /api/dictation — upload a recorded audio clip and start a
@@ -168,6 +212,40 @@ export class DictationRoutes {
           fields.language,
           this.config.DICTATION_LANGUAGE,
         );
+
+        // Optional project scope: project vocabulary biases the engine and
+        // the project must be visible to the caller.
+        const projectId = (fields.projectId || "").trim() || null;
+        if (projectId) {
+          const project = await ProjectsDataGet(projectId);
+          if (!project || !isProjectVisible(project, userSession)) {
+            await fs.remove(audioPath).catch(() => undefined);
+            return res.status(404).send({ error: "Project Not Found" });
+          }
+        }
+
+        // Translation target: explicit field > stored preference > off
+        const target = await this.resolveTargetLanguage(
+          fields.targetLanguage,
+          userSession.userId,
+        );
+        if (!target.valid) {
+          await fs.remove(audioPath).catch(() => undefined);
+          return res.status(400).send({ error: "Invalid: targetLanguage" });
+        }
+
+        // Vocabulary prompt: never persisted, never logged
+        const vocabularyTerms = await DictationVocabularyResolveForPrompt(
+          userSession.userId,
+          projectId,
+          this.config.DICTATION_HOTWORDS_MAX,
+        );
+        const hotwordPrompt = ComposeHotwordPrompt(
+          [],
+          vocabularyTerms,
+          this.config.DICTATION_HOTWORDS_MAX,
+        );
+
         // Inline jobs are tagged so inline usage and latency can be measured
         // separately from the modal; unknown sources keep the historic value.
         const source: DictationJobSource =
@@ -178,10 +256,50 @@ export class DictationRoutes {
           audio.mimetype,
           language,
           source,
+          {
+            prompt: hotwordPrompt,
+            hotwordsCount: vocabularyTerms.length,
+            targetLanguage: target.value,
+          },
         );
         return res.status(202).send({ jobId });
       },
     );
+
+    // GET/PUT /api/dictation/preferences — the user's translation target
+    fastify.get("/preferences", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(401).send({ error: "Access Denied" });
+      }
+      const user = await UsersDataGet(userSession.userId);
+      return res
+        .status(200)
+        .send({ targetLanguage: user?.dictationTargetLanguage ?? null });
+    });
+
+    interface PutPreferences extends RequestGenericInterface {
+      Body: { targetLanguage?: string | null };
+    }
+    fastify.put<PutPreferences>("/preferences", async (req, res) => {
+      const userSession = await AuthGetUserSession(req);
+      if (!userSession.isAuthenticated) {
+        return res.status(401).send({ error: "Access Denied" });
+      }
+      const normalized = this.normalizeTargetLanguage(
+        req.body?.targetLanguage,
+      );
+      if (!normalized.valid) {
+        return res
+          .status(400)
+          .send({ error: "Invalid: targetLanguage (unsupported language)" });
+      }
+      await UsersDataSetDictationTargetLanguage(
+        userSession.userId,
+        normalized.value,
+      );
+      return res.status(200).send({ targetLanguage: normalized.value });
+    });
 
     // GET /api/dictation/jobs — recent jobs of the caller (bounded previews)
     fastify.get<{ Querystring: { limit?: string; source?: string } }>(

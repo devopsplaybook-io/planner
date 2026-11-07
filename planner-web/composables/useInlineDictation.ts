@@ -37,6 +37,8 @@ export interface InlineDictationOptions {
   onKeepAudio?: (recording: RecordingResult) => void | Promise<void>;
   /** Called after text is inserted so hosts can resize or scroll. */
   onInserted?: () => void;
+  /** Project scope used to bias the speech engine with its vocabulary. */
+  projectId?: () => string | null;
 }
 
 // Same fallback cadence as the dictation dialog when long polling fails.
@@ -367,6 +369,8 @@ export function useInlineDictation(options: InlineDictationOptions) {
         recording.mimeType,
         language.value,
         "inline",
+        options.projectId?.() ?? null,
+        dictationStore.targetLanguage,
       );
       if (uploaded.jobId) {
         jobId.value = uploaded.jobId;
