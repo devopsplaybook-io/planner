@@ -1,8 +1,27 @@
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs-extra";
 import { Config } from "../Config";
-import { DictationTranscribeAndPolish } from "../dictation/Dictation";
+import {
+  DictationNotifyJobChange,
+  DictationPolishTranscript,
+  DictationTranscribeAudio,
+} from "../dictation/Dictation";
 import { NormalizeLanguage } from "../dictation/DictationRoutes";
+import {
+  DictationDataCreate,
+  DictationDataGet,
+  DictationDataGetLatestByAttachment,
+  DictationDataUpdate,
+} from "../dictation/DictationData";
+import {
+  DictationTelemetryRecordError,
+  DictationTelemetryRecordJob,
+  DictationTelemetryRecordNoSpeech,
+  DictationTelemetryRecordStage,
+  DictationTelemetryStartSpan,
+} from "../dictation/DictationTelemetry";
+import { SttNoSpeechError } from "../dictation/SttWhisperCpp";
+import { DbUtilsIsUniqueViolation } from "../utils/DbUtils";
 import { addComment, TasksDataGet, TasksDataTouch } from "./TasksData";
 import { recordTaskUpdate } from "./TaskUpdates";
 import { UsersDataGet } from "../users/UsersData";
@@ -10,6 +29,11 @@ import { UsersDataGet } from "../users/UsersData";
 const logger = console;
 
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const DICTATION_JOB_TTL_MS = 60 * 60 * 1000;
+const NO_SPEECH_ERROR = "No speech detected, please try again.";
+const TRANSCRIPT_COMMENT_PREFIX = "**Voice message transcript**";
+const TRANSCRIPT_COMMENT_TOKEN = "**Voice message transcript** (";
+const INTERRUPTED_ERROR = "Transcription interrupted, please retry.";
 
 let config: Config | null = null;
 
@@ -24,8 +48,15 @@ export interface TaskVoiceCommentRequest {
   fileName: string;
   filePath: string;
   mimeType: string;
+  attachmentId?: string;
   requestedLanguage?: string;
   userName?: string;
+}
+
+export interface TaskVoiceCommentsEnqueueResult {
+  queued: boolean;
+  rateLimited: boolean;
+  jobId?: string;
 }
 
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -49,22 +80,18 @@ export async function TaskVoiceCommentsInit(configIn: Config): Promise<void> {
   }
 }
 
-export interface TaskVoiceCommentsEnqueueResult {
-  queued: boolean;
-  rateLimited: boolean;
-}
-
 /**
  * Schedules a background transcription for an audio attachment uploaded to a
- * task. Fire-and-forget and never throws: the upload is already done and
- * must never be impacted by the voice comment feature. A no-op whenever the
- * feature is not enabled or STT is not configured. The hourly rate-limit
- * slot is consumed here, synchronously, so the caller can report a skipped
- * transcription in the upload response.
+ * task. Never throws: the upload is already done and must never be impacted
+ * by the voice comment feature. A no-op whenever the feature is not enabled
+ * or STT is not configured. The hourly rate-limit slot is consumed here,
+ * synchronously, so the caller can report a skipped transcription in the
+ * upload response. A job row is persisted before queueing so its status can
+ * be read and retried later.
  */
-export function TaskVoiceCommentsEnqueue(
+export async function TaskVoiceCommentsEnqueue(
   request: TaskVoiceCommentRequest,
-): TaskVoiceCommentsEnqueueResult {
+): Promise<TaskVoiceCommentsEnqueueResult> {
   try {
     if (
       !config ||
@@ -82,31 +109,73 @@ export function TaskVoiceCommentsEnqueue(
       );
       return { queued: false, rateLimited: true };
     }
-    // Per-user FIFO queue: one transcription at a time, later uploads queue
-    // behind the running one so every voice message gets its transcript
-    const previous = userQueues.get(request.userId) || Promise.resolve();
-    const next = previous
-      .then(() => runVoiceJob(request))
-      .catch((error) => {
-        logger.error(
-          `[VoiceComments] Unexpected failure in a voice comment job: ${(error as Error).message}`,
-        );
+    const jobId = uuidv4();
+    const language = NormalizeLanguage(
+      request.requestedLanguage,
+      config.DICTATION_LANGUAGE,
+    );
+    try {
+      await DictationDataCreate({
+        id: jobId,
+        userId: request.userId,
+        source: "voice_comment",
+        taskId: request.taskId,
+        attachmentId: request.attachmentId ?? null,
+        status: "processing",
+        stage: "transcribing",
+        language,
+        engine: config.STT_MODE === "external" ? "external" : "embedded",
+        model:
+          config.STT_MODE === "embedded"
+            ? config.STT_EMBEDDED_MODEL
+            : config.STT_MODEL,
+        expiresAt: new Date(Date.now() + DICTATION_JOB_TTL_MS).toISOString(),
       });
-    userQueues.set(request.userId, next);
-    // Drop the queue entry once this user's chain is idle: settled queues
-    // must not accumulate per user for the lifetime of the process
-    next.finally(() => {
-      if (userQueues.get(request.userId) === next) {
-        userQueues.delete(request.userId);
+    } catch (error) {
+      // The partial unique index rejects a second processing job for the
+      // same attachment (concurrent upload/retry): treat as already queued.
+      if (DbUtilsIsUniqueViolation(error)) {
+        return { queued: false, rateLimited: false };
       }
-    });
-    return { queued: true, rateLimited: false };
+      throw error;
+    }
+    enqueueUserJob(request.userId, () =>
+      runVoiceJob(request, jobId, language),
+    );
+    return { queued: true, rateLimited: false, jobId };
   } catch (error) {
     logger.error(
       `[VoiceComments] Failed to enqueue a voice comment job: ${(error as Error).message}`,
     );
     return { queued: false, rateLimited: false };
   }
+}
+
+export interface TaskVoiceTranscriptionStatus {
+  attachmentId: string;
+  status: string;
+  stage: string | null;
+  error: string | null;
+  dateCreated: string;
+  dateUpdated: string;
+}
+
+/** Latest persisted voice-comment job of an attachment (status source). */
+export async function TaskVoiceCommentsGetLatest(
+  attachmentId: string,
+): Promise<TaskVoiceTranscriptionStatus | null> {
+  const record = await DictationDataGetLatestByAttachment(attachmentId);
+  if (!record) {
+    return null;
+  }
+  return {
+    attachmentId,
+    status: record.status,
+    stage: record.stage,
+    error: record.error,
+    dateCreated: record.dateCreated,
+    dateUpdated: record.dateUpdated,
+  };
 }
 
 /**
@@ -130,6 +199,23 @@ export function TaskVoiceCommentsSweep(now: number = Date.now()): number {
 /** Test helper: users with a pending voice-comment queue. */
 export function TaskVoiceCommentsQueueCount(): number {
   return userQueues.size;
+}
+
+/** True when dictation is enabled and an STT engine is configured. */
+export function TaskVoiceCommentsIsAvailable(): boolean {
+  return !!config && config.DICTATION_ENABLED && config.IsDictationSttConfigured();
+}
+
+/** True when the user still has an hourly transcription slot available. */
+export function TaskVoiceCommentsCanConsumeRateLimit(userId: string): boolean {
+  if (!config) {
+    return true;
+  }
+  const now = Date.now();
+  const timestamps = (recentTranscriptions.get(userId) || []).filter(
+    (start) => now - start < RATE_LIMIT_WINDOW_MS,
+  );
+  return timestamps.length < config.RATE_LIMIT_DICTATION_MAX;
 }
 
 /** Test helper: users currently tracked by the hourly rate limiter. */
@@ -158,54 +244,174 @@ function consumeRateLimitSlot(userId: string): boolean {
   return true;
 }
 
-async function runVoiceJob(request: TaskVoiceCommentRequest): Promise<void> {
-  const jobId = uuidv4();
+function enqueueUserJob(userId: string, job: () => Promise<void>): void {
+  // Per-user FIFO queue: one transcription at a time, later uploads queue
+  // behind the running one so every voice message gets its transcript
+  const previous = userQueues.get(userId) || Promise.resolve();
+  const next = previous.then(job).catch((error) => {
+    logger.error(
+      `[VoiceComments] Unexpected failure in a voice comment job: ${(error as Error).message}`,
+    );
+  });
+  userQueues.set(userId, next);
+  // Drop the queue entry once this user's chain is idle: settled queues
+  // must not accumulate per user for the lifetime of the process
+  next.finally(() => {
+    if (userQueues.get(userId) === next) {
+      userQueues.delete(userId);
+    }
+  });
+}
+
+async function runVoiceJob(
+  request: TaskVoiceCommentRequest,
+  jobId: string,
+  language: string | null,
+): Promise<void> {
+  const startedAt = Date.now();
+  const root = DictationTelemetryStartSpan("dictation.job", undefined, {
+    "dictation.job_id": jobId,
+    "dictation.source": "voice_comment",
+  });
   try {
     const task = await TasksDataGet(request.taskId);
     if (!task) {
-      logger.info(
-        `[VoiceComments] Task is gone before job ${jobId} started; dropping the transcript`,
-      );
+      await failJob(jobId, "Task Not Found", startedAt);
       return;
     }
     if (!(await fs.pathExists(request.filePath))) {
-      logger.info(
-        `[VoiceComments] Audio file is gone before job ${jobId} started; dropping the transcript`,
-      );
+      await failJob(jobId, "Audio file not found", startedAt);
       return;
     }
-    const language = NormalizeLanguage(
-      request.requestedLanguage,
-      config?.DICTATION_LANGUAGE || "",
-    );
-    const { polishedText } = await DictationTranscribeAndPolish(
+
+    const sttStart = Date.now();
+    const transcription = await DictationTranscribeAudio(
       request.filePath,
       request.mimeType,
       language,
     );
+    DictationTelemetryRecordStage("stt", Date.now() - sttStart, "voice_comment");
+    await DictationDataUpdate(jobId, {
+      rawTranscript: transcription.text,
+      audioDurationMs: transcription.audioDurationMs,
+      sttMs: transcription.sttMs,
+      stage: "polishing",
+    });
+    DictationNotifyJobChange(jobId);
+
+    const polishStart = Date.now();
+    const { polishedText, polished } = await DictationPolishTranscript(
+      transcription.text,
+      language,
+    );
+    const polishMs = Date.now() - polishStart;
+    DictationTelemetryRecordStage("polish", polishMs, "voice_comment");
+    await DictationDataUpdate(jobId, {
+      polishedText,
+      polished,
+      polishMs,
+    });
+    DictationNotifyJobChange(jobId);
+
     if (!polishedText.trim()) {
-      logger.warn(
-        `[VoiceComments] Empty transcript for job ${jobId}; no comment posted`,
-      );
+      await failJob(jobId, "No speech detected, please try again.", startedAt);
       return;
     }
-    const userName = request.userName || (await UsersDataGet(request.userId))?.name;
-    await addComment(request.taskId, {
-      id: uuidv4(),
-      userId: request.userId,
-      userName,
-      text: `**Voice message transcript** (${request.fileName}):\n\n${polishedText}`,
-      dateCreated: new Date().toISOString(),
+
+    // Idempotent posting: a recovery never posts the transcript twice
+    const commentId = await postTranscriptComment(
+      request,
+      polishedText,
+      task,
+      jobId,
+    );
+    await DictationDataUpdate(jobId, {
+      commentId,
+      status: "done",
+      stage: null,
+      totalMs: Date.now() - startedAt,
     });
-    await TasksDataTouch(request.taskId);
-    // Same activity entry and assignee push as a comment posted normally
-    await recordTaskUpdate(request.taskId, request.userId, "New comment");
+    DictationNotifyJobChange(jobId);
+    DictationTelemetryRecordJob("voice_comment", "done", Date.now() - startedAt);
+    root.setAttribute("transcript.chars", polishedText.length);
+    root.setAttribute("dictation.status", "done");
     logger.info(`[VoiceComments] Job ${jobId} done`);
   } catch (error) {
+    root.fail(error);
+    const noSpeech = error instanceof SttNoSpeechError;
+    if (noSpeech) {
+      DictationTelemetryRecordNoSpeech("voice_comment");
+    }
+    await failJob(
+      jobId,
+      noSpeech ? NO_SPEECH_ERROR : "Transcription failed, please try again.",
+      startedAt,
+    );
     // Never rethrow: the upload succeeded independently and the audio
     // attachment stays as the voice message. Never log transcript content.
     logger.error(
       `[VoiceComments] Transcription failed for job ${jobId}: ${(error as Error).message}`,
     );
+  } finally {
+    root.end();
   }
 }
+
+async function postTranscriptComment(
+  request: TaskVoiceCommentRequest,
+  polishedText: string,
+  task: Awaited<ReturnType<typeof TasksDataGet>>,
+  jobId: string,
+): Promise<string> {
+  const record = await DictationDataGet(jobId);
+  if (record?.commentId) {
+    return record.commentId;
+  }
+
+  const existing = (task?.comments || []).find((comment) =>
+    (comment.text || "").startsWith(TRANSCRIPT_COMMENT_TOKEN),
+  );
+  if (existing) {
+    return existing.id;
+  }
+
+  const commentId = uuidv4();
+  const userName =
+    request.userName || (await UsersDataGet(request.userId))?.name;
+  await addComment(request.taskId, {
+    id: commentId,
+    userId: request.userId,
+    userName,
+    text: `${TRANSCRIPT_COMMENT_PREFIX} (${request.fileName}):\n\n${polishedText}`,
+    dateCreated: new Date().toISOString(),
+  });
+  await TasksDataTouch(request.taskId);
+  // Same activity entry and assignee push as a comment posted normally
+  await recordTaskUpdate(request.taskId, request.userId, "New comment");
+  return commentId;
+}
+
+async function failJob(
+  jobId: string,
+  message: string,
+  startedAt: number,
+): Promise<void> {
+  try {
+    const totalMs = Date.now() - startedAt;
+    await DictationDataUpdate(jobId, {
+      status: "error",
+      stage: null,
+      error: message,
+      totalMs,
+    });
+    DictationNotifyJobChange(jobId);
+    DictationTelemetryRecordError("voice_comment", "stt_or_pipeline");
+    DictationTelemetryRecordJob("voice_comment", "error", totalMs);
+  } catch (error) {
+    logger.error(
+      `[VoiceComments] Failed to persist the failure of job ${jobId}: ${(error as Error).message}`,
+    );
+  }
+}
+
+export { INTERRUPTED_ERROR };

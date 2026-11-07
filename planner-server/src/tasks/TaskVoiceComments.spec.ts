@@ -9,8 +9,70 @@ jest.mock("../users/UsersData", () => ({
   UsersDataGet: jest.fn(),
 }));
 jest.mock("../dictation/Dictation", () => ({
-  DictationTranscribeAndPolish: jest.fn(),
+  DictationTranscribeAudio: jest.fn(),
+  DictationPolishTranscript: jest.fn(),
+  DictationNotifyJobChange: jest.fn(),
 }));
+jest.mock("../dictation/SttWhisperCpp", () => {
+  class SttNoSpeechError extends Error {
+    constructor() {
+      super("No speech detected");
+      this.name = "SttNoSpeechError";
+    }
+  }
+  return { SttNoSpeechError };
+});
+jest.mock("../dictation/DictationData", () => {
+  const jobs = new Map<string, any>();
+  const stamp = () => new Date(Date.now()).toISOString();
+  return {
+    __jobs: jobs,
+    __reset: () => jobs.clear(),
+    DictationDataCreate: jest.fn(async (input: any) => {
+      const timestamp = stamp();
+      jobs.set(input.id, {
+        taskId: null,
+        attachmentId: null,
+        commentId: null,
+        stage: null,
+        language: null,
+        model: null,
+        rawTranscript: null,
+        polishedText: null,
+        polished: false,
+        actions: [],
+        actionsAvailable: false,
+        error: null,
+        audioDurationMs: null,
+        queueMs: null,
+        sttMs: null,
+        polishMs: null,
+        actionsMs: null,
+        totalMs: null,
+        revision: 0,
+        dateCreated: timestamp,
+        dateUpdated: timestamp,
+        ...input,
+      });
+    }),
+    DictationDataGet: jest.fn(async (jobId: string) => jobs.get(jobId) ?? null),
+    DictationDataUpdate: jest.fn(async (jobId: string, patch: any) => {
+      const job = jobs.get(jobId);
+      if (!job) {
+        return;
+      }
+      Object.assign(job, patch);
+      job.revision += 1;
+      job.dateUpdated = stamp();
+    }),
+    DictationDataGetLatestByAttachment: jest.fn(
+      async (attachmentId: string) =>
+        [...jobs.values()]
+          .filter((job) => job.attachmentId === attachmentId)
+          .pop() ?? null,
+    ),
+  };
+});
 jest.mock("./TaskUpdates", () => ({
   recordTaskUpdate: jest.fn(),
 }));
@@ -18,21 +80,29 @@ jest.mock("fs-extra");
 
 const mockPathExists = (fs as any).pathExists as jest.Mock;
 const mockRemove = (fs as any).remove as jest.Mock;
+const mockData = jest.requireMock("../dictation/DictationData") as any;
 
 import { Config } from "../Config";
 import {
+  TaskVoiceCommentsCanConsumeRateLimit,
   TaskVoiceCommentsEnqueue,
+  TaskVoiceCommentsGetLatest,
   TaskVoiceCommentsInit,
   TaskVoiceCommentsQueueCount,
   TaskVoiceCommentsRateLimitedUsers,
   TaskVoiceCommentsSweep,
 } from "./TaskVoiceComments";
-import { DictationTranscribeAndPolish } from "../dictation/Dictation";
+import {
+  DictationPolishTranscript,
+  DictationTranscribeAudio,
+} from "../dictation/Dictation";
+import { SttNoSpeechError } from "../dictation/SttWhisperCpp";
 import { UsersDataGet } from "../users/UsersData";
 import { TasksDataGet, addComment, TasksDataTouch } from "./TasksData";
 import { recordTaskUpdate } from "./TaskUpdates";
 
-const mockTranscribeAndPolish = DictationTranscribeAndPolish as jest.Mock;
+const mockTranscribeAudio = DictationTranscribeAudio as jest.Mock;
+const mockPolish = DictationPolishTranscript as jest.Mock;
 const mockTasksDataGet = TasksDataGet as jest.Mock;
 const mockAddComment = addComment as jest.Mock;
 const mockTasksDataTouch = TasksDataTouch as jest.Mock;
@@ -50,8 +120,9 @@ function deferred<T = unknown>() {
 }
 
 const flush = async () => {
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  for (let i = 0; i < 6; i++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 };
 
 function enabledConfig(): Config {
@@ -73,6 +144,7 @@ function voiceRequest(overrides: Record<string, unknown> = {}) {
     fileName: "voice-message.webm",
     filePath: "/data/attachments/tasks/att-1.webm",
     mimeType: "audio/webm",
+    attachmentId: "att-1",
     ...overrides,
   };
 }
@@ -80,42 +152,53 @@ function voiceRequest(overrides: Record<string, unknown> = {}) {
 describe("TaskVoiceComments", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockData.__reset();
     mockPathExists.mockResolvedValue(true);
     mockRemove.mockResolvedValue(undefined);
+    mockTranscribeAudio.mockResolvedValue({
+      text: "raw words",
+      audioDurationMs: 1200,
+      threads: 0,
+      sttMs: 5,
+    });
+    mockPolish.mockResolvedValue({ polishedText: "Polished text", polished: true });
+    mockTasksDataGet.mockResolvedValue({ id: "task-1", comments: [] });
+    mockUsersDataGet.mockResolvedValue({ name: "Alice" });
   });
 
   // Runs before any other test: the module state is still uninitialized
   it("should be a no-op before initialization", async () => {
-    expect(TaskVoiceCommentsEnqueue(voiceRequest())).toEqual({
+    await expect(TaskVoiceCommentsEnqueue(voiceRequest())).resolves.toEqual({
       queued: false,
       rateLimited: false,
     });
     await flush();
-    expect(mockTranscribeAndPolish).not.toHaveBeenCalled();
+    expect(mockTranscribeAudio).not.toHaveBeenCalled();
     expect(mockAddComment).not.toHaveBeenCalled();
   });
 
   describe("with the feature initialized", () => {
     beforeEach(async () => {
       await TaskVoiceCommentsInit(enabledConfig());
-      mockTranscribeAndPolish.mockResolvedValue({
-        rawTranscript: "raw words",
-        polishedText: "Polished text",
-      });
-      mockTasksDataGet.mockResolvedValue({ id: "task-1" });
     });
 
-    it("should post the polished transcript as a comment attributed to the uploader", async () => {
-      TaskVoiceCommentsEnqueue(
+    it("should persist a job and post the polished transcript as a comment", async () => {
+      const result = await TaskVoiceCommentsEnqueue(
         voiceRequest({ userName: "Alice", requestedLanguage: "en" }),
       );
       await flush();
 
-      expect(mockTranscribeAndPolish).toHaveBeenCalledWith(
+      expect(result).toEqual({
+        queued: true,
+        rateLimited: false,
+        jobId: expect.any(String),
+      });
+      expect(mockTranscribeAudio).toHaveBeenCalledWith(
         "/data/attachments/tasks/att-1.webm",
         "audio/webm",
         "en",
       );
+      expect(mockPolish).toHaveBeenCalledWith("raw words", "en");
       expect(mockAddComment).toHaveBeenCalledTimes(1);
       const [taskId, comment] = mockAddComment.mock.calls[0];
       expect(taskId).toBe("task-1");
@@ -133,15 +216,44 @@ describe("TaskVoiceComments", () => {
         "user-1",
         "New comment",
       );
+
+      const job = mockData.__jobs.get(result.jobId);
+      expect(job).toMatchObject({
+        source: "voice_comment",
+        taskId: "task-1",
+        attachmentId: "att-1",
+        status: "done",
+        stage: null,
+        rawTranscript: "raw words",
+        polishedText: "Polished text",
+        polished: true,
+        commentId: comment.id,
+        language: "en",
+      });
     });
 
     it("should resolve the user name from the data layer when not provided", async () => {
-      mockUsersDataGet.mockResolvedValue({ name: "Alice" });
-      TaskVoiceCommentsEnqueue(voiceRequest());
+      await TaskVoiceCommentsEnqueue(voiceRequest());
       await flush();
 
       expect(mockUsersDataGet).toHaveBeenCalledWith("user-1");
       expect(mockAddComment.mock.calls[0][1].userName).toBe("Alice");
+    });
+
+    it("should not post a duplicate transcript comment on resume", async () => {
+      mockTasksDataGet.mockResolvedValue({
+        id: "task-1",
+        comments: [
+          {
+            id: "existing-comment",
+            text: "**Voice message transcript** (voice-message.webm):\n\nOld",
+          },
+        ],
+      });
+      await TaskVoiceCommentsEnqueue(voiceRequest());
+      await flush();
+
+      expect(mockAddComment).not.toHaveBeenCalled();
     });
 
     it("should normalize the language against the server default", async () => {
@@ -149,19 +261,25 @@ describe("TaskVoiceComments", () => {
       config.DICTATION_LANGUAGE = "fr";
       await TaskVoiceCommentsInit(config);
 
-      TaskVoiceCommentsEnqueue(voiceRequest({ fileName: "1.webm" }));
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({ fileName: "1.webm", attachmentId: "att-lang-1" }),
+      );
       await flush();
-      expect(mockTranscribeAndPolish).toHaveBeenLastCalledWith(
+      expect(mockTranscribeAudio).toHaveBeenLastCalledWith(
         expect.any(String),
         expect.any(String),
         "fr",
       );
 
-      TaskVoiceCommentsEnqueue(
-        voiceRequest({ fileName: "2.webm", requestedLanguage: "auto" }),
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({
+          fileName: "2.webm",
+          attachmentId: "att-lang-2",
+          requestedLanguage: "auto",
+        }),
       );
       await flush();
-      expect(mockTranscribeAndPolish).toHaveBeenLastCalledWith(
+      expect(mockTranscribeAudio).toHaveBeenLastCalledWith(
         expect.any(String),
         expect.any(String),
         null,
@@ -173,10 +291,11 @@ describe("TaskVoiceComments", () => {
       config.DICTATION_ENABLED = false;
       await TaskVoiceCommentsInit(config);
 
-      TaskVoiceCommentsEnqueue(voiceRequest());
+      const result = await TaskVoiceCommentsEnqueue(voiceRequest());
       await flush();
 
-      expect(mockTranscribeAndPolish).not.toHaveBeenCalled();
+      expect(result).toEqual({ queued: false, rateLimited: false });
+      expect(mockTranscribeAudio).not.toHaveBeenCalled();
       expect(mockAddComment).not.toHaveBeenCalled();
     });
 
@@ -184,82 +303,130 @@ describe("TaskVoiceComments", () => {
       const external = enabledConfig();
       external.STT_API_URL = "";
       await TaskVoiceCommentsInit(external);
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "user-ext" }));
+      await TaskVoiceCommentsEnqueue(voiceRequest({ userId: "user-ext" }));
       await flush();
-      expect(mockTranscribeAndPolish).not.toHaveBeenCalled();
+      expect(mockTranscribeAudio).not.toHaveBeenCalled();
 
       const embedded = enabledConfig();
       embedded.STT_MODE = "embedded";
       embedded.STT_EMBEDDED_MODEL = "";
       await TaskVoiceCommentsInit(embedded);
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "user-emb" }));
+      await TaskVoiceCommentsEnqueue(voiceRequest({ userId: "user-emb" }));
       await flush();
-      expect(mockTranscribeAndPolish).not.toHaveBeenCalled();
+      expect(mockTranscribeAudio).not.toHaveBeenCalled();
     });
 
     it("should ignore non-audio mimetypes", async () => {
-      TaskVoiceCommentsEnqueue(voiceRequest({ mimeType: "application/pdf" }));
+      const result = await TaskVoiceCommentsEnqueue(
+        voiceRequest({ mimeType: "application/pdf" }),
+      );
       await flush();
 
-      expect(mockTranscribeAndPolish).not.toHaveBeenCalled();
+      expect(result).toEqual({ queued: false, rateLimited: false });
+      expect(mockTranscribeAudio).not.toHaveBeenCalled();
       expect(mockAddComment).not.toHaveBeenCalled();
     });
 
-    it("should never delete the attachment audio file, even on failure", async () => {
-      mockTranscribeAndPolish.mockRejectedValue(new Error("STT upstream down"));
-      TaskVoiceCommentsEnqueue(voiceRequest());
+    it("should report a failed transcription and never delete the audio file", async () => {
+      mockTranscribeAudio.mockRejectedValue(new Error("STT upstream down"));
+      const result = await TaskVoiceCommentsEnqueue(voiceRequest());
       await flush();
 
+      expect(result.queued).toBe(true);
       expect(mockAddComment).not.toHaveBeenCalled();
       expect(mockRemove).not.toHaveBeenCalled();
+      expect(mockData.__jobs.get(result.jobId)).toMatchObject({
+        status: "error",
+        error: "Transcription failed, please try again.",
+      });
+    });
+
+    it("should map a no-speech failure to a dedicated message", async () => {
+      mockTranscribeAudio.mockRejectedValue(new SttNoSpeechError());
+      const result = await TaskVoiceCommentsEnqueue(voiceRequest());
+      await flush();
+
+      expect(mockData.__jobs.get(result.jobId)).toMatchObject({
+        status: "error",
+        error: "No speech detected, please try again.",
+      });
     });
 
     it("should not post a comment when the transcript is empty", async () => {
-      mockTranscribeAndPolish.mockResolvedValue({
-        rawTranscript: "",
-        polishedText: "   ",
+      mockTranscribeAudio.mockResolvedValue({
+        text: "   ",
+        audioDurationMs: null,
+        threads: 0,
+        sttMs: 1,
       });
-      TaskVoiceCommentsEnqueue(voiceRequest());
+      mockPolish.mockResolvedValue({ polishedText: "   ", polished: true });
+      const result = await TaskVoiceCommentsEnqueue(voiceRequest());
       await flush();
 
       expect(mockAddComment).not.toHaveBeenCalled();
+      expect(mockData.__jobs.get(result.jobId)).toMatchObject({
+        status: "error",
+        error: "No speech detected, please try again.",
+      });
     });
 
     it("should drop the transcript when the task is gone before the job runs", async () => {
       mockTasksDataGet.mockResolvedValue(null);
-      TaskVoiceCommentsEnqueue(voiceRequest());
+      const result = await TaskVoiceCommentsEnqueue(voiceRequest());
       await flush();
 
-      expect(mockTranscribeAndPolish).not.toHaveBeenCalled();
+      expect(mockTranscribeAudio).not.toHaveBeenCalled();
       expect(mockAddComment).not.toHaveBeenCalled();
+      expect(mockData.__jobs.get(result.jobId)).toMatchObject({
+        status: "error",
+        error: "Task Not Found",
+      });
     });
 
     it("should drop the transcript when the audio file is gone", async () => {
       mockPathExists.mockResolvedValue(false);
-      TaskVoiceCommentsEnqueue(voiceRequest());
+      const result = await TaskVoiceCommentsEnqueue(voiceRequest());
       await flush();
 
-      expect(mockTranscribeAndPolish).not.toHaveBeenCalled();
+      expect(mockTranscribeAudio).not.toHaveBeenCalled();
       expect(mockAddComment).not.toHaveBeenCalled();
+      expect(mockData.__jobs.get(result.jobId)).toMatchObject({
+        status: "error",
+        error: "Audio file not found",
+      });
     });
 
     it("should run the jobs of one user sequentially", async () => {
       const first = deferred();
       const second = deferred();
-      mockTranscribeAndPolish
+      mockTranscribeAudio
         .mockReturnValueOnce(first.promise as never)
         .mockReturnValueOnce(second.promise as never);
 
-      TaskVoiceCommentsEnqueue(voiceRequest({ fileName: "first.webm" }));
-      TaskVoiceCommentsEnqueue(voiceRequest({ fileName: "second.webm" }));
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({ fileName: "first.webm", attachmentId: "att-seq-1" }),
+      );
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({ fileName: "second.webm", attachmentId: "att-seq-2" }),
+      );
       await flush();
-      expect(mockTranscribeAndPolish).toHaveBeenCalledTimes(1);
+      expect(mockTranscribeAudio).toHaveBeenCalledTimes(1);
 
-      first.resolve({ rawTranscript: "a", polishedText: "A" });
+      first.resolve({
+        text: "a",
+        audioDurationMs: null,
+        threads: 0,
+        sttMs: 1,
+      });
       await flush();
-      expect(mockTranscribeAndPolish).toHaveBeenCalledTimes(2);
+      expect(mockTranscribeAudio).toHaveBeenCalledTimes(2);
 
-      second.resolve({ rawTranscript: "b", polishedText: "B" });
+      second.resolve({
+        text: "b",
+        audioDurationMs: null,
+        threads: 0,
+        sttMs: 1,
+      });
       await flush();
       expect(mockAddComment).toHaveBeenCalledTimes(2);
       expect(mockAddComment.mock.calls[0][1].text).toContain("(first.webm)");
@@ -269,17 +436,21 @@ describe("TaskVoiceComments", () => {
     it("should run the jobs of different users in parallel", async () => {
       const first = deferred();
       const second = deferred();
-      mockTranscribeAndPolish
+      mockTranscribeAudio
         .mockReturnValueOnce(first.promise as never)
         .mockReturnValueOnce(second.promise as never);
 
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "user-a" }));
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "user-b" }));
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({ userId: "user-a", attachmentId: "att-par-a" }),
+      );
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({ userId: "user-b", attachmentId: "att-par-b" }),
+      );
       await flush();
-      expect(mockTranscribeAndPolish).toHaveBeenCalledTimes(2);
+      expect(mockTranscribeAudio).toHaveBeenCalledTimes(2);
 
-      first.resolve({ rawTranscript: "a", polishedText: "A" });
-      second.resolve({ rawTranscript: "b", polishedText: "B" });
+      first.resolve({ text: "a", audioDurationMs: null, threads: 0, sttMs: 1 });
+      second.resolve({ text: "b", audioDurationMs: null, threads: 0, sttMs: 1 });
       await flush();
       expect(mockAddComment).toHaveBeenCalledTimes(2);
     });
@@ -289,38 +460,39 @@ describe("TaskVoiceComments", () => {
       config.RATE_LIMIT_DICTATION_MAX = 2;
       await TaskVoiceCommentsInit(config);
 
-      expect(
+      await expect(
         TaskVoiceCommentsEnqueue(
           voiceRequest({ userId: "rate-user", fileName: "1.webm" }),
         ),
-      ).toEqual({ queued: true, rateLimited: false });
-      expect(
+      ).resolves.toMatchObject({ queued: true, rateLimited: false });
+      await expect(
         TaskVoiceCommentsEnqueue(
           voiceRequest({ userId: "rate-user", fileName: "2.webm" }),
         ),
-      ).toEqual({ queued: true, rateLimited: false });
+      ).resolves.toMatchObject({ queued: true, rateLimited: false });
       // The slot is consumed at enqueue time so the caller can report the skip
-      expect(
+      await expect(
         TaskVoiceCommentsEnqueue(
           voiceRequest({ userId: "rate-user", fileName: "3.webm" }),
         ),
-      ).toEqual({ queued: false, rateLimited: true });
+      ).resolves.toEqual({ queued: false, rateLimited: true });
       await flush();
 
-      expect(mockTranscribeAndPolish).toHaveBeenCalledTimes(2);
+      expect(mockTranscribeAudio).toHaveBeenCalledTimes(2);
       expect(mockAddComment).toHaveBeenCalledTimes(2);
+      expect(TaskVoiceCommentsCanConsumeRateLimit("rate-user")).toBe(false);
     });
 
     it("should drop the user queue entry once the jobs settled", async () => {
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "queue-user" }));
+      await TaskVoiceCommentsEnqueue(voiceRequest({ userId: "queue-user" }));
       await flush();
 
       expect(TaskVoiceCommentsQueueCount()).toBe(0);
     });
 
     it("should drop the user queue entry after a failing job", async () => {
-      mockTranscribeAndPolish.mockRejectedValueOnce(new Error("STT down"));
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "queue-fail-user" }));
+      mockTranscribeAudio.mockRejectedValueOnce(new Error("STT down"));
+      await TaskVoiceCommentsEnqueue(voiceRequest({ userId: "queue-fail-user" }));
       await flush();
 
       expect(TaskVoiceCommentsQueueCount()).toBe(0);
@@ -336,11 +508,15 @@ describe("TaskVoiceComments", () => {
       const dateSpy = jest.spyOn(Date, "now").mockReturnValue(base);
 
       const usersBefore = TaskVoiceCommentsRateLimitedUsers();
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "sweep-old" }));
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({ userId: "sweep-old", attachmentId: "att-sweep-old" }),
+      );
       await flush();
 
       dateSpy.mockReturnValue(base + windowMs + 1000);
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "sweep-fresh" }));
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({ userId: "sweep-fresh", attachmentId: "att-sweep-new" }),
+      );
       await flush();
       expect(TaskVoiceCommentsRateLimitedUsers()).toBe(usersBefore + 2);
 
@@ -348,11 +524,32 @@ describe("TaskVoiceComments", () => {
       expect(TaskVoiceCommentsRateLimitedUsers()).toBe(usersBefore + 1);
 
       // The fresh entry still enforces the hourly limit for that user
-      TaskVoiceCommentsEnqueue(voiceRequest({ userId: "sweep-fresh" }));
+      await TaskVoiceCommentsEnqueue(
+        voiceRequest({ userId: "sweep-fresh", attachmentId: "att-sweep-3" }),
+      );
       await flush();
-      expect(mockTranscribeAndPolish).toHaveBeenCalledTimes(2);
+      expect(mockTranscribeAudio).toHaveBeenCalledTimes(2);
 
       dateSpy.mockRestore();
+    });
+
+    it("should expose the latest transcription status of an attachment", async () => {
+      const result = await TaskVoiceCommentsEnqueue(
+        voiceRequest({ attachmentId: "att-status" }),
+      );
+      await flush();
+
+      expect(await TaskVoiceCommentsGetLatest("att-status")).toMatchObject({
+        attachmentId: "att-status",
+        status: "done",
+        stage: null,
+        error: null,
+      });
+      expect(
+        await TaskVoiceCommentsGetLatest("att-status"),
+      ).toMatchObject({ status: "done" });
+      expect(result.jobId).toBeDefined();
+      expect(await TaskVoiceCommentsGetLatest("att-unknown")).toBeNull();
     });
   });
 });

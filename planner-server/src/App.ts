@@ -29,6 +29,8 @@ import { RecommendationRoutes } from "./recommendation/RecommendationRoutes";
 import { TaskImproveInit } from "./tasks/TaskImprove";
 import { DictationInit } from "./dictation/Dictation";
 import { DictationRoutes } from "./dictation/DictationRoutes";
+import { DictationTelemetryInit } from "./dictation/DictationTelemetry";
+import { SttWhisperCppGetStatus } from "./dictation/SttWhisperCpp";
 import { TaskVoiceCommentsInit } from "./tasks/TaskVoiceComments";
 import { NotificationsInit } from "./notifications/Notifications";
 import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
@@ -37,7 +39,11 @@ import { CleanupRoutes } from "./cleanup/CleanupRoutes";
 import { TaskTemplatesRoutes } from "./tasktemplates/TaskTemplatesRoutes";
 import { TaskTemplatesSchedulerInit } from "./tasktemplates/TaskTemplatesScheduler";
 import { TaskTemplatesBackfillFromRecurrence } from "./tasktemplates/TaskTemplatesBackfill";
-import { StandardLogger, StandardTracer } from "@devopsplaybook.io/otel-utils";
+import {
+  StandardLogger,
+  StandardMeter,
+  StandardTracer,
+} from "@devopsplaybook.io/otel-utils";
 import { StandardTracerFastifyRegisterHooks } from "@devopsplaybook.io/otel-utils-fastify";
 import { FastifyErrorHandlerRegister } from "@devopsplaybook.io/common-utils/fastify-error-handler";
 import { SecurityHeadersRegister } from "./utils/SecurityHeaders";
@@ -140,6 +146,8 @@ Promise.resolve()
         process.env.OPENTELEMETRY_COLLECT_AUTHORIZATION_HEADER,
     };
     const standardTracer = new StandardTracer(otelConfig);
+    const standardMeter = new StandardMeter(otelConfig);
+    DictationTelemetryInit(standardTracer, standardMeter);
     const standardLogger = new StandardLogger();
     standardLogger.initOTel(otelConfig);
     StandardTracerFastifyRegisterHooks(fastify, standardTracer, standardLogger, {
@@ -180,12 +188,39 @@ Promise.resolve()
       if (!userSession.isAuthenticated) {
         return res.status(401).send({ error: "Access Denied" });
       }
+      const embeddedEngine = config.STT_MODE === "embedded";
+      const engineStatus = embeddedEngine
+        ? SttWhisperCppGetStatus(config)
+        : { state: "ready" as const };
+      const engineState =
+        engineStatus.state === "ready"
+          ? "ready"
+          : engineStatus.state === "error"
+            ? "error"
+            : "preparing";
       return res.status(200).send({
         llmRecommendationEnabled:
           config.LLM_RECOMMENDATION_ENABLED && !!config.LLM_API_KEY,
         llmImproveEnabled: !!config.LLM_API_KEY,
         dictationEnabled: config.DICTATION_ENABLED,
         dictationSttConfigured: config.IsDictationSttConfigured(),
+        dictation: {
+          maxDurationSeconds: config.DICTATION_MAX_DURATION_SECONDS,
+          maxUploadMb: config.DICTATION_MAX_UPLOAD_MB,
+          defaultLanguage: config.DICTATION_LANGUAGE,
+          languages: ["auto", ...config.DICTATION_LANGUAGES],
+          estimatedRtf:
+            config.DICTATION_ESTIMATED_RTF > 0
+              ? config.DICTATION_ESTIMATED_RTF
+              : embeddedEngine
+                ? 0.5
+                : 0.1,
+          engine: embeddedEngine ? "embedded" : "external",
+          engineState,
+          model: embeddedEngine
+            ? config.STT_EMBEDDED_MODEL
+            : config.STT_MODEL,
+        },
       });
     });
 

@@ -136,6 +136,9 @@ const dictationTooltip = computed(() => {
   if (!recommendationStore.isDictationSttConfigured) {
     return "Dictation needs a speech-to-text server configuration";
   }
+  if (recommendationStore.dictationEngineState === "preparing") {
+    return "Preparing speech engine…";
+  }
   return "Start dictation";
 });
 </script>

@@ -1,4 +1,5 @@
-import { ref } from "vue";
+import { ref, unref } from "vue";
+import type { Ref } from "vue";
 import { pickRecordingMimeType } from "../utils/dictationMime";
 
 export interface RecordingResult {
@@ -7,7 +8,11 @@ export interface RecordingResult {
 }
 
 interface UseDictationOptions {
-  maxDurationSeconds?: number;
+  /**
+   * Maximum recording length. Accepts a ref/computed so the value can follow
+   * the server config; read on every timer tick. Unlimited when omitted.
+   */
+  maxDurationSeconds?: number | Ref<number>;
   /**
    * Called when the recording is automatically stopped at the max duration,
    * with the captured audio so the caller can still submit it.
@@ -36,7 +41,9 @@ export function isVoiceRecordingSupported(): boolean {
  * mounting the dialog.
  */
 export function useDictation(options: UseDictationOptions = {}) {
-  const maxDurationSeconds = options.maxDurationSeconds ?? 120;
+  function maxDuration(): number {
+    return Math.max(1, unref(options.maxDurationSeconds) ?? Infinity);
+  }
 
   const isRecording = ref(false);
   const elapsedSeconds = ref(0);
@@ -169,7 +176,7 @@ export function useDictation(options: UseDictationOptions = {}) {
     startLevelMeter();
     timerInterval = setInterval(() => {
       elapsedSeconds.value += 1;
-      if (elapsedSeconds.value >= maxDurationSeconds) {
+      if (elapsedSeconds.value >= maxDuration()) {
         // Auto-stop must hand the captured audio over: the caller submits it
         // exactly like a manual stop instead of losing the recording.
         void (async () => {

@@ -119,12 +119,16 @@ The server is engine-agnostic in `external` mode: `STT_API_URL` is the base URL 
 | `STT_MODEL`                      | STT model name (external mode)                           | `whisper-large-v3-turbo`  |
 | `STT_EMBEDDED_MODEL`             | Embedded whisper.cpp model (embedded mode)               | `ggml-base`               |
 | `STT_EMBEDDED_BIN_PATH`          | Path to a custom `whisper-cli` binary (embedded mode; defaults to the binary bundled in the image) | bundled binary |
+| `STT_EMBEDDED_THREADS`           | whisper.cpp thread count (embedded mode; `0` = follow the cgroup CPU limit, capped at 4) | `0`               |
+| `STT_EMBEDDED_TRIM_SILENCE`      | Trim leading/trailing silence before transcription (embedded mode) | `true`           |
 | `DICTATION_LANGUAGE`             | Default STT language (`auto` = engine-side detection)    | `auto`                    |
+| `DICTATION_LANGUAGES`            | Comma-separated languages offered in the UI (the UI prepends `auto`) | `en,fr,de,es,it,pt,nl` |
+| `DICTATION_ESTIMATED_RTF`        | Real-time factor used for the processing ETA (`0` = engine default) | `0`                      |
 | `DICTATION_MAX_DURATION_SECONDS` | Maximum recording duration (client-side auto-stop)       | `120`                     |
 | `DICTATION_MAX_UPLOAD_MB`        | Maximum audio upload size in megabytes                   | `10`                      |
 | `RATE_LIMIT_DICTATION_MAX`       | Max dictation uploads per user per hour                  | `30`                      |
 
-Audio is never persisted: the uploaded file is deleted immediately after transcription, and transcripts are never logged.
+Audio is never persisted: the uploaded file is deleted immediately after transcription, and transcripts are never logged. The web client gets the recording/upload limits, the language list and the engine state from `GET /api/status/config`, so a configuration change does not require a web rebuild.
 
 Example setups:
 
@@ -137,9 +141,15 @@ Always provide `STT_API_KEY` via an environment variable or a Kubernetes Secret 
 
 With `STT_MODE=embedded`, Planner embeds its own speech-to-text engine ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)): no external STT service is needed, `STT_API_URL`/`STT_API_KEY` become unnecessary, and audio never leaves the host.
 
-- **Nothing runs by default.** The engine ships as a `whisper-cli` binary inside the image and stays dormant until a dictation needs transcription: a short-lived transcription process is spawned for the duration of the dictation and shuts down immediately afterwards. No engine process or memory is used between dictations.
-- **Model downloaded on demand.** The selected `STT_EMBEDDED_MODEL` (`ggml-base` by default, ≈ 148 MB; other options include `ggml-tiny`, `ggml-small`, `ggml-large-v3-turbo`) is downloaded once on the first dictation into the persistent `DATA_DIR` volume (`stt-models/`). This requires outbound internet exactly once; afterwards dictation works fully offline. If a downloaded model is corrupted, delete the file from `stt-models/` and it is fetched again on the next dictation.
-- **CPU-only and serialized.** Transcriptions run on CPU, one at a time; uploads of any common format (webm, mp4, …) are decoded through the `ffmpeg` bundled in the image.
+- **Nothing runs by default.** The engine ships as a `whisper-cli` binary inside the image and stays dormant between dictations: a short-lived process is spawned for each transcription and exits immediately afterwards. No engine process or memory is used between dictations.
+- **Model pre-downloaded at startup.** The selected `STT_EMBEDDED_MODEL` (`ggml-base` by default, ≈ 148 MB; other options include `ggml-tiny`, `ggml-small`, `ggml-large-v3-turbo` and quantized variants such as `ggml-base-q5_1`) is downloaded asynchronously when the server starts into the persistent `DATA_DIR` volume (`stt-models/`), so the first dictation does not wait for a download. The download uses a `.part` file, retries with backoff and never blocks readiness; while it runs the engine reports a `preparing` state and the UI shows "Preparing speech engine…". Afterwards dictation works fully offline; delete a corrupted model to fetch it again.
+- **CPU-only, sized from the cgroup.** Transcriptions run on CPU, one at a time; the thread count follows the container's cgroup CPU limit (`STT_EMBEDDED_THREADS`, capped at 4) instead of a hardcoded value. Uploads of any common format (webm, mp4, …) are decoded through the bundled `ffmpeg`.
+- **Silence trim and no-speech detection.** Leading and trailing silence is removed before transcription (`STT_EMBEDDED_TRIM_SILENCE`, enabled by default); a clip shorter than 300 ms after trimming is reported as "no speech detected" instead of sending it to the engine.
+- **Benchmarked and sized.** See [`docs/dictation-benchmark.md`](docs/dictation-benchmark.md) for the harness (`npm run bench:stt`), results and the model/sizing rationale.
+
+### Voice comments
+
+Voice comments on tasks reuse the same STT and polish stages. When an audio attachment is uploaded, the transcription runs in the background and posts the transcript as a task comment; the task dialog shows the transcription status per audio attachment and offers a **Retry** action for failed or skipped transcriptions. The hourly voice quota is shared with dictation, and a skipped transcription is reported inline (the audio is still kept). Transcripts can be corrected by editing the generated comment.
 
 ## Web Push Notifications
 
@@ -204,7 +214,10 @@ Planner exposes a RESTful API under the `/api/` prefix:
 | GET /api/statuses    | Get the global, ordered status catalog (any user)       |
 | PUT /api/statuses    | Replace the global status catalog (admin only)          |
 | POST /api/dictation  | Upload a dictation audio clip and start a job           |
-| GET /api/dictation/:jobId | Poll the state/stage/result of a dictation job     |
+| GET /api/dictation/jobs | List the authenticated user's recent dictation jobs |
+| GET /api/dictation/:jobId | Poll the state/stage/result of a dictation job; `?wait=1&since=<revision>` long-polls for progressive updates |
+| GET /api/tasks/:taskId/voice-transcriptions | Latest voice-transcription status per audio attachment |
+| POST /api/tasks/:taskId/attachments/:attachmentId/transcribe | Retry a failed or skipped voice transcription |
 | GET /api/users/calendar.ics | ICS calendar feed of the authenticated user's visible task due dates (API key required) |
 
 Additional API endpoints for projects, tasks, notes, and users will be available as the implementation progresses.

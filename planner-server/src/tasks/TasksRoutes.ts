@@ -43,12 +43,39 @@ import * as path from "path";
 import { buildContentDisposition } from "../utils/FileUtils";
 import { buildAttachmentCopyPath, cloneTaskFrom } from "./TasksClone";
 import { TaskImproveText } from "./TaskImprove";
-import { TaskVoiceCommentsEnqueue } from "./TaskVoiceComments";
+import {
+  TaskVoiceCommentsCanConsumeRateLimit,
+  TaskVoiceCommentsEnqueue,
+  TaskVoiceCommentsGetLatest,
+  TaskVoiceCommentsIsAvailable,
+  TaskVoiceTranscriptionStatus,
+} from "./TaskVoiceComments";
+import { DictationDataGetLatestByAttachment } from "../dictation/DictationData";
 import { recordTaskUpdate } from "./TaskUpdates";
 import {
   TaskActivityDataList,
   TaskActivityListFilters,
 } from "./TaskActivityData";
+
+/**
+ * Maps a task attachment file name to an audio MIME type. Returns null for
+ * non-audio extensions (the voice-transcription routes only apply to audio).
+ */
+export function audioMimeTypeForFileName(fileName: string): string | null {
+  const extension = path.extname(fileName || "").toLowerCase();
+  const mimeTypes: Record<string, string> = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".opus": "audio/opus",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".webm": "audio/webm",
+  };
+  return mimeTypes[extension] || null;
+}
 
 /**
  * Validates the optional doneSince query param (ISO 8601 timestamp).
@@ -1162,17 +1189,18 @@ export class TasksRoutes {
 
         // Voice comments: an audio attachment may be a recorded voice
         // message — schedule a background transcription that posts the
-        // transcript as a comment. Fire-and-forget: a no-op when the feature
-        // is not enabled. A rate-limited upload is stored either way; the
-        // response tells the client the transcript was skipped.
+        // transcript as a comment. Never fails the upload: a no-op when the
+        // feature is not enabled. A rate-limited upload is stored either way;
+        // the response tells the client the transcript was skipped.
         const transcription = data.mimetype.startsWith("audio/")
-          ? TaskVoiceCommentsEnqueue({
+          ? await TaskVoiceCommentsEnqueue({
               taskId: req.params.id,
               userId: userSession.userId,
               userName: userSession.userName,
               fileName: data.filename,
               filePath,
               mimeType: data.mimetype,
+              attachmentId,
               requestedLanguage: req.query.language,
             })
           : null;
@@ -1187,6 +1215,109 @@ export class TasksRoutes {
         });
       },
     );
+
+    // GET /api/tasks/:id/voice-transcriptions — transcription status of the
+    // task's audio attachments (never the transcript text).
+    fastify.get<{ Params: { id: string } }>(
+      "/:id/voice-transcriptions",
+      async (req, res) => {
+        const userSession = await AuthGetUserSession(req);
+        if (!userSession.isAuthenticated) {
+          return res.status(401).send({ error: "Access Denied" });
+        }
+        const task = await getVisibleTask(req.params.id, userSession);
+        if (!task) {
+          return res.status(404).send({ error: "Task Not Found" });
+        }
+        const transcriptions: TaskVoiceTranscriptionStatus[] = [];
+        for (const attachment of task.attachments || []) {
+          if (!audioMimeTypeForFileName(attachment.fileName)) {
+            continue;
+          }
+          const latest = await TaskVoiceCommentsGetLatest(attachment.id);
+          if (latest) {
+            transcriptions.push(latest);
+          }
+        }
+        return res.status(200).send({ transcriptions });
+      },
+    );
+
+    // POST /api/tasks/:id/attachments/:attachmentId/transcribe — re-enqueue
+    // the stored audio for transcription (rate-limited). The audio is never
+    // deleted.
+    fastify.post<{
+      Params: { id: string; attachmentId: string };
+      Querystring: { language?: string };
+    }>("/:id/attachments/:attachmentId/transcribe", async (req, res) => {
+      try {
+        await AuthMustBeAuthenticated(req, res);
+      } catch {
+        return;
+      }
+      const userSession = await AuthGetUserSession(req);
+      const task = await getVisibleTask(req.params.id, userSession);
+      if (!task) {
+        return res.status(404).send({ error: "Task Not Found" });
+      }
+      const attachment = await getTaskAttachment(req.params.attachmentId);
+      if (!attachment || attachment.taskId !== req.params.id) {
+        return res.status(404).send({ error: "Attachment Not Found" });
+      }
+      const mimeType = audioMimeTypeForFileName(attachment.fileName);
+      if (!mimeType) {
+        return res.status(400).send({ error: "Not an audio attachment" });
+      }
+      if (!(await fs.pathExists(attachment.filePath))) {
+        return res.status(404).send({ error: "File Not Found" });
+      }
+      const guard = await projectMutationError(
+        task.projectId,
+        userSession,
+        "comment",
+      );
+      if (guard) {
+        return res.status(guard.status).send({ error: guard.error });
+      }
+      if (!TaskVoiceCommentsIsAvailable()) {
+        return res
+          .status(503)
+          .send({ error: "Dictation transcription unavailable" });
+      }
+      const latest = await DictationDataGetLatestByAttachment(attachment.id);
+      if (latest?.status === "processing") {
+        return res.status(409).send({
+          error: "A transcription is already in progress",
+          jobId: latest.id,
+        });
+      }
+      if (!TaskVoiceCommentsCanConsumeRateLimit(userSession.userId)) {
+        return res
+          .status(429)
+          .send({ error: "Hourly transcription limit reached" });
+      }
+      const result = await TaskVoiceCommentsEnqueue({
+        taskId: req.params.id,
+        userId: userSession.userId,
+        userName: userSession.userName,
+        fileName: attachment.fileName,
+        filePath: attachment.filePath,
+        mimeType,
+        attachmentId: attachment.id,
+        requestedLanguage: req.query.language,
+      });
+      if (result.rateLimited) {
+        return res
+          .status(429)
+          .send({ error: "Hourly transcription limit reached" });
+      }
+      if (!result.queued || !result.jobId) {
+        return res
+          .status(409)
+          .send({ error: "A transcription is already in progress" });
+      }
+      return res.status(202).send({ jobId: result.jobId });
+    });
 
     fastify.get<{
       Params: { id: string; attachmentId: string };

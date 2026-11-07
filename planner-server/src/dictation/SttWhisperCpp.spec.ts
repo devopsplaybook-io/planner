@@ -8,6 +8,7 @@ jest.mock("axios");
 jest.mock("fs-extra");
 jest.mock("child_process");
 
+const realFs = jest.requireActual("fs") as typeof import("fs");
 const mockAxios = axios as jest.Mocked<typeof axios>;
 const mockSpawn = (childProcess as any).spawn as jest.Mock;
 const mockPathExists = (fs as any).pathExists as jest.Mock;
@@ -15,8 +16,15 @@ const mockEnsureDir = (fs as any).ensureDir as jest.Mock;
 const mockCreateWriteStream = (fs as any).createWriteStream as jest.Mock;
 const mockRename = (fs as any).rename as jest.Mock;
 const mockRemove = (fs as any).remove as jest.Mock;
+const mockReadDir = (fs as any).readdir as jest.Mock;
 
-import { SttWhisperCppTranscribe } from "./SttWhisperCpp";
+import {
+  ParseWavDurationMs,
+  SttNoSpeechError,
+  SttWhisperCppCleanStalePartFiles,
+  SttWhisperCppPrepareModel,
+  SttWhisperCppTranscribe,
+} from "./SttWhisperCpp";
 import { Config } from "../Config";
 
 function deferred<T = unknown>() {
@@ -35,6 +43,18 @@ const flush = async () => {
   }
 };
 
+/** Waits for an asynchronous condition: the pipeline touches the real
+ * filesystem between stages, which can take more than a few event-loop
+ * ticks on a loaded machine. */
+const waitFor = async (condition: () => boolean) => {
+  for (let i = 0; i < 300; i++) {
+    if (condition()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+};
+
 function fakeChild() {
   const child = new EventEmitter() as any;
   child.stdout = new EventEmitter();
@@ -50,26 +70,55 @@ interface SpawnScript {
   error?: Error;
 }
 
+/** Writes a valid 16 kHz mono PCM WAV of the given duration to disk. */
+function writeWav(filePath: string, durationMs: number): void {
+  const sampleRate = 16000;
+  const channels = 1;
+  const bitsPerSample = 16;
+  const dataSize = Math.round(
+    (sampleRate * channels * (bitsPerSample / 8) * durationMs) / 1000,
+  );
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8, "ascii");
+  buffer.write("fmt ", 12, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(channels, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * channels * (bitsPerSample / 8), 28);
+  buffer.writeUInt16LE(channels * (bitsPerSample / 8), 32);
+  buffer.writeUInt16LE(bitsPerSample, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(dataSize, 40);
+  realFs.mkdirSync(path.dirname(filePath), { recursive: true });
+  realFs.writeFileSync(filePath, buffer);
+}
+
 describe("SttWhisperCpp embedded STT engine", () => {
   let config: Config;
   let ffmpegScript: SpawnScript;
   let whisperScript: SpawnScript;
+  let wavDurationMs: number | null;
 
   beforeEach(() => {
     config = new Config();
     config.STT_MODE = "embedded";
     config.STT_EMBEDDED_MODEL = "ggml-base";
     config.DATA_DIR = "/data-test";
-    config.TMP_DIR = "/tmp-test";
+    config.TMP_DIR = "/tmp/stt-test";
 
     mockPathExists.mockResolvedValue(true);
     mockEnsureDir.mockResolvedValue(undefined);
     mockRename.mockResolvedValue(undefined);
     mockRemove.mockResolvedValue(undefined);
+    mockReadDir.mockResolvedValue([]);
 
     ffmpegScript = { code: 0 };
     whisperScript = { code: 0, stdout: "hello world" };
-    mockSpawn.mockImplementation((command: string) => {
+    wavDurationMs = null;
+    mockSpawn.mockImplementation((command: string, args: string[]) => {
       const script = command === "ffmpeg" ? ffmpegScript : whisperScript;
       const child = fakeChild();
       setImmediate(() => {
@@ -82,6 +131,9 @@ describe("SttWhisperCpp embedded STT engine", () => {
         }
         if (script.stderr) {
           child.stderr.emit("data", script.stderr);
+        }
+        if (command === "ffmpeg" && wavDurationMs !== null) {
+          writeWav(args[args.length - 1], wavDurationMs);
         }
         child.emit("close", script.code ?? 0);
       });
@@ -104,7 +156,7 @@ describe("SttWhisperCpp embedded STT engine", () => {
 
     const promise = SttWhisperCppTranscribe(
       config,
-      "/tmp-test/dictation/a1.audio",
+      "/tmp/stt-test/dictation/a1.audio",
       "audio/webm",
       "en",
     );
@@ -121,18 +173,22 @@ describe("SttWhisperCpp embedded STT engine", () => {
       "/data-test/stt-models/ggml-base.bin.part",
       "/data-test/stt-models/ggml-base.bin",
     );
-    await expect(promise).resolves.toBe("hello world");
+    await expect(promise).resolves.toMatchObject({
+      text: "hello world",
+      audioDurationMs: null,
+      threads: expect.any(Number),
+    });
   });
 
   it("should not re-download the model when it already exists", async () => {
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a2.audio",
+        "/tmp/stt-test/dictation/a2.audio",
         "audio/webm",
         "en",
       ),
-    ).resolves.toBe("hello world");
+    ).resolves.toMatchObject({ text: "hello world" });
     expect(mockAxios.get).not.toHaveBeenCalled();
   });
 
@@ -141,7 +197,7 @@ describe("SttWhisperCpp embedded STT engine", () => {
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a3.audio",
+        "/tmp/stt-test/dictation/a3.audio",
         "audio/webm",
         "en",
       ),
@@ -154,11 +210,11 @@ describe("SttWhisperCpp embedded STT engine", () => {
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a4.audio",
+        "/tmp/stt-test/dictation/a4.audio",
         "audio/webm",
         "en",
       ),
-    ).resolves.toBe("hello world");
+    ).resolves.toMatchObject({ text: "hello world" });
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     const [command, args] = mockSpawn.mock.calls[0];
@@ -167,20 +223,46 @@ describe("SttWhisperCpp embedded STT engine", () => {
       expect.arrayContaining(["-ar", "16000", "-ac", "1", "-f", "wav"]),
     );
     const wavPath = args[args.length - 1];
-    expect(wavPath).toMatch(/^\/tmp-test\/dictation\/.+\.wav$/);
+    expect(wavPath).toMatch(/^\/tmp\/stt-test\/dictation\/.+\.wav$/);
     expect(mockRemove).toHaveBeenCalledWith(wavPath);
   });
 
-  it("should reject when the ffmpeg decode fails", async () => {
+  it("should trim leading and trailing silence by default", async () => {
+    await SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/a4b.audio",
+      "audio/webm",
+      "en",
+    );
+    const [, args] = mockSpawn.mock.calls[0];
+    const filterIndex = args.indexOf("-af");
+    expect(filterIndex).toBeGreaterThan(-1);
+    expect(args[filterIndex + 1]).toContain("silenceremove");
+    expect(args[filterIndex + 1]).toContain("areverse");
+  });
+
+  it("should skip silencing when the trim option is disabled", async () => {
+    await SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/a4c.audio",
+      "audio/webm",
+      "en",
+      { trimSilence: false },
+    );
+    const [, args] = mockSpawn.mock.calls[0];
+    expect(args).not.toContain("-af");
+  });
+
+  it("should reject when the ffmpeg decode fails without leaking stderr", async () => {
     ffmpegScript = { code: 1, stderr: "invalid audio data" };
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a5.audio",
+        "/tmp/stt-test/dictation/a5.audio",
         "audio/webm",
         "en",
       ),
-    ).rejects.toThrow("ffmpeg failed with exit code 1: invalid audio data");
+    ).rejects.toThrow("ffmpeg failed with exit code 1");
     expect(mockSpawn).toHaveBeenCalledTimes(1);
   });
 
@@ -188,11 +270,11 @@ describe("SttWhisperCpp embedded STT engine", () => {
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a6.audio",
+        "/tmp/stt-test/dictation/a6.audio",
         "audio/webm",
         "en",
       ),
-    ).resolves.toBe("hello world");
+    ).resolves.toMatchObject({ text: "hello world" });
 
     const [command, args] = mockSpawn.mock.calls[1];
     expect(command).toBe(
@@ -202,7 +284,7 @@ describe("SttWhisperCpp embedded STT engine", () => {
       "-m",
       "/data-test/stt-models/ggml-base.bin",
       "-f",
-      expect.stringMatching(/^\/tmp-test\/dictation\/.+\.wav$/),
+      expect.stringMatching(/^\/tmp\/stt-test\/dictation\/.+\.wav$/),
       "-l",
       "en",
       "-t",
@@ -212,15 +294,27 @@ describe("SttWhisperCpp embedded STT engine", () => {
     ]);
   });
 
+  it("should pass an explicit thread count through to whisper-cli", async () => {
+    await SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/a6b.audio",
+      "audio/webm",
+      "en",
+      { threads: 2 },
+    );
+    const [, args] = mockSpawn.mock.calls[1];
+    expect(args[args.indexOf("-t") + 1]).toBe("2");
+  });
+
   it("should detect the language when none is given", async () => {
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a7.audio",
+        "/tmp/stt-test/dictation/a7.audio",
         "audio/webm",
         null,
       ),
-    ).resolves.toBe("hello world");
+    ).resolves.toMatchObject({ text: "hello world" });
     const [, args] = mockSpawn.mock.calls[1];
     expect(args).toEqual(expect.arrayContaining(["-l", "auto"]));
   });
@@ -230,11 +324,11 @@ describe("SttWhisperCpp embedded STT engine", () => {
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a8.audio",
+        "/tmp/stt-test/dictation/a8.audio",
         "audio/webm",
         "en",
       ),
-    ).resolves.toBe("hello world");
+    ).resolves.toMatchObject({ text: "hello world" });
     const [command] = mockSpawn.mock.calls[1];
     expect(command).toBe("/opt/custom/whisper-cli");
   });
@@ -244,11 +338,37 @@ describe("SttWhisperCpp embedded STT engine", () => {
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a9.audio",
+        "/tmp/stt-test/dictation/a9.audio",
         "audio/webm",
         "en",
       ),
-    ).resolves.toBe("first line second line");
+    ).resolves.toMatchObject({ text: "first line second line" });
+  });
+
+  it("should report the decoded audio duration", async () => {
+    wavDurationMs = 4200;
+    const result = await SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/a9b.audio",
+      "audio/webm",
+      "en",
+    );
+    expect(result.audioDurationMs).toBeGreaterThan(4000);
+    expect(result.audioDurationMs).toBeLessThan(4400);
+  });
+
+  it("should raise a no-speech error when the trimmed audio is too short", async () => {
+    wavDurationMs = 120;
+    await expect(
+      SttWhisperCppTranscribe(
+        config,
+        "/tmp/stt-test/dictation/a9c.audio",
+        "audio/webm",
+        "en",
+      ),
+    ).rejects.toBeInstanceOf(SttNoSpeechError);
+    // whisper-cli never runs on empty audio
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
   });
 
   it("should reject an empty transcript", async () => {
@@ -256,25 +376,23 @@ describe("SttWhisperCpp embedded STT engine", () => {
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a10.audio",
+        "/tmp/stt-test/dictation/a10.audio",
         "audio/webm",
         "en",
       ),
     ).rejects.toThrow("STT returned an empty transcript");
   });
 
-  it("should reject when whisper-cli fails", async () => {
-    whisperScript = { code: 1, stderr: "whisper_model_load failed" };
+  it("should reject when whisper-cli fails without leaking stderr", async () => {
+    whisperScript = { code: 1, stderr: "secret transcript fragment" };
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a11.audio",
+        "/tmp/stt-test/dictation/a11.audio",
         "audio/webm",
         "en",
       ),
-    ).rejects.toThrow(
-      "whisper-cli failed with exit code 1: whisper_model_load failed",
-    );
+    ).rejects.toThrow("whisper-cli failed with exit code 1");
   });
 
   it("should reject when the whisper binary is missing", async () => {
@@ -284,7 +402,7 @@ describe("SttWhisperCpp embedded STT engine", () => {
     await expect(
       SttWhisperCppTranscribe(
         config,
-        "/tmp-test/dictation/a12.audio",
+        "/tmp/stt-test/dictation/a12.audio",
         "audio/webm",
         "en",
       ),
@@ -314,17 +432,20 @@ describe("SttWhisperCpp embedded STT engine", () => {
 
     const first = SttWhisperCppTranscribe(
       config,
-      "/tmp-test/dictation/b1.audio",
+      "/tmp/stt-test/dictation/b1.audio",
       "audio/webm",
       "en",
     );
     await flush();
     const second = SttWhisperCppTranscribe(
       config,
-      "/tmp-test/dictation/b2.audio",
+      "/tmp/stt-test/dictation/b2.audio",
       "audio/webm",
       "en",
     );
+    // The first transcription reaches whisper-cli and stays blocked on the
+    // gate: the serialized second one must not spawn anything yet
+    await waitFor(() => whisperSpawnCount === 1);
     await flush();
 
     // The first transcription is still running: nothing was spawned for the
@@ -332,8 +453,126 @@ describe("SttWhisperCpp embedded STT engine", () => {
     expect(mockSpawn).toHaveBeenCalledTimes(2);
 
     gate.resolve(undefined);
-    expect(await Promise.all([first, second])).toEqual(["hi", "hi"]);
+    const results = await Promise.all([first, second]);
+    expect(results.map((result) => result.text)).toEqual(["hi", "hi"]);
     expect(mockSpawn).toHaveBeenCalledTimes(4);
     expect(mockRemove).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("SttWhisperCpp model preparation", () => {
+  let config: Config;
+
+  beforeEach(() => {
+    config = new Config();
+    config.STT_MODE = "embedded";
+    config.STT_EMBEDDED_MODEL = "ggml-tiny";
+    config.DATA_DIR = "/data-test";
+    mockPathExists.mockResolvedValue(false);
+    mockEnsureDir.mockResolvedValue(undefined);
+    mockRename.mockResolvedValue(undefined);
+    mockRemove.mockResolvedValue(undefined);
+    mockReadDir.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+  });
+
+  it("should retry a failed download and remove the partial file", async () => {
+    const writer = new EventEmitter();
+    mockCreateWriteStream.mockReturnValue(writer);
+    const source = new EventEmitter() as any;
+    source.pipe = jest.fn();
+    mockAxios.get
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce({ data: source } as never);
+
+    source.pipe.mockImplementation(() => setImmediate(() => writer.emit("finish")));
+
+    const promise = SttWhisperCppPrepareModel(config, undefined, {
+      retryDelayMs: 0,
+    });
+    await expect(promise).resolves.toBeUndefined();
+    expect(mockAxios.get).toHaveBeenCalledTimes(3);
+    expect(mockRename).toHaveBeenCalledWith(
+      "/data-test/stt-models/ggml-tiny.bin.part",
+      "/data-test/stt-models/ggml-tiny.bin",
+    );
+  });
+
+  it("should give up after three attempts and surface the error", async () => {
+    mockAxios.get.mockRejectedValue(new Error("network down"));
+    mockCreateWriteStream.mockReturnValue(new EventEmitter());
+
+    await expect(
+      SttWhisperCppPrepareModel(config, undefined, { retryDelayMs: 0 }),
+    ).rejects.toThrow("network down");
+    expect(mockAxios.get).toHaveBeenCalledTimes(3);
+  });
+
+  it("should share one download between concurrent preparers", async () => {
+    const source = new EventEmitter() as any;
+    source.pipe = jest.fn();
+    mockAxios.get.mockResolvedValue({ data: source } as never);
+    const writer = new EventEmitter();
+    mockCreateWriteStream.mockReturnValue(writer);
+
+    source.pipe.mockImplementation(() => setImmediate(() => writer.emit("finish")));
+
+    const first = SttWhisperCppPrepareModel(config, undefined, {
+      retryDelayMs: 0,
+    });
+    const second = SttWhisperCppPrepareModel(config, undefined, {
+      retryDelayMs: 0,
+    });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(mockAxios.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("should remove stale .part files at startup", async () => {
+    mockPathExists.mockResolvedValue(true);
+    mockReadDir.mockResolvedValue(["ggml-base.bin", "ggml-base.bin.part"]);
+
+    await expect(SttWhisperCppCleanStalePartFiles(config)).resolves.toBe(1);
+    expect(mockRemove).toHaveBeenCalledWith(
+      "/data-test/stt-models/ggml-base.bin.part",
+    );
+  });
+});
+
+describe("ParseWavDurationMs", () => {
+  it("should compute the duration of a PCM WAV file", async () => {
+    const filePath = path.join(
+      require("os").tmpdir(),
+      `stt-wav-${process.pid}-${Date.now()}.wav`,
+    );
+    writeWav(filePath, 2500);
+    try {
+      const duration = await ParseWavDurationMs(filePath);
+      expect(duration).toBeGreaterThan(2400);
+      expect(duration).toBeLessThan(2600);
+    } finally {
+      realFs.rmSync(filePath, { force: true });
+    }
+  });
+
+  it("should return null for a file that is not a WAV", async () => {
+    const filePath = path.join(
+      require("os").tmpdir(),
+      `stt-wav-bad-${process.pid}-${Date.now()}.wav`,
+    );
+    realFs.writeFileSync(filePath, "not a wav");
+    try {
+      await expect(ParseWavDurationMs(filePath)).resolves.toBeNull();
+    } finally {
+      realFs.rmSync(filePath, { force: true });
+    }
   });
 });

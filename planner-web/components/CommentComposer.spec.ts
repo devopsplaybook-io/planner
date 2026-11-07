@@ -1,7 +1,26 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
+import { reactive } from "vue";
 import CommentComposer from "./CommentComposer.vue";
+
+const recommendationStore = {
+  dictationMaxDurationSeconds: 120,
+  dictationLanguages: ["auto", "en", "fr"],
+};
+const dictationStore = reactive({
+  language: "auto",
+  setLanguage: vi.fn((value: string) => {
+    dictationStore.language = value;
+  }),
+});
+
+// afterEach unstubs globals: stub the stores before every test so both
+// describe blocks start from a clean, complete environment
+beforeEach(() => {
+  vi.stubGlobal("useRecommendationStore", () => recommendationStore);
+  vi.stubGlobal("useDictationStore", () => dictationStore);
+});
 
 class FakeMediaStreamTrack {
   stopped = false;
@@ -69,10 +88,14 @@ describe("CommentComposer voice recording", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    vi.stubGlobal("useRecommendationStore", () => recommendationStore);
+    vi.stubGlobal("useDictationStore", () => dictationStore);
     FakeMediaRecorder.isTypeSupported.mockImplementation(
       (type: string) => type === "audio/webm;codecs=opus",
     );
     FakeMediaRecorder.reset();
+    dictationStore.language = "auto";
+    dictationStore.setLanguage.mockClear();
   });
 
   afterEach(() => {
@@ -125,9 +148,13 @@ describe("CommentComposer voice recording", () => {
 
     const emitted = wrapper.emitted("voice");
     expect(emitted).toHaveLength(1);
-    const result = emitted![0]![0] as { blob: Blob; mimeType: string };
-    expect(result.blob).toBeInstanceOf(Blob);
-    expect(result.mimeType).toBe("audio/webm;codecs=opus");
+    const payload = emitted![0]![0] as {
+      recording: { blob: Blob; mimeType: string };
+      language: string;
+    };
+    expect(payload.recording.blob).toBeInstanceOf(Blob);
+    expect(payload.recording.mimeType).toBe("audio/webm;codecs=opus");
+    expect(payload.language).toBe("auto");
     // Recording state cleared after stop
     expect(wrapper.find(".composer-voice-status").exists()).toBe(false);
   });
@@ -143,10 +170,35 @@ describe("CommentComposer voice recording", () => {
 
     const emitted = wrapper.emitted("voice");
     expect(emitted).toHaveLength(1);
-    const result = emitted![0]![0] as { blob: Blob; mimeType: string };
-    expect(result.blob).toBeInstanceOf(Blob);
-    expect(result.mimeType).toBe("audio/webm;codecs=opus");
+    const payload = emitted![0]![0] as {
+      recording: { blob: Blob; mimeType: string };
+      language: string;
+    };
+    expect(payload.recording.blob).toBeInstanceOf(Blob);
+    expect(payload.recording.mimeType).toBe("audio/webm;codecs=opus");
     expect(wrapper.find(".composer-voice-status").exists()).toBe(false);
+  });
+
+  it("should record with the selected language", async () => {
+    stubMedia();
+    dictationStore.language = "auto";
+    const wrapper = mountComposer({ allowVoice: true });
+
+    await wrapper.find(".composer-voice-btn").trigger("click");
+    const select = wrapper.find(".composer-voice-language select");
+    expect(select.exists()).toBe(true);
+    await select.setValue("fr");
+    expect(dictationStore.setLanguage).toHaveBeenCalledWith("fr");
+
+    await wrapper
+      .find('.composer-voice-status button[aria-label="Stop recording"]')
+      .trigger("click");
+    await flushPromises();
+
+    const payload = wrapper.emitted("voice")![0]![0] as {
+      language: string;
+    };
+    expect(payload.language).toBe("fr");
   });
 
   it("should not emit voice on cancel", async () => {

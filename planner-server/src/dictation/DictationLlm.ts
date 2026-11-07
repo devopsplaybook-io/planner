@@ -36,6 +36,15 @@ export const ACTIONS_SYSTEM_PROMPT =
   "No markdown code fences, no commentary.";
 
 /**
+ * Scales the LLM output budget with the dictated text length so longer
+ * dictations are not truncated: roughly one token per two characters,
+ * bounded to 1000..4000.
+ */
+export function ComputeMaxTokens(text: string): number {
+  return Math.min(4000, Math.max(1000, Math.ceil((text || "").length / 2)));
+}
+
+/**
  * Builds the user prompt for the polish request. Pure so it can be
  * unit-tested without a configuration.
  */

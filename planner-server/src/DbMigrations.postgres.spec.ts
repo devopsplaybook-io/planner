@@ -141,6 +141,7 @@ describePostgres("RunMigrations (PostgreSQL)", () => {
       "task_dependencies",
       "project_users",
       "api_keys",
+      "dictation_jobs",
     ]) {
       expect(tables).toContain(table);
     }

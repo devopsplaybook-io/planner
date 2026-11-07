@@ -10,6 +10,41 @@ import * as crypto from "crypto";
  */
 let generatedDevJwtKey: string | null = null;
 
+const LANGUAGE_CODE_PATTERN = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/;
+
+/**
+ * Normalizes a dictation language list: trims, lowercases, drops empty,
+ * malformed and duplicate entries. Falls back to the default list when the
+ * result is empty. Exported for tests.
+ */
+export function ParseLanguageList(
+  value: unknown,
+  fallback: string[],
+): string[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+  const languages: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const code = entry.trim().toLowerCase();
+    if (
+      !code ||
+      code === "auto" ||
+      !LANGUAGE_CODE_PATTERN.test(code) ||
+      languages.includes(code)
+    ) {
+      continue;
+    }
+    languages.push(code);
+  }
+  return languages.length > 0 ? languages : [...fallback];
+}
+
 function getDevelopmentJwtKey(): string {
   if (!generatedDevJwtKey) {
     generatedDevJwtKey = crypto.randomBytes(48).toString("hex");
@@ -50,7 +85,13 @@ export class Config {
   public STT_MODEL: string;
   public STT_EMBEDDED_MODEL: string;
   public STT_EMBEDDED_BIN_PATH: string;
+  /** 0 = auto (size the whisper.cpp threads from the cgroup CPU allowance) */
+  public STT_EMBEDDED_THREADS: number;
+  public STT_EMBEDDED_TRIM_SILENCE: boolean;
   public DICTATION_LANGUAGE: string;
+  public DICTATION_LANGUAGES: string[];
+  /** Estimated real-time factor used by the web for its ETA (0 = automatic) */
+  public DICTATION_ESTIMATED_RTF: number;
   public DICTATION_MAX_DURATION_SECONDS: number;
   public DICTATION_MAX_UPLOAD_MB: number;
   public RATE_LIMIT_DICTATION_MAX: number;
@@ -93,7 +134,11 @@ export class Config {
     this.STT_MODEL = "whisper-large-v3-turbo";
     this.STT_EMBEDDED_MODEL = "ggml-base";
     this.STT_EMBEDDED_BIN_PATH = "";
+    this.STT_EMBEDDED_THREADS = 0;
+    this.STT_EMBEDDED_TRIM_SILENCE = true;
     this.DICTATION_LANGUAGE = "auto";
+    this.DICTATION_LANGUAGES = ["en", "fr", "de", "es", "it", "pt", "nl"];
+    this.DICTATION_ESTIMATED_RTF = 0;
     this.DICTATION_MAX_DURATION_SECONDS = 120;
     this.DICTATION_MAX_UPLOAD_MB = 10;
     this.RATE_LIMIT_DICTATION_MAX = 30;
@@ -145,7 +190,22 @@ export class Config {
     this.STT_MODEL = config.STT_MODEL || "whisper-large-v3-turbo";
     this.STT_EMBEDDED_MODEL = config.STT_EMBEDDED_MODEL || "ggml-base";
     this.STT_EMBEDDED_BIN_PATH = config.STT_EMBEDDED_BIN_PATH || "";
+    this.STT_EMBEDDED_THREADS =
+      Number.isFinite(config.STT_EMBEDDED_THREADS) &&
+      config.STT_EMBEDDED_THREADS > 0
+        ? Math.floor(config.STT_EMBEDDED_THREADS)
+        : 0;
+    this.STT_EMBEDDED_TRIM_SILENCE = config.STT_EMBEDDED_TRIM_SILENCE ?? true;
     this.DICTATION_LANGUAGE = config.DICTATION_LANGUAGE || "auto";
+    this.DICTATION_LANGUAGES = ParseLanguageList(
+      config.DICTATION_LANGUAGES,
+      ["en", "fr", "de", "es", "it", "pt", "nl"],
+    );
+    this.DICTATION_ESTIMATED_RTF =
+      Number.isFinite(config.DICTATION_ESTIMATED_RTF) &&
+      config.DICTATION_ESTIMATED_RTF > 0
+        ? config.DICTATION_ESTIMATED_RTF
+        : 0;
     this.DICTATION_MAX_DURATION_SECONDS =
       config.DICTATION_MAX_DURATION_SECONDS || 120;
     this.DICTATION_MAX_UPLOAD_MB = config.DICTATION_MAX_UPLOAD_MB || 10;
@@ -236,8 +296,30 @@ export class Config {
     if (process.env.STT_EMBEDDED_BIN_PATH) {
       this.STT_EMBEDDED_BIN_PATH = process.env.STT_EMBEDDED_BIN_PATH;
     }
+    if (process.env.STT_EMBEDDED_THREADS) {
+      const threads = parseInt(process.env.STT_EMBEDDED_THREADS);
+      if (Number.isFinite(threads) && threads > 0) {
+        this.STT_EMBEDDED_THREADS = threads;
+      }
+    }
+    if (process.env.STT_EMBEDDED_TRIM_SILENCE) {
+      this.STT_EMBEDDED_TRIM_SILENCE =
+        process.env.STT_EMBEDDED_TRIM_SILENCE === "true";
+    }
     if (process.env.DICTATION_LANGUAGE) {
       this.DICTATION_LANGUAGE = process.env.DICTATION_LANGUAGE;
+    }
+    if (process.env.DICTATION_LANGUAGES) {
+      this.DICTATION_LANGUAGES = ParseLanguageList(
+        process.env.DICTATION_LANGUAGES,
+        this.DICTATION_LANGUAGES,
+      );
+    }
+    if (process.env.DICTATION_ESTIMATED_RTF) {
+      const estimatedRtf = parseFloat(process.env.DICTATION_ESTIMATED_RTF);
+      if (Number.isFinite(estimatedRtf) && estimatedRtf > 0) {
+        this.DICTATION_ESTIMATED_RTF = estimatedRtf;
+      }
     }
     if (process.env.DICTATION_MAX_DURATION_SECONDS) {
       this.DICTATION_MAX_DURATION_SECONDS =

@@ -3,26 +3,169 @@ import * as fs from "fs-extra";
 
 jest.mock("axios");
 jest.mock("fs-extra");
-jest.mock("./SttWhisperCpp");
+jest.mock("./DictationData", () => {
+  const jobs = new Map<string, any>();
+
+  function now(): string {
+    return new Date(Date.now()).toISOString();
+  }
+
+  function fill(input: any): any {
+    const timestamp = now();
+    return {
+      taskId: null,
+      attachmentId: null,
+      commentId: null,
+      stage: null,
+      language: null,
+      model: null,
+      rawTranscript: null,
+      polishedText: null,
+      polished: false,
+      actions: [],
+      actionsAvailable: false,
+      error: null,
+      audioDurationMs: null,
+      queueMs: null,
+      sttMs: null,
+      polishMs: null,
+      actionsMs: null,
+      totalMs: null,
+      revision: 0,
+      dateCreated: timestamp,
+      dateUpdated: timestamp,
+      ...input,
+    };
+  }
+
+  const api = {
+    __jobs: jobs,
+    __reset: () => jobs.clear(),
+    DictationDataCreate: jest.fn(async (input: any) => {
+      jobs.set(input.id, fill(input));
+    }),
+    DictationDataGet: jest.fn(async (jobId: string) => jobs.get(jobId) ?? null),
+    DictationDataGetForUser: jest.fn(
+      async (userId: string, jobId: string) => {
+        const job = jobs.get(jobId);
+        return job && job.userId === userId ? job : null;
+      },
+    ),
+    DictationDataUpdate: jest.fn(async (jobId: string, patch: any) => {
+      const job = jobs.get(jobId);
+      if (!job) {
+        return;
+      }
+      Object.assign(job, patch);
+      job.revision += 1;
+      job.dateUpdated = now();
+    }),
+    DictationDataGetInFlightForUser: jest.fn(
+      async (userId: string, source: string) =>
+        [...jobs.values()]
+          .filter(
+            (job) =>
+              job.userId === userId &&
+              job.source === source &&
+              job.status === "processing",
+          )
+          .pop() ?? null,
+    ),
+    DictationDataListRecent: jest.fn(
+      async (userId: string, source: string | undefined, limit: number) =>
+        [...jobs.values()]
+          .filter(
+            (job) =>
+              job.userId === userId &&
+              (!source || job.source === source) &&
+              Date.parse(job.expiresAt) >= Date.now(),
+          )
+          .sort((a, b) => (a.dateCreated < b.dateCreated ? 1 : -1))
+          .slice(0, limit),
+    ),
+    DictationDataGetLatestByAttachment: jest.fn(async () => null),
+    DictationDataDeleteExpired: jest.fn(async (at?: string) => {
+      const threshold = at ?? now();
+      let removed = 0;
+      for (const [id, job] of jobs) {
+        if (job.expiresAt < threshold) {
+          jobs.delete(id);
+          removed++;
+        }
+      }
+      return removed;
+    }),
+    DictationDataMarkInterruptedBeforeStt: jest.fn(
+      async (message: string, at?: string) => {
+        let updated = 0;
+        for (const job of jobs.values()) {
+          if (job.status === "processing" && job.rawTranscript === null) {
+            job.status = "error";
+            job.stage = null;
+            job.error = message;
+            job.revision += 1;
+            job.dateUpdated = at ?? now();
+            updated++;
+          }
+        }
+        return updated;
+      },
+    ),
+    DictationDataListResumable: jest.fn(async () =>
+      [...jobs.values()].filter(
+        (job) =>
+          job.status === "processing" && job.rawTranscript !== null,
+      ),
+    ),
+  };
+  return api;
+});
+jest.mock("./SttWhisperCpp", () => {
+  class SttNoSpeechError extends Error {
+    constructor() {
+      super("No speech detected");
+      this.name = "SttNoSpeechError";
+    }
+  }
+  return {
+    SttNoSpeechError,
+    SttWhisperCppTranscribe: jest.fn(),
+    SttWhisperCppPrepareModel: jest.fn(async () => undefined),
+    SttWhisperCppGetStatus: jest.fn(() => ({
+      state: "ready",
+      model: "ggml-base",
+      error: null,
+    })),
+    SttWhisperCppGetThreads: jest.fn(() => 1),
+    SttWhisperCppCleanStalePartFiles: jest.fn(async () => 0),
+  };
+});
 
 const mockAxios = axios as jest.Mocked<typeof axios>;
 const mockReadFile = (fs as any).readFile as jest.Mock;
 const mockRemove = (fs as any).remove as jest.Mock;
+const mockData = jest.requireMock("./DictationData") as any;
 
 import {
   DictationGetInFlightJobId,
   DictationGetJob,
+  DictationGetRecentJobs,
   DictationInit,
   DictationPolishTranscript,
+  DictationResumeJob,
   DictationStartJob,
   DictationSweepExpiredJobs,
   DictationTranscribeAndPolish,
   DictationTranscribeAudio,
+  DictationWaitForJob,
 } from "./Dictation";
-import { SttWhisperCppTranscribe } from "./SttWhisperCpp";
+import {
+  SttNoSpeechError,
+  SttWhisperCppTranscribe,
+} from "./SttWhisperCpp";
 import { Config } from "../Config";
 
-const mockSttWhisperCpp = SttWhisperCppTranscribe as jest.Mock;
+const mockStt = SttWhisperCppTranscribe as jest.Mock;
 
 function deferred<T = unknown>() {
   let resolve!: (value: T) => void;
@@ -35,8 +178,9 @@ function deferred<T = unknown>() {
 }
 
 const flush = async () => {
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  for (let i = 0; i < 4; i++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 };
 
 const sttResponse = (text: string) => ({ data: { text } });
@@ -44,24 +188,26 @@ const llmResponse = (content: string) => ({
   data: { choices: [{ message: { content } }] },
 });
 
+function externalConfig(): Config {
+  const config = new Config();
+  config.DICTATION_ENABLED = true;
+  config.STT_MODE = "external";
+  config.STT_API_URL = "https://stt.test";
+  config.STT_API_KEY = "stt-key";
+  config.STT_MODEL = "whisper-test";
+  config.LLM_API_KEY = "llm-key";
+  config.LLM_API_URL = "https://llm.test/chat";
+  config.LLM_MODEL = "llm-test";
+  return config;
+}
+
 describe("Dictation pipeline", () => {
   beforeEach(async () => {
+    mockData.__reset();
     mockReadFile.mockResolvedValue(Buffer.from("fake audio"));
     mockRemove.mockResolvedValue(undefined);
-    // Default LLM answer for calls not explicitly queued in a test
-    mockAxios.post.mockResolvedValue(
-      llmResponse('{"text": "Hi"}') as never,
-    );
-
-    const config = new Config();
-    config.DICTATION_ENABLED = true;
-    config.STT_API_URL = "https://stt.test";
-    config.STT_API_KEY = "stt-key";
-    config.STT_MODEL = "whisper-test";
-    config.LLM_API_KEY = "llm-key";
-    config.LLM_API_URL = "https://llm.test/chat";
-    config.LLM_MODEL = "llm-test";
-    await DictationInit(config);
+    mockAxios.post.mockResolvedValue(llmResponse('{"text": "Hi"}') as never);
+    await DictationInit(externalConfig());
   });
 
   afterEach(() => {
@@ -73,7 +219,7 @@ describe("Dictation pipeline", () => {
     mockAxios.post.mockImplementationOnce(() => deferral.promise as never);
   }
 
-  it("should run the three stages and return the polished result with actions", async () => {
+  it("should persist each stage and return the polished result with actions", async () => {
     const stt = deferred();
     const polish = deferred();
     const actions = deferred();
@@ -81,20 +227,62 @@ describe("Dictation pipeline", () => {
     mockAxios.post.mockImplementationOnce(() => polish.promise as never);
     mockAxios.post.mockImplementationOnce(() => actions.promise as never);
 
-    const jobId = DictationStartJob("user-1", "/tmp/dictation/a1.audio", "audio/webm", "en");
+    const jobId = await DictationStartJob(
+      "user-1",
+      "/tmp/dictation/a1.audio",
+      "audio/webm",
+      "en",
+    );
 
-    let view = DictationGetJob("user-1", jobId);
-    expect(view).toMatchObject({ status: "processing", stage: "transcribing" });
+    let view = await DictationGetJob("user-1", jobId);
+    expect(view).toMatchObject({
+      jobId,
+      status: "processing",
+      stage: "transcribing",
+      result: null,
+      availability: {
+        rawTranscript: false,
+        polishedText: false,
+        actions: false,
+      },
+    });
 
     stt.resolve(sttResponse("hello world"));
     await flush();
-    view = DictationGetJob("user-1", jobId);
-    expect(view).toMatchObject({ status: "processing", stage: "polishing" });
+    view = await DictationGetJob("user-1", jobId);
+    // The raw transcript is available before polish completes
+    expect(view).toMatchObject({
+      status: "processing",
+      stage: "polishing",
+      result: {
+        rawTranscript: "hello world",
+        polishedText: null,
+        actions: [],
+      },
+      availability: {
+        rawTranscript: true,
+        polishedText: false,
+        actions: false,
+      },
+    });
 
     polish.resolve(llmResponse('{"text": "Hello world!"}'));
     await flush();
-    view = DictationGetJob("user-1", jobId);
-    expect(view).toMatchObject({ status: "processing", stage: "actions" });
+    view = await DictationGetJob("user-1", jobId);
+    expect(view).toMatchObject({
+      status: "processing",
+      stage: "actions",
+      result: {
+        rawTranscript: "hello world",
+        polishedText: "Hello world!",
+        polished: true,
+      },
+      availability: {
+        rawTranscript: true,
+        polishedText: true,
+        actions: false,
+      },
+    });
 
     actions.resolve(
       llmResponse(
@@ -103,9 +291,10 @@ describe("Dictation pipeline", () => {
     );
     await flush();
 
-    view = DictationGetJob("user-1", jobId);
-    expect(view).toEqual({
+    view = await DictationGetJob("user-1", jobId);
+    expect(view).toMatchObject({
       jobId,
+      source: "dictation",
       status: "done",
       stage: null,
       result: {
@@ -123,7 +312,15 @@ describe("Dictation pipeline", () => {
         actionsAvailable: true,
       },
       error: null,
+      timings: {
+        queueMs: expect.any(Number),
+        sttMs: expect.any(Number),
+        polishMs: expect.any(Number),
+        actionsMs: expect.any(Number),
+        totalMs: expect.any(Number),
+      },
     });
+    expect(view!.revision).toBeGreaterThan(0);
 
     // Audio deleted right after the STT call
     expect(mockRemove).toHaveBeenCalledWith("/tmp/dictation/a1.audio");
@@ -138,14 +335,15 @@ describe("Dictation pipeline", () => {
     expect(mockAxios.post.mock.calls[0][2]).toMatchObject({
       headers: { Authorization: "Bearer stt-key" },
     });
-    // LLM call shape
+    // LLM call shape and length-scaled output budget
     expect(mockAxios.post.mock.calls[1][0]).toBe("https://llm.test/chat");
+    expect(mockAxios.post.mock.calls[1][1]).toMatchObject({ max_tokens: 1000 });
     expect(mockAxios.post.mock.calls[1][2]).toMatchObject({
       headers: { Authorization: "Bearer llm-key" },
     });
 
     // Single-flight cleared after completion
-    expect(DictationGetInFlightJobId("user-1")).toBeNull();
+    expect(await DictationGetInFlightJobId("user-1")).toBeNull();
   });
 
   it("should transcribe through the embedded engine when STT_MODE is embedded", async () => {
@@ -158,14 +356,28 @@ describe("Dictation pipeline", () => {
     embeddedConfig.LLM_MODEL = "llm-test";
     await DictationInit(embeddedConfig);
 
-    mockSttWhisperCpp.mockResolvedValueOnce("embedded transcript" as never);
-    mockAxios.post.mockResolvedValueOnce(llmResponse('{"text": "Embedded!"}') as never);
-    mockAxios.post.mockResolvedValueOnce(llmResponse('{"actions": []}') as never);
+    mockStt.mockResolvedValueOnce({
+      text: "embedded transcript",
+      audioDurationMs: 3000,
+      threads: 1,
+      sttMs: 12,
+    } as never);
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"text": "Embedded!"}') as never,
+    );
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"actions": []}') as never,
+    );
 
-    const jobId = DictationStartJob("user-emb", "/tmp/dictation/e1.audio", "audio/webm", "en");
+    const jobId = await DictationStartJob(
+      "user-emb",
+      "/tmp/dictation/e1.audio",
+      "audio/webm",
+      "en",
+    );
     await flush();
 
-    expect(DictationGetJob("user-emb", jobId)).toMatchObject({
+    expect(await DictationGetJob("user-emb", jobId)).toMatchObject({
       status: "done",
       result: {
         rawTranscript: "embedded transcript",
@@ -174,8 +386,9 @@ describe("Dictation pipeline", () => {
         actions: [],
         actionsAvailable: true,
       },
+      timings: { audioDurationMs: 3000, sttMs: 12 },
     });
-    expect(mockSttWhisperCpp).toHaveBeenCalledWith(
+    expect(mockStt).toHaveBeenCalledWith(
       expect.objectContaining({ STT_MODE: "embedded" }),
       "/tmp/dictation/e1.audio",
       "audio/webm",
@@ -193,7 +406,12 @@ describe("Dictation pipeline", () => {
     mockAxios.post.mockResolvedValueOnce(llmResponse('{"text": "Hello"}') as never);
     mockAxios.post.mockResolvedValueOnce(llmResponse('{"actions": []}') as never);
 
-    DictationStartJob("user-auto", "/tmp/dictation/a2.audio", "audio/webm", null);
+    await DictationStartJob(
+      "user-auto",
+      "/tmp/dictation/a2.audio",
+      "audio/webm",
+      null,
+    );
     stt.resolve(sttResponse("hello"));
     await flush();
 
@@ -205,11 +423,18 @@ describe("Dictation pipeline", () => {
     const stt = deferred();
     queueStt(stt);
 
-    const jobId = DictationStartJob("user-2", "/tmp/dictation/a3.audio", "audio/webm", null);
-    stt.reject(Object.assign(new Error("upstream down"), { response: { status: 500 } }));
+    const jobId = await DictationStartJob(
+      "user-2",
+      "/tmp/dictation/a3.audio",
+      "audio/webm",
+      null,
+    );
+    stt.reject(
+      Object.assign(new Error("upstream down"), { response: { status: 500 } }),
+    );
     await flush();
 
-    expect(DictationGetJob("user-2", jobId)).toEqual({
+    expect(await DictationGetJob("user-2", jobId)).toMatchObject({
       jobId,
       status: "error",
       stage: null,
@@ -217,7 +442,26 @@ describe("Dictation pipeline", () => {
       error: "Dictation failed, please try again",
     });
     expect(mockRemove).toHaveBeenCalledWith("/tmp/dictation/a3.audio");
-    expect(DictationGetInFlightJobId("user-2")).toBeNull();
+    expect(await DictationGetInFlightJobId("user-2")).toBeNull();
+  });
+
+  it("should map a no-speech recording to a dedicated error", async () => {
+    mockAxios.post.mockRejectedValueOnce(new SttNoSpeechError() as never);
+
+    const jobId = await DictationStartJob(
+      "user-nospeech",
+      "/tmp/dictation/a3b.audio",
+      "audio/webm",
+      null,
+    );
+    await flush();
+
+    expect(await DictationGetJob("user-nospeech", jobId)).toMatchObject({
+      status: "error",
+      result: null,
+      error: "No speech detected, please try again.",
+    });
+    expect(mockRemove).toHaveBeenCalledWith("/tmp/dictation/a3b.audio");
   });
 
   it("should fall back to the raw transcript when the polish call fails", async () => {
@@ -230,12 +474,16 @@ describe("Dictation pipeline", () => {
       Object.assign(new Error("bad request"), { response: { status: 400 } }),
     );
 
-    const jobId = DictationStartJob("user-3", "/tmp/dictation/a4.audio", "audio/webm", null);
+    const jobId = await DictationStartJob(
+      "user-3",
+      "/tmp/dictation/a4.audio",
+      "audio/webm",
+      null,
+    );
     stt.resolve(sttResponse("raw transcript here"));
     await flush();
 
-    const view = DictationGetJob("user-3", jobId);
-    expect(view).toMatchObject({
+    expect(await DictationGetJob("user-3", jobId)).toMatchObject({
       status: "done",
       result: {
         rawTranscript: "raw transcript here",
@@ -255,12 +503,16 @@ describe("Dictation pipeline", () => {
       Object.assign(new Error("bad request"), { response: { status: 400 } }),
     );
 
-    const jobId = DictationStartJob("user-4", "/tmp/dictation/a5.audio", "audio/webm", null);
+    const jobId = await DictationStartJob(
+      "user-4",
+      "/tmp/dictation/a5.audio",
+      "audio/webm",
+      null,
+    );
     stt.resolve(sttResponse("hello"));
     await flush();
 
-    const view = DictationGetJob("user-4", jobId);
-    expect(view).toMatchObject({
+    expect(await DictationGetJob("user-4", jobId)).toMatchObject({
       status: "done",
       result: {
         rawTranscript: "hello",
@@ -278,11 +530,16 @@ describe("Dictation pipeline", () => {
     mockAxios.post.mockResolvedValueOnce(llmResponse("I cannot help with that") as never);
     mockAxios.post.mockResolvedValueOnce(llmResponse('{"actions": "nope"}') as never);
 
-    const jobId = DictationStartJob("user-5", "/tmp/dictation/a6.audio", "audio/webm", null);
+    const jobId = await DictationStartJob(
+      "user-5",
+      "/tmp/dictation/a6.audio",
+      "audio/webm",
+      null,
+    );
     stt.resolve(sttResponse("hello"));
     await flush();
 
-    expect(DictationGetJob("user-5", jobId)).toMatchObject({
+    expect(await DictationGetJob("user-5", jobId)).toMatchObject({
       status: "done",
       result: {
         rawTranscript: "hello",
@@ -297,41 +554,229 @@ describe("Dictation pipeline", () => {
     const stt = deferred();
     queueStt(stt);
 
-    const jobId = DictationStartJob("user-6", "/tmp/dictation/a7.audio", "audio/webm", null);
-    expect(DictationGetInFlightJobId("user-6")).toBe(jobId);
-    expect(DictationGetInFlightJobId("user-6")).toBe(jobId);
+    const jobId = await DictationStartJob(
+      "user-6",
+      "/tmp/dictation/a7.audio",
+      "audio/webm",
+      null,
+    );
+    expect(await DictationGetInFlightJobId("user-6")).toBe(jobId);
+    expect(await DictationGetInFlightJobId("user-6")).toBe(jobId);
 
     stt.resolve(sttResponse("hello"));
     await flush();
-    expect(DictationGetInFlightJobId("user-6")).toBeNull();
+    expect(await DictationGetInFlightJobId("user-6")).toBeNull();
   });
 
   it("should never expose another user's job", async () => {
     const stt = deferred();
     queueStt(stt);
 
-    const jobId = DictationStartJob("user-7", "/tmp/dictation/a8.audio", "audio/webm", null);
-    expect(DictationGetJob("user-8", jobId)).toBeNull();
-    expect(DictationGetJob("user-7", "unknown-job")).toBeNull();
+    const jobId = await DictationStartJob(
+      "user-7",
+      "/tmp/dictation/a8.audio",
+      "audio/webm",
+      null,
+    );
+    expect(await DictationGetJob("user-8", jobId)).toBeNull();
+    expect(await DictationGetJob("user-7", "unknown-job")).toBeNull();
 
     stt.resolve(sttResponse("hello"));
     await flush();
+  });
+
+  it("should list the recent jobs of a user", async () => {
+    const stt = deferred();
+    queueStt(stt);
+    mockAxios.post.mockResolvedValue(llmResponse('{"text": "Hello"}') as never);
+
+    const jobId = await DictationStartJob(
+      "user-recent",
+      "/tmp/dictation/r1.audio",
+      "audio/webm",
+      null,
+    );
+    stt.resolve(sttResponse("hello"));
+    await flush();
+
+    const jobs = await DictationGetRecentJobs("user-recent", 20, "dictation");
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ jobId, status: "done" });
+    expect(await DictationGetRecentJobs("someone-else")).toEqual([]);
   });
 
   it("should expire jobs after the TTL", async () => {
     const stt = deferred();
     queueStt(stt);
     mockAxios.post.mockResolvedValue(llmResponse('{"text": "Hello"}') as never);
-    mockAxios.post.mockResolvedValue(llmResponse('{"actions": []}') as never);
 
-    const jobId = DictationStartJob("user-9", "/tmp/dictation/a9.audio", "audio/webm", null);
+    const jobId = await DictationStartJob(
+      "user-9",
+      "/tmp/dictation/a9.audio",
+      "audio/webm",
+      null,
+    );
     stt.resolve(sttResponse("hello"));
     await flush();
-    expect(DictationGetJob("user-9", jobId)).not.toBeNull();
+    expect(await DictationGetJob("user-9", jobId)).not.toBeNull();
 
-    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 2 * 60 * 60 * 1000);
-    expect(DictationSweepExpiredJobs()).toBeGreaterThanOrEqual(1);
-    expect(DictationGetJob("user-9", jobId)).toBeNull();
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.now() + 2 * 60 * 60 * 1000);
+    expect(await DictationSweepExpiredJobs()).toBeGreaterThanOrEqual(1);
+    expect(await DictationGetJob("user-9", jobId)).toBeNull();
+  });
+
+  it("should long-poll until a stage is persisted", async () => {
+    const stt = deferred();
+    const polish = deferred();
+    queueStt(stt);
+    mockAxios.post.mockImplementationOnce(() => polish.promise as never);
+    mockAxios.post.mockResolvedValueOnce(llmResponse('{"actions": []}') as never);
+
+    const jobId = await DictationStartJob(
+      "user-wait",
+      "/tmp/dictation/w1.audio",
+      "audio/webm",
+      null,
+    );
+    const initial = await DictationGetJob("user-wait", jobId);
+    const waiting = DictationWaitForJob(
+      "user-wait",
+      jobId,
+      initial!.revision,
+      5000,
+    );
+
+    stt.resolve(sttResponse("hello"));
+    const view = await waiting;
+    expect(view).toMatchObject({
+      status: "processing",
+      stage: "polishing",
+    });
+    expect(view!.revision).toBeGreaterThan(initial!.revision);
+
+    polish.resolve(llmResponse('{"text": "Hello!"}'));
+    await flush();
+    expect(await DictationGetInFlightJobId("user-wait")).toBeNull();
+  });
+
+  it("should stop waiting after the timeout when nothing changes", async () => {
+    const stt = deferred();
+    queueStt(stt);
+
+    const jobId = await DictationStartJob(
+      "user-timeout",
+      "/tmp/dictation/w2.audio",
+      "audio/webm",
+      null,
+    );
+    const initial = await DictationGetJob("user-timeout", jobId);
+    const view = await DictationWaitForJob(
+      "user-timeout",
+      jobId,
+      initial!.revision,
+      30,
+    );
+    expect(view).toMatchObject({
+      jobId,
+      status: "processing",
+      stage: "transcribing",
+    });
+    expect(view!.revision).toBe(initial!.revision);
+
+    stt.resolve(sttResponse("hello"));
+    await flush();
+  });
+
+  it("should return null from the long-poll for an unknown job", async () => {
+    await expect(
+      DictationWaitForJob("user-unknown", "missing", 0, 10),
+    ).resolves.toBeNull();
+  });
+
+  it("should resume polish and actions of a job interrupted after STT", async () => {
+    // Simulates a crash after STT: the record exists with its raw transcript
+    // but the audio is gone
+    await mockData.DictationDataCreate({
+      id: "crash-job",
+      userId: "user-resume",
+      source: "dictation",
+      status: "processing",
+      stage: "polishing",
+      language: "en",
+      engine: "external",
+      model: "whisper-test",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    await mockData.DictationDataUpdate("crash-job", {
+      rawTranscript: "recovered transcript",
+    });
+
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"text": "Recovered transcript."}') as never,
+    );
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"actions": []}') as never,
+    );
+
+    await DictationResumeJob("crash-job");
+
+    expect(await DictationGetJob("user-resume", "crash-job")).toMatchObject({
+      status: "done",
+      result: {
+        rawTranscript: "recovered transcript",
+        polishedText: "Recovered transcript.",
+        polished: true,
+        actionsAvailable: true,
+      },
+    });
+  });
+
+  it("should mark jobs interrupted before STT as errors at startup", async () => {
+    await mockData.DictationDataCreate({
+      id: "interrupted-job",
+      userId: "user-startup",
+      source: "dictation",
+      status: "processing",
+      stage: "transcribing",
+      language: null,
+      engine: "external",
+      model: "whisper-test",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await DictationInit(externalConfig());
+
+    expect(await DictationGetJob("user-startup", "interrupted-job")).toMatchObject({
+      status: "error",
+      stage: null,
+      error: "Interrupted, please record again.",
+    });
+  });
+
+  it("should treat voice comment jobs interrupted after STT as retryable errors", async () => {
+    await mockData.DictationDataCreate({
+      id: "voice-crash",
+      userId: "user-voice",
+      source: "voice_comment",
+      status: "processing",
+      stage: "polishing",
+      language: null,
+      engine: "external",
+      model: "whisper-test",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    await mockData.DictationDataUpdate("voice-crash", {
+      rawTranscript: "hello",
+    });
+
+    await DictationResumeJob("voice-crash");
+
+    expect(await DictationGetJob("user-voice", "voice-crash")).toMatchObject({
+      status: "error",
+      error: "Transcription interrupted, please retry.",
+    });
   });
 
   // ==================== Shared STT / polish stages ====================
@@ -345,7 +790,12 @@ describe("Dictation pipeline", () => {
         "en",
       );
 
-      expect(transcript).toBe("hello world");
+      expect(transcript).toMatchObject({
+        text: "hello world",
+        audioDurationMs: null,
+        threads: 0,
+        sttMs: expect.any(Number),
+      });
       expect(mockAxios.post).toHaveBeenCalledTimes(1);
       expect(mockAxios.post.mock.calls[0][0]).toBe(
         "https://stt.test/v1/audio/transcriptions",
@@ -359,7 +809,12 @@ describe("Dictation pipeline", () => {
       embeddedConfig.STT_MODE = "embedded";
       embeddedConfig.STT_EMBEDDED_MODEL = "ggml-base";
       await DictationInit(embeddedConfig);
-      mockSttWhisperCpp.mockResolvedValueOnce("embedded transcript" as never);
+      mockStt.mockResolvedValueOnce({
+        text: "embedded transcript",
+        audioDurationMs: 2500,
+        threads: 1,
+        sttMs: 40,
+      } as never);
 
       const transcript = await DictationTranscribeAudio(
         "/tmp/dictation/x2.audio",
@@ -367,8 +822,11 @@ describe("Dictation pipeline", () => {
         null,
       );
 
-      expect(transcript).toBe("embedded transcript");
-      expect(mockSttWhisperCpp).toHaveBeenCalledWith(
+      expect(transcript).toMatchObject({
+        text: "embedded transcript",
+        audioDurationMs: 2500,
+      });
+      expect(mockStt).toHaveBeenCalledWith(
         expect.objectContaining({ STT_MODE: "embedded" }),
         "/tmp/dictation/x2.audio",
         "audio/webm",
@@ -385,9 +843,21 @@ describe("Dictation pipeline", () => {
       expect(result).toEqual({ polishedText: "Hello!", polished: true });
     });
 
+    it("should scale the output budget with the transcript length", async () => {
+      mockAxios.post.mockResolvedValueOnce(llmResponse('{"text": "Done"}') as never);
+
+      await DictationPolishTranscript("x".repeat(10000), null);
+
+      expect(mockAxios.post.mock.calls[0][1]).toMatchObject({
+        max_tokens: 4000,
+      });
+    });
+
     it("should fall back to the raw transcript when the polish call fails", async () => {
       mockAxios.post.mockRejectedValueOnce(
-        Object.assign(new Error("bad request"), { response: { status: 400 } }) as never,
+        Object.assign(new Error("bad request"), {
+          response: { status: 400 },
+        }) as never,
       );
 
       const result = await DictationPolishTranscript("hello", null);
@@ -429,9 +899,12 @@ describe("Dictation pipeline", () => {
         "en",
       );
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         rawTranscript: "hello world",
         polishedText: "Hello world!",
+        polished: true,
+        sttMs: expect.any(Number),
+        polishMs: expect.any(Number),
       });
       expect(mockRemove).not.toHaveBeenCalled();
     });
