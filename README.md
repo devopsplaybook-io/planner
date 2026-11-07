@@ -106,7 +106,7 @@ Planner can generate task recommendations using any OpenAI-compatible chat compl
 
 ## Voice Dictation
 
-Planner offers advanced voice dictation: the user records a voice clip in the browser, the audio is transcribed by a speech-to-text engine, an LLM polishes the transcript, and a second LLM call proposes follow-up actions (create tasks or notes). The user reviews everything before anything is created. Dictation is enabled when `DICTATION_ENABLED` is set to `true` and a speech-to-text engine is available: `STT_MODE=embedded` (the engine embedded in the server, see below) or the default `external` mode with `STT_API_URL` and `STT_API_KEY`.
+Planner offers advanced voice dictation: the user records a voice clip in the browser, the audio is transcribed by a speech-to-text engine, an LLM polishes the transcript, and a second LLM call proposes follow-up actions (create tasks or notes). The user reviews everything before anything is created. Dictation is enabled when `DICTATION_ENABLED` is set to `true` and a speech-to-text engine is available: `STT_MODE=embedded` (the engine embedded in the server, see below) or the default `external` mode with `STT_API_URL` and `STT_API_KEY`. The dictation language is a user preference configured in Settings and applies to the dictation dialog and to the microphone buttons next to task, note and comment fields.
 
 The server is engine-agnostic in `external` mode: `STT_API_URL` is the base URL of any OpenAI-compatible speech-to-text service (the server appends `/v1/audio/transcriptions`).
 
