@@ -184,6 +184,57 @@ describe("DictationRoutes", () => {
       expect.stringContaining("dictation"),
       "audio/webm",
       "fr",
+      "dictation",
+    );
+  });
+
+  it("should forward the inline source for inline dictation jobs", async () => {
+    const body = buildMultipart({
+      fields: { source: "inline", language: "en" },
+      file: {
+        filename: "speech.webm",
+        contentType: "audio/webm",
+        content: Buffer.from("fake audio bytes"),
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": body.contentType },
+      payload: body.body,
+    });
+    expect(res.statusCode).toBe(202);
+    expect(DictationStartJob).toHaveBeenCalledWith(
+      "user-1",
+      expect.any(String),
+      "audio/webm",
+      "en",
+      "inline",
+    );
+  });
+
+  it("should fall back to the dictation source for an unknown source", async () => {
+    const body = buildMultipart({
+      fields: { source: "something-else" },
+      file: {
+        filename: "speech.webm",
+        contentType: "audio/webm",
+        content: Buffer.from("fake audio bytes"),
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": body.contentType },
+      payload: body.body,
+    });
+    expect(res.statusCode).toBe(202);
+    expect(DictationStartJob).toHaveBeenCalledWith(
+      "user-1",
+      expect.any(String),
+      "audio/webm",
+      null,
+      "dictation",
     );
   });
 
@@ -208,6 +259,7 @@ describe("DictationRoutes", () => {
       expect.any(String),
       "audio/webm",
       "en",
+      "dictation",
     );
     config.DICTATION_LANGUAGE = "auto";
   });

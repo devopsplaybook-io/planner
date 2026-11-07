@@ -779,6 +779,83 @@ describe("Dictation pipeline", () => {
     });
   });
 
+  it("should persist the inline source and expose it in the job view", async () => {
+    const stt = deferred();
+    queueStt(stt);
+
+    const jobId = await DictationStartJob(
+      "user-inline",
+      "/tmp/dictation/inline.audio",
+      "audio/webm",
+      "en",
+      "inline",
+    );
+
+    expect(await DictationGetJob("user-inline", jobId)).toMatchObject({
+      jobId,
+      source: "inline",
+      status: "processing",
+    });
+    expect(await DictationGetInFlightJobId("user-inline")).toBe(jobId);
+
+    stt.resolve(sttResponse("inline text"));
+    await flush();
+  });
+
+  it("should recover a processing inline job from the database", async () => {
+    await mockData.DictationDataCreate({
+      id: "inline-in-flight",
+      userId: "user-inline-db",
+      source: "inline",
+      status: "processing",
+      stage: "transcribing",
+      language: null,
+      engine: "external",
+      model: "whisper-test",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    expect(await DictationGetInFlightJobId("user-inline-db")).toBe(
+      "inline-in-flight",
+    );
+  });
+
+  it("should resume polish and actions of an inline job interrupted after STT", async () => {
+    await mockData.DictationDataCreate({
+      id: "inline-crash",
+      userId: "user-inline-resume",
+      source: "inline",
+      status: "processing",
+      stage: "polishing",
+      language: "en",
+      engine: "external",
+      model: "whisper-test",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    await mockData.DictationDataUpdate("inline-crash", {
+      rawTranscript: "inline recovered",
+    });
+
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"text": "Inline recovered."}') as never,
+    );
+    mockAxios.post.mockResolvedValueOnce(
+      llmResponse('{"actions": []}') as never,
+    );
+
+    await DictationResumeJob("inline-crash");
+
+    expect(await DictationGetJob("user-inline-resume", "inline-crash")).toMatchObject({
+      source: "inline",
+      status: "done",
+      result: {
+        rawTranscript: "inline recovered",
+        polishedText: "Inline recovered.",
+        polished: true,
+      },
+    });
+  });
+
   // ==================== Shared STT / polish stages ====================
   describe("shared STT and polish stages", () => {
     it("should transcribe through the external endpoint without deleting the audio", async () => {

@@ -45,20 +45,34 @@
         </label>
         <label>
           Title
-          <input
-            v-model="form.title"
-            type="text"
-            required
-            placeholder="Note title"
-          />
+          <span class="with-dictation">
+            <input
+              ref="titleInput"
+              v-model="form.title"
+              type="text"
+              required
+              placeholder="Note title"
+            />
+            <InlineDictationButton
+              :target="titleInput"
+              aria-label="Dictate note title"
+            />
+          </span>
         </label>
         <label>
           Description
-          <textarea
-            v-model="form.description"
-            placeholder="Note content"
-            rows="5"
-          />
+          <span class="with-dictation">
+            <textarea
+              ref="descriptionInput"
+              v-model="form.description"
+              placeholder="Note content"
+              rows="5"
+            />
+            <InlineDictationButton
+              :target="descriptionInput"
+              aria-label="Dictate note content"
+            />
+          </span>
         </label>
       </form>
     </article>
@@ -79,6 +93,8 @@ const projectsStore = useProjectsStore();
 
 const creating = ref(false);
 const dialogError = ref("");
+const titleInput = ref(null);
+const descriptionInput = ref(null);
 
 function setDialogError(e, fallback) {
   dialogError.value = e?.response?.data?.error || fallback;
@@ -133,3 +149,13 @@ async function createNote() {
   }
 }
 </script>
+
+<style scoped>
+.with-dictation {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+</style>

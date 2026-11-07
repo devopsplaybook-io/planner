@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { defineComponent, ref, watch } from "vue";
+import { defineComponent, h, ref, watch } from "vue";
 
 import NoteCreateDialog from "./NoteCreateDialog.vue";
 
@@ -21,11 +21,27 @@ vi.stubGlobal("useNotesStore", () => notesStore);
 vi.stubGlobal("useProjectsStore", () => projectsStore);
 
 const NullStub = defineComponent({ render: () => null });
+// Nuxt auto-imports InlineDictationButton; its own spec covers the control
+const InlineDictationButtonStub = defineComponent({
+  name: "InlineDictationButton",
+  props: {
+    target: { type: [Object, Function], default: null },
+    ariaLabel: { type: String, default: "" },
+    disabled: { type: Boolean, default: false },
+    showButton: { type: Boolean, default: true },
+  },
+  render: () => h("span", { class: "inline-dictation-stub" }),
+});
 
 function mountDialog() {
   return mount(NoteCreateDialog, {
     props: { open: false },
-    global: { components: { ProjectSelect: NullStub } },
+    global: {
+      components: {
+        ProjectSelect: NullStub,
+        InlineDictationButton: InlineDictationButtonStub,
+      },
+    },
   });
 }
 
@@ -83,5 +99,16 @@ describe("NoteCreateDialog design language", () => {
     expect(alertSpy).not.toHaveBeenCalled();
     await wrapper.find(".dialog-error-dismiss").trigger("click");
     expect(wrapper.find(".dialog-error").exists()).toBe(false);
+  });
+});
+
+describe("NoteCreateDialog inline dictation", () => {
+  it("should offer a microphone on the title and content", async () => {
+    const wrapper = await openDialog();
+    const buttons = wrapper.findAllComponents(InlineDictationButtonStub);
+    expect(buttons.map((button) => button.props("ariaLabel"))).toEqual([
+      "Dictate note title",
+      "Dictate note content",
+    ]);
   });
 });

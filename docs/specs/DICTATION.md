@@ -15,6 +15,8 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
   - [x] When dictation is disabled or STT is not configured, the endpoint answers 404 (`Dictation Not Available`) instead of accepting a job that could never be processed.
   - [x] The endpoint is rate-limited per user (hourly voice quota shared with voice-comment transcriptions).
   - [x] It returns 202 with a job id and processes the dictation in the background; only one job may run at a time per user.
+  - [x] An optional `source` field distinguishes the origin of the job: `dictation` (the full dialog, default) or `inline` (a text-surface microphone). Unknown values fall back to `dictation`; the source is persisted with the job and exported only as a telemetry attribute.
+  - [x] The single-flight rule is shared by dialog and inline jobs, so starting a second dictation answers 409 with the running job id instead of transcribing two recordings at once.
   - [x] The audio is deleted immediately after transcription — no audio is ever persisted or logged.
 - [x] The background pipeline runs three stages progressively:
   - [x] Stage A: transcription of the recorded audio by the configured STT engine. The raw transcript becomes available as soon as it exists.
@@ -28,7 +30,7 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 - [x] `GET /api/dictation/:jobId` returns the job view (`status`, `stage`, `engine`, `language`, `revision`, `result`, `availability`, `timings`, `engineState`, `error`); each user can only see their own jobs.
   - [x] `?wait=1&since=<revision>` long-polls up to 25 s server-side and returns as soon as a newer revision exists (or the timeout elapses), so the client receives progressive updates without a 1.5 s polling burst.
   - [x] Unknown or expired jobs answer 404 with a machine-readable error, which the web client maps to "this dictation expired".
-- [x] `GET /api/dictation/jobs?limit=&source=` lists the user's recent jobs (default 20) for the "recent dictations" panel, optionally filtered by source (`dictation` or `voice_comment`).
+- [x] `GET /api/dictation/jobs?limit=&source=` lists the user's recent jobs (default 20) for the "recent dictations" panel, optionally filtered by source (`dictation`, `voice_comment` or `inline`).
 - [x] Failures are graceful: an STT failure is surfaced to the client for retry; a polish or actions LLM failure falls back to the raw transcript and skips action proposals; a recording with no detectable speech after trimming is reported as `NO_SPEECH`.
 - [x] The dictation language can be set per request (`auto` by default, meaning engine-side detection; explicit languages are forwarded to the STT engine); the accepted language list comes from `DICTATION_LANGUAGES`.
 - [x] Per-stage timings (`queueMs`, `sttMs`, `polishMs`, `actionsMs`, `totalMs`, `audioDurationMs`) are stored with the job and exported as OpenTelemetry span attributes and metrics; transcript, audio and prompt content are never exported or logged.
@@ -72,13 +74,30 @@ Planner offers advanced voice dictation: the user dictates from a global mic but
 - [x] Microphone permission denial is reported with a clear message; recording stops cleanly on Escape.
 - [x] A dictation with no usable speech is reported as "no speech detected" with a retry hint instead of an empty review.
 - [x] The web client long-polls the job endpoint (30 s client timeout, `wait=1&since=<revision>`) and falls back to short polling when the long poll fails, instead of a fixed 1.5 s burst.
+- [x] `GET /api/status/config` advertises `dictation.inlineJobs: true` when the server supports inline jobs; older servers leave it absent and the web client keeps every inline microphone hidden.
+
+### Inline dictation
+
+- [x] A reusable inline dictation control (composable + button component) sits next to every text field where free text is entered: task create (title, description, every checklist item), task edit (title, description), note create (title, content), note edit (title, content), task template create/edit (title, description) and the comment composer textarea.
+- [x] The control records with the same recorder and limits as the dialog, submits the audio to `POST /api/dictation` with `source=inline`, and long-polls its own job without touching the dialog's job state.
+- [x] The raw transcript is inserted as soon as it arrives, at the caret captured when recording started (replacing the active selection). The polished text replaces that exact range only while the field still holds the untouched insertion; after any user edit the control offers "Use improved text" instead of overwriting the edit.
+- [x] Insertion uses `document.execCommand("insertText")` when available so a single native undo restores the field to its state before dictation; the `setRangeText` fallback and the polish patch still fire input events so form state and `v-model` stay in sync. A single separator space is added only when the caret sits between two non-whitespace characters.
+- [x] Deterministic client-side formatting turns spoken commands into layout without an LLM round-trip: "new line", "new paragraph", "bullet"/"bullet point", "comma", "period", "question mark" and "scratch that" (removing the last dictated segment).
+- [x] Explicit stop and cancel; cancelling discards the recording and no job is submitted. Auto-stop at the maximum duration submits the captured audio exactly like a manual stop.
+- [x] While recording, Enter never submits the surrounding form and Escape cancels; a Ctrl/Cmd+Alt+D shortcut starts or stops dictation when the field is focused, and touch pointers support hold-to-talk (release stops). The control exposes `aria-label`/`aria-pressed`, a polite live status (elapsed time, transcribing, transcript ready) and an `alert` error region.
+- [x] Failures stay inline next to the field: microphone permission, unsupported browser/offline, no speech detected, expired job and the 409 "a dictation is already running" case, each dismissible without losing the field content.
+- [x] The dictation language selector uses the configured languages and persists the choice in `dictation-language`, shared with the dialog.
+- [x] Leaving or hiding the field while a job runs never steals the caret: the transcript is kept and offered through an explicit "Insert transcript" action when the user returns to the control. A running inline job can be promoted to the full dictation dialog ("Review in dictation") without submitting a duplicate upload.
+- [x] Inline dictation is hidden when dictation is disabled, STT is not configured, the browser cannot record, the server does not advertise inline jobs, or the host field is in a disabled/busy state.
+- [x] Inline jobs are exported with `source=inline` in telemetry; transcript and audio content are never logged or exported.
 
 ### Voice comments on tasks
 
-- [x] The task comment composer offers a record-voice button when dictation is enabled and STT is configured (shared availability logic with the dictation dialog); recording state with elapsed time, stop and cancel, auto-stop at the maximum duration (which uploads the recording), and microphone errors surfaced inline. Cancelling discards the audio, settles any stop already in flight and leaves no pending stop behind; stopping and cancelling are idempotent.
+- [x] The task comment composer offers a record-voice button when dictation is enabled, STT is configured and the server advertises inline jobs (shared availability logic with the inline control); recording state with elapsed time, stop and cancel, auto-stop at the maximum duration (which submits the recording), and microphone errors surfaced inline. Cancelling discards the audio, settles any stop already in flight and leaves no pending stop behind; stopping and cancelling are idempotent.
 - [x] The composer offers the configured dictation languages and sends the selected language with the recording.
-- [x] A finished recording uploads through the authenticated task attachment API with the selected language; the audio file itself is kept as a regular task attachment (the voice message the user keeps).
-- [x] Each audio attachment in the task dialog shows its transcription status (Transcribing…/Finishing transcript…/Transcript ready/Transcription failed/Transcription skipped) and a Retry action for failed or skipped jobs.
+- [x] A finished recording uploads through the authenticated task attachment API with the selected language and `?transcribe=0`, so the audio stays a regular task attachment without starting a second transcription job; the same audio is submitted to the inline dictation API (`source=inline`). The progressive transcript (raw, then polished while untouched) is inserted into the composer textarea, where the user can review and edit it; sending posts exactly one normal comment, with the usual activity-feed entry and assignee notification.
+- [x] An attachment upload failure is shown inline and never drops the transcript; a dictation failure (permission, no speech, expired job, 409) is surfaced inline as for any inline field. Promoting the running job to the dictation dialog does not upload a duplicate.
+- [x] Existing audio attachments (uploaded with background transcription) keep their transcription status shown in the task dialog and the Retry action.
 - [x] The task dialog polls the transcription statuses every 3 s only while a transcription is processing and the dialog is open, and stops when the dialog closes or the task changes.
 - [x] Retry failures are surfaced inline (409 "already running", 429 hourly limit, 503 STT unavailable) without failing the dialog.
 - [x] Audio attachments play through an inline audio player in the task dialog and the server serves audio files inline with proper audio content types.

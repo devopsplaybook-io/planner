@@ -118,17 +118,33 @@
         <section class="edit-section">
           <label>
             Title
-            <input
-              v-if="editing"
-              v-model="editForm.title"
-              type="text"
-              required
-            />
+            <span v-if="editing" class="with-dictation">
+              <input
+                ref="editTitleInput"
+                v-model="editForm.title"
+                type="text"
+                required
+              />
+              <InlineDictationButton
+                :target="editTitleInput"
+                aria-label="Dictate task title"
+              />
+            </span>
             <h2 v-else>{{ task.title }}</h2>
           </label>
           <label>
             Description
-            <textarea v-if="editing" v-model="editForm.description" rows="3" />
+            <span v-if="editing" class="with-dictation">
+              <textarea
+                ref="editDescriptionInput"
+                v-model="editForm.description"
+                rows="3"
+              />
+              <InlineDictationButton
+                :target="editDescriptionInput"
+                aria-label="Dictate task description"
+              />
+            </span>
             <div
               v-else
               id="task-description-body"
@@ -642,10 +658,10 @@
             <CommentComposer
               v-model="newComment"
               :draft-key="addCommentDraftKey"
-              :busy="submitting || uploadingVoice"
-              :allow-voice="voiceCommentsAvailable"
+              :busy="submitting"
+              :allow-voice="voiceMessagesAvailable"
+              :task-id="task?.id"
               @submit="addComment"
-              @voice="onVoiceRecorded"
             />
             <div class="add-comment-actions">
               <button
@@ -756,7 +772,6 @@ import {
   isPdfFile,
   PREVIEW_MAX_BYTES,
 } from "../utils/attachments";
-import { fileExtensionForMimeType } from "../utils/dictationMime";
 import { displayName } from "../utils/projectHierarchy";
 import { projectPermissionFor } from "../stores/projects";
 
@@ -782,10 +797,14 @@ const dictationStore = useDictationStore();
 
 const task = computed(() => tasksStore.currentTask);
 const isImproveEnabled = computed(() => recommendationStore.isImproveEnabled);
-// Voice comments: the add-comment composer offers a record button when the
-// server has dictation enabled with a configured STT engine
+// Voice comments: transcription statuses stay available whenever dictation
+// is on; the composer mic additionally needs the inline-jobs capability so
+// the audio is not transcribed twice.
 const voiceCommentsAvailable = computed(
   () => recommendationStore.isDictationEnabled && recommendationStore.isDictationSttConfigured,
+);
+const voiceMessagesAvailable = computed(
+  () => voiceCommentsAvailable.value && recommendationStore.dictationInlineJobs,
 );
 const loading = ref(false);
 const notFound = ref(false);
@@ -798,7 +817,6 @@ const showCancelConfirm = ref(false);
 const cancelDialogEl = useModalDialog(() => showCancelConfirm.value);
 const cancelling = ref(false);
 const uploading = ref(false);
-const uploadingVoice = ref(false);
 const voiceTranscriptionNotice = ref("");
 // att.id -> latest persisted transcription status (status/stage/error only)
 const voiceTranscriptions = ref({});
@@ -815,6 +833,8 @@ const savingStatus = ref(false);
 const cloning = ref(false);
 const improving = ref(false);
 const advancedMenuEl = ref(null);
+const editTitleInput = ref(null);
+const editDescriptionInput = ref(null);
 const editForm = ref({
   title: "",
   description: "",
@@ -1870,37 +1890,6 @@ async function retryVoiceTranscription(att) {
   }
 }
 
-async function onVoiceRecorded({ recording, language } = {}) {
-  const blob = recording?.blob;
-  const mimeType = recording?.mimeType;
-  if (!props.taskId || !blob || !mimeType) return;
-  dialogError.value = "";
-  voiceTranscriptionNotice.value = "";
-  uploadingVoice.value = true;
-  try {
-    const file = new File([blob], `${voiceMessageBaseName()}${fileExtensionForMimeType(mimeType)}`, {
-      type: mimeType,
-    });
-    const attachment = await tasksStore.uploadAttachment(props.taskId, file, {
-      language: language || dictationStore.language,
-    });
-    voiceTranscriptionNotice.value = attachment?.voiceTranscriptionSkipped
-      ? "Voice message uploaded, but transcription was skipped because the hourly voice limit was reached."
-      : "";
-    await loadVoiceTranscriptions();
-  } catch (e) {
-    setDialogError(e, "Failed to upload voice message");
-  } finally {
-    uploadingVoice.value = false;
-  }
-}
-
-function voiceMessageBaseName() {
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `voice-message-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
-
 async function deleteAttachment(attachmentId) {
   dialogError.value = "";
   deletingAttachmentId.value = attachmentId;
@@ -1981,6 +1970,14 @@ async function downloadAttachment(att) {
 
 .edit-section textarea {
   min-height: 60px;
+}
+
+.with-dictation {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
 }
 
 .meta-section {

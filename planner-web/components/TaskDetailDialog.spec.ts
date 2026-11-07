@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import {
   computed,
+  defineComponent,
   nextTick,
   onBeforeUnmount,
   onMounted,
@@ -26,6 +27,18 @@ vi.mock("../utils/api", () => ({
 
 const mockGet = api.get as unknown as ReturnType<typeof vi.fn>;
 const mockPost = api.post as unknown as ReturnType<typeof vi.fn>;
+
+// Nuxt auto-imports InlineDictationButton; its own spec covers the control
+const InlineDictationButtonStub = defineComponent({
+  name: "InlineDictationButton",
+  props: {
+    target: { type: [Object, Function], default: null },
+    ariaLabel: { type: String, default: "" },
+    disabled: { type: Boolean, default: false },
+    showButton: { type: Boolean, default: true },
+  },
+  render: () => null,
+});
 
 // The dialog relies on Nuxt auto-imports: bare identifiers resolve through
 // globalThis at runtime, so stub them again before each mount.
@@ -162,6 +175,7 @@ function mountDialog() {
         UserMultiSelect: true,
         CommentComposer: true,
         AttachmentFullscreenViewer: true,
+        InlineDictationButton: InlineDictationButtonStub,
       },
     },
   });
@@ -185,6 +199,7 @@ beforeEach(() => {
     isImproveEnabled: true,
     isDictationEnabled: true,
     isDictationSttConfigured: true,
+    dictationInlineJobs: true,
     dictationLanguages: ["auto", "en", "fr"],
     fetchConfig: vi.fn().mockResolvedValue(undefined),
   };
@@ -292,5 +307,21 @@ describe("TaskDetailDialog voice transcriptions", () => {
       "Hourly transcription limit reached",
     );
     expect(wrapper.find(".dialog-error").exists()).toBe(false);
+  });
+});
+
+describe("TaskDetailDialog inline dictation", () => {
+  it("should offer a microphone on the editable title and description", async () => {
+    const wrapper = mountDialog();
+    await flushPromises();
+
+    await wrapper.find('button[aria-label="Edit"]').trigger("click");
+    await flushPromises();
+
+    const buttons = wrapper.findAllComponents(InlineDictationButtonStub);
+    expect(buttons.map((button) => button.props("ariaLabel"))).toEqual([
+      "Dictate task title",
+      "Dictate task description",
+    ]);
   });
 });

@@ -69,17 +69,33 @@
         <section class="edit-section">
           <label>
             Title
-            <input
-              v-if="editing"
-              v-model="editForm.title"
-              type="text"
-              required
-            />
+            <span v-if="editing" class="with-dictation">
+              <input
+                ref="editTitleInput"
+                v-model="editForm.title"
+                type="text"
+                required
+              />
+              <InlineDictationButton
+                :target="editTitleInput"
+                aria-label="Dictate note title"
+              />
+            </span>
             <h2 v-else>{{ note.title }}</h2>
           </label>
           <label>
             Description
-            <textarea v-if="editing" v-model="editForm.description" rows="3" />
+            <span v-if="editing" class="with-dictation">
+              <textarea
+                ref="editDescriptionInput"
+                v-model="editForm.description"
+                rows="3"
+              />
+              <InlineDictationButton
+                :target="editDescriptionInput"
+                aria-label="Dictate note content"
+              />
+            </span>
             <div
               v-else
               id="note-description-body"
@@ -400,6 +416,8 @@ const fileInput = ref(null);
 const editing = ref(false);
 const saving = ref(false);
 const advancedMenuEl = ref(null);
+const editTitleInput = ref(null);
+const editDescriptionInput = ref(null);
 const editForm = ref({ title: "", description: "", labels: [], projectId: "" });
 const fullscreenAttachment = ref(null);
 // att.id -> blob object URL for inline previews (image / pdf). Attachments
@@ -750,6 +768,14 @@ async function downloadAttachment(att) {
 
 .edit-section textarea {
   min-height: 60px;
+}
+
+.with-dictation {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
 }
 
 .meta-section {

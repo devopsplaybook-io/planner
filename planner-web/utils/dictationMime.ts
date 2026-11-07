@@ -36,3 +36,14 @@ export function fileExtensionForMimeType(mimeType: string): string {
   }
   return ".webm";
 }
+
+/**
+ * Stable, sortable name for a voice message attachment.
+ */
+export function voiceMessageFileName(mimeType: string, now = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(
+    now.getDate(),
+  )}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  return `voice-message-${stamp}${fileExtensionForMimeType(mimeType)}`;
+}

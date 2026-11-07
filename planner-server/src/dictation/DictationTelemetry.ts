@@ -14,7 +14,7 @@ import { StandardMeter, StandardTracer } from "@devopsplaybook.io/otel-utils";
  * configured (the StandardTracer/StandardMeter then use a no-op provider).
  */
 
-export type DictationJobSource = "dictation" | "voice_comment";
+export type DictationJobSource = "dictation" | "voice_comment" | "inline";
 
 let tracer: StandardTracer | null = null;
 let jobsCounter: Counter | null = null;

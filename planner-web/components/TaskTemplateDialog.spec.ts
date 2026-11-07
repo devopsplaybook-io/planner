@@ -61,11 +61,23 @@ const ProjectSelectStub = defineComponent({
   props: { modelValue: { type: String, default: "" } },
   render: () => null,
 });
+// Nuxt auto-imports InlineDictationButton; its own spec covers the control
+const InlineDictationButtonStub = defineComponent({
+  name: "InlineDictationButton",
+  props: {
+    target: { type: [Object, Function], default: null },
+    ariaLabel: { type: String, default: "" },
+    disabled: { type: Boolean, default: false },
+    showButton: { type: Boolean, default: true },
+  },
+  render: () => null,
+});
 const stubs = {
   ProjectSelect: ProjectSelectStub,
   UserMultiSelect: NullStub,
   CommentComposer: NullStub,
   AttachmentFullscreenViewer: NullStub,
+  InlineDictationButton: InlineDictationButtonStub,
 };
 
 const project1 = {
@@ -162,5 +174,16 @@ describe("TaskTemplateDialog initial status", () => {
     const payload = taskTemplatesStore.create.mock.calls[0]![0];
     expect(payload.projectId).toBe("project-3");
     expect(payload.automation.instanceStatus).toBe("Doing");
+  });
+});
+
+describe("TaskTemplateDialog inline dictation", () => {
+  it("should offer a microphone on the title and description", async () => {
+    const wrapper = await openCreateDialog();
+    const buttons = wrapper.findAllComponents(InlineDictationButtonStub);
+    expect(buttons.map((button) => button.props("ariaLabel"))).toEqual([
+      "Dictate template title",
+      "Dictate template description",
+    ]);
   });
 });

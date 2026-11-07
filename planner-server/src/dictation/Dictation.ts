@@ -214,13 +214,14 @@ export async function DictationStartJob(
   audioFilePath: string,
   audioMimeType: string,
   language: string | null,
+  source: DictationJobSource = "dictation",
 ): Promise<string> {
   const jobId = uuidv4();
   const startedAt = Date.now();
   await DictationDataCreate({
     id: jobId,
     userId,
-    source: "dictation",
+    source,
     status: "processing",
     stage: "transcribing",
     language,
@@ -229,7 +230,14 @@ export async function DictationStartJob(
     expiresAt: new Date(startedAt + DICTATION_JOB_TTL_MS).toISOString(),
   });
   inFlightJobIds.set(userId, jobId);
-  void runDictationJob(jobId, audioFilePath, audioMimeType, language, startedAt)
+  void runDictationJob(
+    jobId,
+    audioFilePath,
+    audioMimeType,
+    language,
+    startedAt,
+    source,
+  )
     .catch((error) => {
       logger.error(
         `[Dictation] Unexpected failure in job ${jobId}: ${(error as Error).message}`,
@@ -253,9 +261,12 @@ export async function DictationGetInFlightJobId(
   if (inFlight) {
     return inFlight;
   }
-  const record = await DictationDataGetInFlightForUser(userId, "dictation");
-  if (record && Date.parse(record.expiresAt) >= Date.now()) {
-    return record.id;
+  // Inline jobs recover like dialog jobs after a restart: check both sources
+  for (const source of ["inline", "dictation"] as const) {
+    const record = await DictationDataGetInFlightForUser(userId, source);
+    if (record && Date.parse(record.expiresAt) >= Date.now()) {
+      return record.id;
+    }
   }
   return null;
 }
@@ -367,7 +378,7 @@ export async function DictationResumeJob(jobId: string): Promise<void> {
   if (!record.rawTranscript) {
     return;
   }
-  if (record.source !== "dictation") {
+  if (record.source !== "dictation" && record.source !== "inline") {
     await DictationDataUpdate(jobId, {
       status: "error",
       stage: null,
@@ -390,10 +401,11 @@ export async function DictationResumeJob(jobId: string): Promise<void> {
       record.language,
       createdAt,
       root,
+      record.source,
     );
   } catch (error) {
     root.fail(error);
-    await failJob(jobId, error, createdAt);
+    await failJob(jobId, error, createdAt, record.source);
   } finally {
     root.end();
   }
@@ -491,17 +503,18 @@ async function runDictationJob(
   audioMimeType: string,
   language: string | null,
   startedAt: number,
+  source: DictationJobSource,
 ): Promise<void> {
   const root = DictationTelemetryStartSpan("dictation.job", undefined, {
     "dictation.job_id": jobId,
-    "dictation.source": "dictation",
+    "dictation.source": source,
   });
   try {
     const queueMs = Math.max(0, Date.now() - startedAt);
     const queueSpan = DictationTelemetryStartSpan("dictation.queue");
     queueSpan.setAttribute("dictation.queue_ms", queueMs);
     queueSpan.end();
-    DictationTelemetryRecordQueue(queueMs, "dictation");
+    DictationTelemetryRecordQueue(queueMs, source);
 
     const sttStart = Date.now();
     let transcription: DictationAudioResult;
@@ -516,7 +529,7 @@ async function runDictationJob(
       // success or failure
       await deleteAudioFile(audioFilePath);
     }
-    DictationTelemetryRecordStage("stt", Date.now() - sttStart, "dictation");
+    DictationTelemetryRecordStage("stt", Date.now() - sttStart, source);
 
     await DictationDataUpdate(jobId, {
       rawTranscript: transcription.text,
@@ -533,11 +546,12 @@ async function runDictationJob(
       language,
       startedAt,
       root,
+      source,
       transcription,
     );
   } catch (error) {
     root.fail(error);
-    await failJob(jobId, error, startedAt);
+    await failJob(jobId, error, startedAt, source);
   } finally {
     await deleteAudioFile(audioFilePath);
     root.end();
@@ -550,6 +564,7 @@ async function runPostTranscription(
   language: string | null,
   startedAt: number,
   root: ReturnType<typeof DictationTelemetryStartSpan>,
+  source: DictationJobSource,
   transcription?: DictationAudioResult,
 ): Promise<void> {
   root.setAttribute("transcript.chars", rawTranscript.length);
@@ -565,7 +580,7 @@ async function runPostTranscription(
     language,
   );
   const polishMs = Date.now() - polishStart;
-  DictationTelemetryRecordStage("polish", polishMs, "dictation");
+  DictationTelemetryRecordStage("polish", polishMs, source);
   await DictationDataUpdate(jobId, {
     polishedText,
     polished,
@@ -603,7 +618,7 @@ async function runPostTranscription(
       actionsMs = Date.now() - actionsStart;
       actionsSpan.end();
     }
-    DictationTelemetryRecordStage("actions", actionsMs, "dictation");
+    DictationTelemetryRecordStage("actions", actionsMs, source);
   }
 
   const totalMs = Date.now() - startedAt;
@@ -616,7 +631,7 @@ async function runPostTranscription(
     totalMs,
   });
   DictationNotifyJobChange(jobId);
-  DictationTelemetryRecordJob("dictation", "done", totalMs);
+  DictationTelemetryRecordJob(source, "done", totalMs);
   root.setAttribute("dictation.status", "done");
   logger.info(`[Dictation] Job ${jobId} done`);
 }
@@ -625,13 +640,14 @@ async function failJob(
   jobId: string,
   error: unknown,
   startedAt: number,
+  source: DictationJobSource,
 ): Promise<void> {
   const noSpeech = error instanceof SttNoSpeechError;
   const message = noSpeech ? NO_SPEECH_ERROR : GENERIC_ERROR;
   logger.error(`[Dictation] Job ${jobId} failed: ${(error as Error).message}`);
-  DictationTelemetryRecordError("dictation", "stt_or_pipeline");
+  DictationTelemetryRecordError(source, "stt_or_pipeline");
   if (noSpeech) {
-    DictationTelemetryRecordNoSpeech("dictation");
+    DictationTelemetryRecordNoSpeech(source);
   }
   await DictationDataUpdate(jobId, {
     status: "error",
@@ -640,7 +656,7 @@ async function failJob(
     totalMs: Date.now() - startedAt,
   });
   DictationNotifyJobChange(jobId);
-  DictationTelemetryRecordJob("dictation", "error", Date.now() - startedAt);
+  DictationTelemetryRecordJob(source, "error", Date.now() - startedAt);
 }
 
 async function deleteAudioFile(audioFilePath: string): Promise<void> {

@@ -168,11 +168,16 @@ export class DictationRoutes {
           fields.language,
           this.config.DICTATION_LANGUAGE,
         );
+        // Inline jobs are tagged so inline usage and latency can be measured
+        // separately from the modal; unknown sources keep the historic value.
+        const source: DictationJobSource =
+          fields.source === "inline" ? "inline" : "dictation";
         const jobId = await DictationStartJob(
           userSession.userId,
           audioPath,
           audio.mimetype,
           language,
+          source,
         );
         return res.status(202).send({ jobId });
       },
