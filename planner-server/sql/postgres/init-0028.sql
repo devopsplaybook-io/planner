@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS dictation_phrases (
     "phrase" VARCHAR(200) NOT NULL,
     "normalizedPhrase" VARCHAR(200) NOT NULL,
     "projectId" UUID,
-    "templateId" UUID,
+    "templateId" VARCHAR(50),
     "labels" TEXT NOT NULL DEFAULT '[]',
     "dateCreated" VARCHAR(100) NOT NULL,
     FOREIGN KEY ("userId") REFERENCES users(id) ON DELETE CASCADE,
