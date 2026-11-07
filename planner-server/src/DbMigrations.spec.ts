@@ -45,7 +45,9 @@ describe("RunMigrations (fresh database)", () => {
     ).map((r) => r.name as string);
     for (const table of [
       "api_keys",
+      "dictation_job_actions",
       "dictation_jobs",
+      "dictation_phrases",
       "dictation_vocabulary",
       "metadata",
       "note_attachments",
@@ -208,6 +210,55 @@ describe("RunMigrations (fresh database)", () => {
         "idx_dictation_vocabulary_user",
         "idx_dictation_vocabulary_user_term",
         "idx_dictation_vocabulary_project_term",
+      ]),
+    );
+  });
+
+  it("should add the structured actions schema of init-0028", async () => {
+    const actionColumns = (
+      await DbUtilsQuerySQL("PRAGMA table_info(dictation_job_actions)")
+    ).map((c) => c.name as string);
+    expect(actionColumns).toEqual(
+      expect.arrayContaining([
+        "jobId",
+        "userId",
+        "requestId",
+        "actionIndex",
+        "type",
+        "status",
+        "beforeJson",
+        "undoneAt",
+      ]),
+    );
+    const actionIndexes = (
+      await DbUtilsQuerySQL("PRAGMA index_list(dictation_job_actions)")
+    ).map((i) => i.name as string);
+    expect(actionIndexes).toEqual(
+      expect.arrayContaining([
+        "idx_dictation_job_actions_job",
+        "idx_dictation_job_actions_request",
+      ]),
+    );
+    const phraseColumns = (
+      await DbUtilsQuerySQL("PRAGMA table_info(dictation_phrases)")
+    ).map((c) => c.name as string);
+    expect(phraseColumns).toEqual(
+      expect.arrayContaining([
+        "userId",
+        "phrase",
+        "normalizedPhrase",
+        "projectId",
+        "templateId",
+        "labels",
+      ]),
+    );
+    const phraseIndexes = (
+      await DbUtilsQuerySQL("PRAGMA index_list(dictation_phrases)")
+    ).map((i) => i.name as string);
+    expect(phraseIndexes).toEqual(
+      expect.arrayContaining([
+        "idx_dictation_phrases_user",
+        "idx_dictation_phrases_user_phrase",
       ]),
     );
   });

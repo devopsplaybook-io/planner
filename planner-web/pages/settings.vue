@@ -90,6 +90,17 @@
         </p>
         <DictationVocabularyEditor />
 
+        <template v-if="recommendationStore.dictationApplyActions">
+          <h3 class="setting-subtitle">Custom command phrases</h3>
+          <p class="setting-hint">
+            <i class="bi bi-mic" />
+            A phrase such as “new bug report” maps to one project or template.
+            It is matched before the AI, and the rest of the dictation becomes
+            the task title and description.
+          </p>
+          <DictationPhrasesEditor />
+        </template>
+
         <p class="setting-hint retention-hint">
           <i class="bi bi-shield-lock" />
           Dictation audio is deleted right after transcription. Voice-comment

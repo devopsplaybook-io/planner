@@ -25,6 +25,11 @@ let errorsCounter: Counter | null = null;
 let modelPrepareCounter: Counter | null = null;
 let modelPrepareDuration: Histogram | null = null;
 let noSpeechCounter: Counter | null = null;
+let actionsProposedCounter: Counter | null = null;
+let actionsResolutionCounter: Counter | null = null;
+let actionsAppliedCounter: Counter | null = null;
+let actionsUndoCounter: Counter | null = null;
+let askCounter: Counter | null = null;
 
 export function DictationTelemetryInit(
   tracerIn: StandardTracer,
@@ -59,6 +64,22 @@ export function DictationTelemetryInit(
   );
   noSpeechCounter = meterIn.createCounter("stt.no_speech", {
     description: "Recordings rejected because no speech was detected",
+  });
+  actionsProposedCounter = meterIn.createCounter("dictation.actions.proposed", {
+    description: "Action proposals returned by the actions stage, by type",
+  });
+  actionsResolutionCounter = meterIn.createCounter(
+    "dictation.actions.resolution",
+    { description: "Action preview resolution outcomes, by type" },
+  );
+  actionsAppliedCounter = meterIn.createCounter("dictation.actions.applied", {
+    description: "Action apply outcomes, by type",
+  });
+  actionsUndoCounter = meterIn.createCounter("dictation.actions.undo", {
+    description: "Action undo outcomes, by type",
+  });
+  askCounter = meterIn.createCounter("dictation.ask", {
+    description: "Read-only question outcomes, by intent",
   });
 }
 
@@ -176,4 +197,38 @@ export function DictationTelemetryRecordNoSpeech(
   source: DictationJobSource,
 ): void {
   safe(() => noSpeechCounter?.add(1, { source }));
+}
+
+// Action and question metrics carry type/intent/outcome attributes only:
+// never titles, names, transcripts, questions or answers.
+export function DictationTelemetryRecordActionProposed(type: string): void {
+  safe(() => actionsProposedCounter?.add(1, { type }));
+}
+
+export function DictationTelemetryRecordActionResolution(
+  type: string,
+  outcome: string,
+): void {
+  safe(() => actionsResolutionCounter?.add(1, { type, outcome }));
+}
+
+export function DictationTelemetryRecordActionApplied(
+  type: string,
+  outcome: string,
+): void {
+  safe(() => actionsAppliedCounter?.add(1, { type, outcome }));
+}
+
+export function DictationTelemetryRecordActionUndo(
+  type: string,
+  outcome: string,
+): void {
+  safe(() => actionsUndoCounter?.add(1, { type, outcome }));
+}
+
+export function DictationTelemetryRecordAsk(
+  intent: string,
+  outcome: string,
+): void {
+  safe(() => askCounter?.add(1, { intent, outcome }));
 }

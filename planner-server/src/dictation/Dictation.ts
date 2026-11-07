@@ -9,8 +9,10 @@ import {
   ACTIONS_SYSTEM_PROMPT,
   BuildActionsPrompt,
   BuildPolishPrompt,
+  ComputeActionMaxTokens,
   ComputeMaxTokens,
   DictationActionProposal,
+  MAX_ACTIONS,
   ParseActionProposals,
   ParsePolishedText,
   POLISH_SYSTEM_PROMPT,
@@ -37,6 +39,7 @@ import {
   DictationDataUpdate,
 } from "./DictationData";
 import {
+  DictationTelemetryRecordActionProposed,
   DictationTelemetryRecordError,
   DictationTelemetryRecordJob,
   DictationTelemetryRecordNoSpeech,
@@ -45,6 +48,12 @@ import {
   DictationTelemetryStartSpan,
 } from "./DictationTelemetry";
 import { DictationSegment } from "./DictationTypes";
+import {
+  DictationPhraseRecord,
+  DictationPhrasesListForUser,
+} from "./DictationPhrasesData";
+import { MatchCommandPhrase } from "./DictationPhrases";
+import { BuildActionsReference } from "./DictationResolution";
 
 const logger = console;
 
@@ -250,6 +259,7 @@ export async function DictationStartJob(
   inFlightJobIds.set(userId, jobId);
   void runDictationJob(
     jobId,
+    userId,
     audioFilePath,
     audioMimeType,
     language,
@@ -416,6 +426,7 @@ export async function DictationResumeJob(jobId: string): Promise<void> {
   try {
     await runPostTranscription(
       jobId,
+      record.userId,
       record.rawTranscript,
       record.language,
       record.targetLanguage,
@@ -519,6 +530,7 @@ async function DictationStartupRecovery(): Promise<void> {
 
 async function runDictationJob(
   jobId: string,
+  userId: string,
   audioFilePath: string,
   audioMimeType: string,
   language: string | null,
@@ -567,6 +579,7 @@ async function runDictationJob(
 
     await runPostTranscription(
       jobId,
+      userId,
       transcription.text,
       language,
       options.targetLanguage ?? null,
@@ -602,8 +615,35 @@ function annotateConfidence(
   root.setAttribute("stt.low_confidence.count", low);
 }
 
+/**
+ * Turns a matched custom phrase into its deterministic proposal: a template
+ * instantiation, or a task in the phrase project with the phrase labels.
+ */
+function BuildPhraseAction(
+  phrase: DictationPhraseRecord,
+  remainder: string,
+): DictationActionProposal {
+  const text = remainder.trim();
+  if (phrase.templateId) {
+    return {
+      type: "instantiate_template",
+      template: phrase.templateId,
+      ...(text ? { title: text.slice(0, 200) } : {}),
+    };
+  }
+  const firstLine = text.split(/\r?\n/)[0].trim();
+  return {
+    type: "create_task",
+    title: (firstLine || phrase.phrase).slice(0, 200),
+    description: text.slice(0, 5000),
+    ...(phrase.projectId ? { project: phrase.projectId } : {}),
+    ...(phrase.labels.length > 0 ? { labels: phrase.labels } : {}),
+  };
+}
+
 async function runPostTranscription(
   jobId: string,
+  userId: string,
   rawTranscript: string,
   language: string | null,
   targetLanguage: string | null,
@@ -635,22 +675,45 @@ async function runPostTranscription(
   });
   DictationNotifyJobChange(jobId);
 
-  // Stage C: LLM action proposals (skipped on failure)
+  // Stage C: deterministic custom phrase first, then LLM proposals on the
+  // remaining text. A phrase match always yields its action, even without an
+  // LLM key; the LLM is skipped when the remainder is empty.
   let actions: DictationActionProposal[] = [];
   let actionsAvailable = false;
   let actionsMs = 0;
-  if (config.LLM_API_KEY) {
+  let promptText = polishedText;
+  let phraseMatched = false;
+  try {
+    const phrases = await DictationPhrasesListForUser(userId);
+    const match = MatchCommandPhrase(polishedText, phrases);
+    if (match) {
+      actions.push(BuildPhraseAction(match.phrase, match.remainder));
+      actionsAvailable = true;
+      phraseMatched = true;
+      promptText = match.remainder;
+    }
+  } catch (error) {
+    // Phrase matching is best-effort: fall back to the full transcript
+    logger.warn(
+      `[Dictation] Phrase lookup failed for job ${jobId}: ${(error as Error).message}`,
+    );
+  }
+
+  const shouldCallLlm =
+    !!config.LLM_API_KEY && (!phraseMatched || promptText.trim().length > 0);
+  if (shouldCallLlm) {
     const actionsStart = Date.now();
     const actionsSpan = DictationTelemetryStartSpan("dictation.actions");
     try {
+      const reference = await BuildActionsReference(userId);
       const content = await callLLMWithRetry(
         ACTIONS_SYSTEM_PROMPT,
-        BuildActionsPrompt(polishedText, language),
-        ComputeMaxTokens(polishedText),
+        BuildActionsPrompt(promptText, language, new Date(), reference),
+        ComputeActionMaxTokens(promptText),
       );
       const parsed = ParseActionProposals(content);
       if (parsed) {
-        actions = parsed;
+        actions.push(...parsed);
         actionsAvailable = true;
       } else {
         logger.warn(`[Dictation] Unparseable actions response for job ${jobId}`);
@@ -665,6 +728,10 @@ async function runPostTranscription(
       actionsSpan.end();
     }
     DictationTelemetryRecordStage("actions", actionsMs, source);
+  }
+  actions = actions.slice(0, MAX_ACTIONS);
+  for (const action of actions) {
+    DictationTelemetryRecordActionProposed(action.type);
   }
 
   const totalMs = Date.now() - startedAt;

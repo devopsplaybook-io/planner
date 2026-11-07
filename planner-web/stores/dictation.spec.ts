@@ -565,4 +565,209 @@ describe("dictation store preferences", () => {
     expect(store.targetLanguage).toBe("fr");
     expect(localStorage.getItem("dictation-target-language")).toBe("fr");
   });
+
+  it("should preview the stored actions", async () => {
+    mockApiPost.mockResolvedValue({
+      data: {
+        jobId: "job-1",
+        actions: [
+          {
+            index: 0,
+            type: "create_task",
+            action: { type: "create_task", title: "Buy milk" },
+            status: "resolved",
+            target: null,
+            candidates: [],
+            diff: [],
+          },
+        ],
+      },
+    });
+    const store = useDictationStore();
+
+    const result = await store.previewActions("job-1");
+
+    expect(result).toEqual({});
+    expect(mockApiPost).toHaveBeenCalledWith(
+      "/dictation/job-1/actions/preview",
+    );
+    expect(store.hasStructuredActions).toBe(true);
+    expect(store.previews[0]?.type).toBe("create_task");
+    expect(store.previewLoading).toBe(false);
+  });
+
+  it("should surface a preview failure", async () => {
+    mockApiPost.mockRejectedValue({
+      response: { data: { error: "Dictation Job Not Found" } },
+    });
+    const store = useDictationStore();
+
+    const result = await store.previewActions("job-1");
+
+    expect(result.error).toBe("Dictation Job Not Found");
+    expect(store.previews).toEqual([]);
+    expect(store.previewError).toBe("Dictation Job Not Found");
+    expect(store.previewLoading).toBe(false);
+  });
+
+  it("should apply selections and refresh the applied batches", async () => {
+    mockApiPost.mockResolvedValue({
+      data: {
+        requestId: "req-1",
+        alreadyApplied: false,
+        results: [
+          {
+            index: 0,
+            type: "create_task",
+            status: "applied",
+            targetId: "task-1",
+          },
+        ],
+      },
+    });
+    mockApiGet.mockResolvedValue({
+      data: {
+        jobId: "job-1",
+        batches: [
+          {
+            requestId: "req-1",
+            dateCreated: "2026-11-07T10:00:00.000Z",
+            actions: [
+              {
+                index: 0,
+                type: "create_task",
+                status: "applied",
+                targetId: "task-1",
+                targetType: "task",
+                undoneAt: null,
+                error: null,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const store = useDictationStore();
+
+    const result = await store.applyActions("job-1", "req-1", [
+      { index: 0, projectId: "proj-1" },
+    ]);
+
+    expect(mockApiPost).toHaveBeenCalledWith(
+      "/dictation/job-1/actions/apply",
+      {
+        requestId: "req-1",
+        selections: [{ index: 0, projectId: "proj-1" }],
+      },
+    );
+    expect(mockApiGet).toHaveBeenCalledWith("/dictation/job-1/actions");
+    expect(result.outcome?.results[0]?.status).toBe("applied");
+    expect(store.applyResults).toHaveLength(1);
+    expect(store.lastRequestId).toBe("req-1");
+    expect(store.latestBatch?.requestId).toBe("req-1");
+  });
+
+  it("should surface an apply failure", async () => {
+    mockApiPost.mockRejectedValue({
+      response: { data: { error: "Missing: selections" } },
+    });
+    const store = useDictationStore();
+
+    const result = await store.applyActions("job-1", "req-1", []);
+
+    expect(result.error).toBe("Missing: selections");
+    expect(store.applyResults).toEqual([]);
+  });
+
+  it("should undo a batch and refresh the applied list", async () => {
+    mockApiPost.mockResolvedValue({
+      data: {
+        requestId: "req-1",
+        results: [{ index: 0, type: "create_task", status: "undone" }],
+      },
+    });
+    mockApiGet.mockResolvedValue({ data: { jobId: "job-1", batches: [] } });
+    const store = useDictationStore();
+
+    const result = await store.undoActions("job-1", "req-1");
+
+    expect(mockApiPost).toHaveBeenCalledWith(
+      "/dictation/job-1/actions/undo",
+      { requestId: "req-1" },
+    );
+    expect(mockApiGet).toHaveBeenCalledWith("/dictation/job-1/actions");
+    expect(result.outcome?.results[0]?.status).toBe("undone");
+    expect(store.appliedBatches).toEqual([]);
+  });
+
+  it("should ask a read-only question with an optional project", async () => {
+    mockApiPost.mockResolvedValue({
+      data: {
+        intent: "due_today",
+        answer: "1 open task is due today.",
+        items: [],
+        truncated: false,
+        generatedBy: "deterministic",
+      },
+    });
+    const store = useDictationStore();
+
+    const result = await store.ask("What is due today?", "proj-1");
+
+    expect(mockApiPost).toHaveBeenCalledWith("/dictation/ask", {
+      question: "What is due today?",
+      projectId: "proj-1",
+    });
+    expect(result.answer?.intent).toBe("due_today");
+    expect(store.askAnswer?.answer).toBe("1 open task is due today.");
+    expect(store.askLoading).toBe(false);
+    expect(store.askError).toBe("");
+  });
+
+  it("should surface an ask failure without an answer", async () => {
+    mockApiPost.mockRejectedValue({
+      response: { data: { error: "Dictation Not Available" } },
+    });
+    const store = useDictationStore();
+
+    const result = await store.ask("What is due today?");
+
+    expect(result.error).toBe("Dictation Not Available");
+    expect(store.askAnswer).toBeNull();
+    expect(store.askError).toBe("Dictation Not Available");
+    expect(store.askLoading).toBe(false);
+  });
+
+  it("should clear the action and ask state when the job resets", () => {
+    const store = useDictationStore();
+    store.jobId = "job-1";
+    store.previews = [
+      {
+        index: 0,
+        type: "create_task",
+        action: { type: "create_task", title: "A" },
+        status: "resolved",
+        target: null,
+        candidates: [],
+        diff: [],
+      },
+    ];
+    store.applyResults = [
+      { index: 0, type: "create_task", status: "applied" },
+    ];
+    store.askAnswer = {
+      intent: "unknown",
+      answer: "No.",
+      items: [],
+      truncated: false,
+      generatedBy: "deterministic",
+    };
+
+    store.resetJob();
+
+    expect(store.previews).toEqual([]);
+    expect(store.applyResults).toEqual([]);
+    expect(store.askAnswer).toBeNull();
+    expect(store.jobId).toBeNull();
+  });
 });

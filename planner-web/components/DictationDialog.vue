@@ -130,7 +130,37 @@
 
       <!-- REVIEW: opens as soon as the raw transcript exists -->
       <section v-else class="dictation-review">
-        <form @submit.prevent="commitSelected">
+        <nav v-if="showAskTab" class="review-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="reviewTab === 'actions'"
+            :class="{ active: reviewTab === 'actions' }"
+            @click="reviewTab = 'actions'"
+          >
+            <i class="bi bi-check2-square" /> Actions
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="reviewTab === 'ask'"
+            :class="{ active: reviewTab === 'ask' }"
+            @click="reviewTab = 'ask'"
+          >
+            <i class="bi bi-question-circle" /> Ask
+          </button>
+        </nav>
+
+        <DictationAskPanel
+          v-if="showAskTab && reviewTab === 'ask'"
+          :answer="dictationStore.askAnswer"
+          :loading="dictationStore.askLoading"
+          :error="dictationStore.askError"
+          :projects="projectsStore.activeProjects || []"
+          @ask="onAsk"
+        />
+
+        <form v-else @submit.prevent="onReviewSubmit">
           <label>
             Dictated text
             <textarea
@@ -209,7 +239,59 @@
             <DictationDiff :raw="rawTranscript" :polished="reviewText" />
           </details>
 
-          <template v-if="includedActions.length > 0">
+          <template v-if="structuredActions">
+            <h4>Proposed actions</h4>
+            <p class="review-note">
+              Review each proposal: uncheck what you do not want, resolve
+              ambiguous matches, then apply the selected actions.
+            </p>
+            <p
+              v-if="dictationStore.previewLoading"
+              class="review-progress"
+              role="status"
+            >
+              <span class="inline-spinner" aria-hidden="true" />
+              Checking what these actions will change…
+            </p>
+            <p
+              v-if="dictationStore.previewError"
+              class="review-note is-error"
+              role="alert"
+            >
+              {{ dictationStore.previewError }}
+            </p>
+            <p v-if="applyMessage" class="review-note" role="status">
+              {{ applyMessage }}
+            </p>
+            <ul
+              v-if="dictationStore.previews.length > 0"
+              class="action-cards"
+            >
+              <DictationActionCard
+                v-for="preview in dictationStore.previews"
+                :key="preview.index"
+                :preview="preview"
+                :selected="isSelected(preview.index)"
+                :result="resultFor(preview.index)"
+                :projects="projectsStore.activeProjects || []"
+                :overrides="overridesFor(preview.index)"
+                :busy="committing"
+                @update:selected="togglePreview(preview.index, $event)"
+                @override="onOverride"
+              />
+            </ul>
+            <button
+              v-if="undoableBatch"
+              type="button"
+              class="secondary small-btn"
+              :disabled="committing"
+              @click="undoApplied"
+            >
+              <i class="bi bi-arrow-counterclockwise" /> Undo applied actions
+            </button>
+          </template>
+
+          <template v-else-if="includedActions.length > 0">
             <h4>Proposed actions</h4>
             <p class="review-note">
               Review each proposal: uncheck what you do not want, then create
@@ -304,13 +386,22 @@
           </p>
           <footer class="dialog-footer">
             <button
+              v-if="structuredApplied"
+              type="button"
+              @click="finishApplied"
+            >
+              <i class="bi bi-check2" /> Done
+            </button>
+            <button
+              v-else
               type="submit"
-              :disabled="selectedCount === 0 || committing"
+              :disabled="reviewSelectedCount === 0 || committing"
               :aria-busy="committing"
             >
               {{ createButtonLabel }}
             </button>
             <button
+              v-if="!structuredApplied"
               type="button"
               class="secondary"
               :disabled="committing"
@@ -324,7 +415,7 @@
               :disabled="committing"
               @click="discard"
             >
-              Discard
+              {{ structuredApplied ? "Close" : "Discard" }}
             </button>
           </footer>
         </form>
@@ -471,6 +562,123 @@ const correctionNotice = ref("");
 let reviewInitialized = false;
 let actionsPatched = false;
 
+// ── Structured actions (schema v2 servers) ──────────────────────────────────
+const reviewTab = ref("actions");
+const showAskTab = computed(() => recommendationStore.dictationAskEnabled);
+const structuredActions = computed(
+  () =>
+    recommendationStore.dictationApplyActions &&
+    !!dictationStore.result?.actionsAvailable,
+);
+const actionOverrides = ref({});
+const selectedIndexes = ref([]);
+const applyMessage = ref("");
+const requestId = ref("");
+let previewsInitialized = false;
+let previewsRequestedFor = "";
+
+const structuredApplied = computed(
+  () =>
+    structuredActions.value &&
+    dictationStore.applyResults.some((result) => result.status === "applied"),
+);
+const undoableBatch = computed(() => {
+  const batch = dictationStore.latestBatch;
+  if (!batch) {
+    return null;
+  }
+  return batch.actions.some(
+    (action) => action.status === "applied" && !action.undoneAt,
+  )
+    ? batch
+    : null;
+});
+const reviewSelectedCount = computed(() =>
+  structuredActions.value ? selectedIndexes.value.length : selectedCount.value,
+);
+
+function newRequestId() {
+  try {
+    if (globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+  } catch {
+    // Fall through to the random fallback
+  }
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isSelected(index) {
+  return selectedIndexes.value.includes(index);
+}
+
+function overridesFor(index) {
+  return actionOverrides.value[index] || {};
+}
+
+function resultFor(index) {
+  return (
+    dictationStore.applyResults.find((result) => result.index === index) ||
+    null
+  );
+}
+
+function togglePreview(index, checked) {
+  if (checked) {
+    if (!isSelected(index)) {
+      selectedIndexes.value = [...selectedIndexes.value, index];
+    }
+    return;
+  }
+  selectedIndexes.value = selectedIndexes.value.filter(
+    (value) => value !== index,
+  );
+}
+
+function onOverride({ index, field, value }) {
+  const next = { ...(actionOverrides.value[index] || {}), [field]: value };
+  if (field === "projectId") {
+    // A different project may not support the previous status
+    delete next.status;
+  }
+  actionOverrides.value = { ...actionOverrides.value, [index]: next };
+  if (
+    (field === "targetId" || field === "projectId") &&
+    value &&
+    !isSelected(index)
+  ) {
+    selectedIndexes.value = [...selectedIndexes.value, index];
+  }
+}
+
+function initializeSelections() {
+  if (previewsInitialized) {
+    return;
+  }
+  previewsInitialized = true;
+  selectedIndexes.value = dictationStore.previews
+    .filter((preview) => preview.status === "resolved")
+    .map((preview) => preview.index);
+}
+
+async function loadPreviews() {
+  const jobId = dictationStore.jobId;
+  if (!jobId || !structuredActions.value) {
+    return;
+  }
+  if (previewsInitialized && previewsRequestedFor === jobId) {
+    return;
+  }
+  previewsRequestedFor = jobId;
+  const res = await dictationStore.previewActions(jobId);
+  if (res?.error) {
+    previewsRequestedFor = "";
+    return;
+  }
+  initializeSelections();
+  dictationStore.fetchAppliedActions(jobId).catch(() => undefined);
+}
+
 const rawTranscript = computed(
   () => dictationStore.result?.rawTranscript || "",
 );
@@ -574,6 +782,11 @@ const selectedNotes = computed(() =>
 );
 
 const createButtonLabel = computed(() => {
+  if (structuredActions.value) {
+    return selectedIndexes.value.length === 1
+      ? "Apply action"
+      : `Apply ${selectedIndexes.value.length} actions`;
+  }
   if (selectedTasks.value.length > 0 && selectedNotes.value.length > 0) {
     return `Create ${selectedCount.value} items`;
   }
@@ -608,6 +821,13 @@ function resetReviewState() {
   reviewDirty.value = false;
   includedActions.value = [];
   correctionNotice.value = "";
+  reviewTab.value = "actions";
+  actionOverrides.value = {};
+  selectedIndexes.value = [];
+  applyMessage.value = "";
+  requestId.value = "";
+  previewsInitialized = false;
+  previewsRequestedFor = "";
 }
 
 function enterReview() {
@@ -621,9 +841,15 @@ function enterReview() {
   // Prefer the polished text, but the raw transcript is already usable
   reviewText.value = result?.polishedText || result?.rawTranscript || "";
   reviewDirty.value = false;
-  // Actions may not exist yet: the watcher patches them when they arrive
   if (result?.actionsAvailable) {
-    patchActions(result.actions || []);
+    if (structuredActions.value) {
+      void loadPreviews();
+    } else {
+      patchActions(result.actions || []);
+    }
+  }
+  if (dictationStore.jobId && recommendationStore.dictationApplyActions) {
+    dictationStore.fetchAppliedActions(dictationStore.jobId).catch(() => undefined);
   }
 }
 
@@ -683,11 +909,24 @@ watch(polishedText, (value) => {
 watch(
   () => dictationStore.availability?.actions,
   (available) => {
-    if (available && mode.value === "review") {
+    if (!available || mode.value !== "review") {
+      return;
+    }
+    if (structuredActions.value) {
+      void loadPreviews();
+    } else {
       patchActions(dictationStore.result?.actions || []);
     }
   },
 );
+
+// The server capabilities may arrive after the review opened: switch from the
+// legacy cards to resolved previews at that point.
+watch(structuredActions, (isStructured) => {
+  if (isStructured && mode.value === "review") {
+    void loadPreviews();
+  }
+});
 
 // ── Flow ──────────────────────────────────────────────────────────────────────
 
@@ -905,6 +1144,99 @@ function ensureStatusesLoaded() {
   if (statusesStore.catalog.length === 0) {
     statusesStore.fetchAll().catch(() => {});
   }
+}
+
+function onReviewSubmit() {
+  if (structuredActions.value) {
+    return applyStructured();
+  }
+  return commitSelected();
+}
+
+async function applyStructured() {
+  const jobId = dictationStore.jobId;
+  if (!jobId || selectedIndexes.value.length === 0) {
+    return;
+  }
+  committing.value = true;
+  dialogError.value = "";
+  applyMessage.value = "";
+  try {
+    if (!requestId.value) {
+      requestId.value = newRequestId();
+    }
+    const rid = requestId.value;
+    const selections = selectedIndexes.value.map((index) => ({
+      index,
+      ...overridesFor(index),
+    }));
+    const res = await dictationStore.applyActions(jobId, rid, selections);
+    if (res?.error) {
+      dialogError.value = res.error;
+      return;
+    }
+    const results = res.outcome?.results || [];
+    const applied = results.filter((item) => item.status === "applied").length;
+    const failed = results.filter((item) => item.status === "failed").length;
+    applyMessage.value =
+      applied > 0
+        ? `${applied} ${applied === 1 ? "action" : "actions"} applied${
+            failed > 0 ? `, ${failed} failed` : ""
+          }.`
+        : "No action was applied.";
+    if (applied > 0) {
+      emit("committed");
+    }
+    // A retried confirm must use a new key: reusing this one would replay the
+    // stored outcomes instead of retrying the failures.
+    if (failed > 0 || applied === 0) {
+      requestId.value = "";
+    }
+  } catch (err) {
+    dialogError.value =
+      err?.response?.data?.error || "The selected actions could not be applied.";
+  } finally {
+    committing.value = false;
+  }
+}
+
+async function undoApplied() {
+  const jobId = dictationStore.jobId;
+  const batch = undoableBatch.value;
+  if (!jobId || !batch) {
+    return;
+  }
+  committing.value = true;
+  dialogError.value = "";
+  applyMessage.value = "";
+  try {
+    const res = await dictationStore.undoActions(jobId, batch.requestId);
+    if (res?.error) {
+      dialogError.value = res.error;
+      return;
+    }
+    const undone =
+      res.outcome?.results.filter((item) => item.status === "undone").length || 0;
+    applyMessage.value =
+      undone > 0
+        ? `${undone} ${undone === 1 ? "action" : "actions"} undone.`
+        : "Nothing could be undone.";
+    emit("committed");
+  } finally {
+    committing.value = false;
+  }
+}
+
+function finishApplied() {
+  dictationStore.reset();
+  resetReviewState();
+  mode.value = "record";
+  emit("committed");
+  emit("close");
+}
+
+async function onAsk({ question, projectId }) {
+  await dictationStore.ask(question, projectId);
 }
 
 async function commitSelected() {
@@ -1199,6 +1531,34 @@ onUnmounted(() => {
 .review-note {
   font-size: var(--text-sm);
   opacity: 0.8;
+}
+
+.review-note.is-error {
+  color: #842029;
+  opacity: 1;
+}
+
+.review-tabs {
+  display: flex;
+  gap: var(--space-2xs);
+  margin-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.review-tabs button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: inherit;
+  padding: var(--space-2xs) var(--space-sm);
+  opacity: 0.75;
+}
+
+.review-tabs button.active {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-primary);
+  opacity: 1;
 }
 
 .review-progress {
