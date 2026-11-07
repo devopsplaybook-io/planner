@@ -4,7 +4,7 @@
 
 ## Features
 
-- **Project Management** - Admins create and manage multiple projects from the admin section and select which statuses they use
+- **Project Management** - Admins create and manage multiple projects from the admin section and select which statuses they use; deleting a project can move its tasks to another project instead of deleting them
 - **Centralized Status Management** - Admins define and order the global status catalog from the admin section, with a color per status chosen from a preset palette; the order is reflected across the Tasks board
 - **Task Tracking** - Tasks with title, description, checklists, comments, attachments, due dates, priorities, labels, and recurring tasks that automatically create their next occurrence on completion
 - **Task Assignment** - Assign tasks to one or more users

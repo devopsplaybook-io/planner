@@ -25,6 +25,7 @@ Projects are created and managed by admins in the Settings admin tabs (see [PROJ
 - [x] When saving visibility or status-selection changes for a project that has sub-projects, the dialog asks "Apply to all sub-projects?"; on confirm the changed parts are propagated to each sub-project and partial failures are surfaced in the dialog's inline dismissible banner (e.g. "7 of 8 sub-projects updated: School is archived").
 - [x] Renaming a project that has sub-projects offers the rename cascade to its descendants and is blocked while any affected sub-project is archived (see [PROJECTS.md](PROJECTS.md)).
 - [x] Deleting a project is blocked while it still has sub-projects (see [PROJECTS.md](PROJECTS.md)).
+- [x] The delete confirmation of a project that has tasks offers to move them to another project or delete them with the project (see [PROJECTS.md](PROJECTS.md)).
 
 ## Statuses tab
 
@@ -58,4 +59,4 @@ Cleanup rules let admins automatically delete old data per project: Done tasks, 
 - [x] Saving the rules asks for confirmation with a dialog that spells out what will be enabled per project.
 - [x] A failure to remove an attachment file keeps the attachment row so the next run retries it; failures never crash the background job.
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-01_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-07_

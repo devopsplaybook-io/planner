@@ -121,6 +121,8 @@ import {
 const props = defineProps({
   modelValue: { type: String, default: "" },
   allLabel: { type: String, default: "" },
+  /** Project that must not appear in the list (e.g. the one being deleted). */
+  excludeId: { type: String, default: "" },
 });
 const emit = defineEmits(["update:modelValue"]);
 
@@ -141,7 +143,8 @@ const collapsed = ref(new Set());
 // archived projects last.
 const options = computed(() =>
   projectsStore.projects.filter(
-    (p) => !p.archived || p.id === props.modelValue,
+    (p) =>
+      p.id !== props.excludeId && (!p.archived || p.id === props.modelValue),
   ),
 );
 

@@ -291,8 +291,61 @@
         <article>
           <header><h3>Delete Project</h3></header>
           <p>
-            Are you sure you want to delete "{{ project?.name }}"? All
-            associated tasks, notes, and comments will also be deleted.
+            Are you sure you want to delete "{{ project?.name }}"?
+            <template v-if="deleteTaskCount === 1">
+              It contains 1 task.
+            </template>
+            <template v-else-if="deleteTaskCount">
+              It contains {{ deleteTaskCount }} tasks.
+            </template>
+            <template v-else-if="deleteTaskCount === 0">
+              It contains no tasks.
+            </template>
+          </p>
+          <section v-if="deleteTaskCount !== 0" class="delete-tasks-section">
+            <p class="section-hint">What should happen to the tasks?</p>
+            <div class="delete-mode-grid">
+              <label class="delete-mode-option">
+                <input
+                  v-model="deleteMode"
+                  type="radio"
+                  value="move"
+                  :disabled="deleting"
+                >
+                <span>
+                  <strong>Move to another project</strong>
+                  <small>
+                    Comments, labels, assignees and attachments move with the
+                    tasks.
+                  </small>
+                </span>
+              </label>
+              <label class="delete-mode-option">
+                <input
+                  v-model="deleteMode"
+                  type="radio"
+                  value="delete"
+                  :disabled="deleting"
+                >
+                <span>
+                  <strong>Delete the tasks</strong>
+                  <small>
+                    Tasks and their comments, labels and attachments are
+                    removed.
+                  </small>
+                </span>
+              </label>
+            </div>
+            <label v-if="deleteMode === 'move'" class="move-target-field">
+              Destination project
+              <ProjectSelect
+                v-model="moveTarget"
+                :exclude-id="project?.id"
+              />
+            </label>
+          </section>
+          <p class="section-hint">
+            Notes and task templates in this project will also be deleted.
           </p>
           <div v-if="deleteError" class="dialog-error" role="alert">
             <span>{{ deleteError }}</span>
@@ -369,6 +422,9 @@ const loading = ref(false);
 const showDeleteConfirm = ref(false);
 const deleteDialogEl = useModalDialog(() => showDeleteConfirm.value);
 const deleting = ref(false);
+const deleteTaskCount = ref(null);
+const deleteMode = ref("delete");
+const moveTarget = ref("");
 const editing = ref(false);
 const saving = ref(false);
 const advancedMenuEl = ref(null);
@@ -719,7 +775,31 @@ function closeAdvancedMenu() {
 function openDeleteConfirm() {
   closeAdvancedMenu();
   deleteError.value = "";
+  deleteMode.value = "delete";
+  moveTarget.value = "";
   showDeleteConfirm.value = true;
+  loadDeleteTaskCount();
+}
+
+// Counts the tasks the deletion will act on, so the dialog can tell the
+// admin how many tasks are affected (and hide the choice when there are none)
+async function loadDeleteTaskCount() {
+  deleteTaskCount.value = null;
+  try {
+    const res = await api.get("/tasks", {
+      params: { projectId: props.projectId, fields: "id" },
+    });
+    if (!showDeleteConfirm.value) {
+      return;
+    }
+    deleteTaskCount.value = Array.isArray(res.data) ? res.data.length : null;
+    if (deleteTaskCount.value === 0) {
+      deleteMode.value = "delete";
+      moveTarget.value = "";
+    }
+  } catch {
+    deleteTaskCount.value = null;
+  }
 }
 
 async function deleteProject() {
@@ -729,10 +809,18 @@ async function deleteProject() {
     deleteError.value = "Delete or move the sub-projects first.";
     return;
   }
+  let moveTasksTo;
+  if (deleteTaskCount.value !== 0 && deleteMode.value === "move") {
+    if (!moveTarget.value) {
+      deleteError.value = "Select the destination project for the tasks.";
+      return;
+    }
+    moveTasksTo = moveTarget.value;
+  }
   deleting.value = true;
   deleteError.value = "";
   try {
-    await projectsStore.remove(props.projectId);
+    await projectsStore.remove(props.projectId, moveTasksTo);
     showDeleteConfirm.value = false;
     emit("close");
   } catch (e) {
@@ -964,5 +1052,57 @@ section {
   display: flex;
   gap: var(--space-sm);
   justify-content: flex-end;
+}
+
+.delete-tasks-section {
+  margin: 0 0 var(--space-md);
+}
+
+.delete-mode-grid {
+  display: grid;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.delete-mode-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.delete-mode-option:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.delete-mode-option:has(input:disabled) {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.delete-mode-option input[type="radio"] {
+  margin-top: 0.2em;
+}
+
+.delete-mode-option span {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.delete-mode-option small {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.move-target-field {
+  display: grid;
+  gap: var(--space-2xs);
+  margin: 0;
 }
 </style>

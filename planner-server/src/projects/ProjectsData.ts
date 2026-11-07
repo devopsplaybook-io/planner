@@ -175,33 +175,44 @@ export async function clearProjectUsers(projectId: string): Promise<void> {
 }
 
 /**
- * Deletes the project, every child row (its tasks/notes/task templates with
- * their children, project users, in one transaction) and the attachment
- * files on disk.
+ * Deletes the project and every child row (its notes/task templates with
+ * their children, project users) in one transaction. Its tasks are either
+ * deleted with their children and attachment files, or moved to
+ * `moveTasksTo` (a task's comments, labels, assignees and attachment files
+ * then stay attached). Returns the number of tasks moved.
  */
-export async function ProjectsDataDelete(id: string): Promise<void> {
-  const attachmentPaths = await getProjectAttachmentPaths(id);
+export async function ProjectsDataDelete(
+  id: string,
+  moveTasksTo?: Project,
+): Promise<number> {
+  // When tasks are moved their attachment files must survive
+  const attachmentPaths = await getProjectAttachmentPaths(id, !moveTasksTo);
+  let tasksMoved = 0;
   await DbUtilsTransaction(async () => {
-    await DbUtilsExecSQL(
-      SQL_QUERIES.DELETE_TASK_LABELS_BY_PROJECT[DbUtilsGetType()],
-      [id],
-    );
-    await DbUtilsExecSQL(
-      SQL_QUERIES.DELETE_TASK_ASSIGNEES_BY_PROJECT[DbUtilsGetType()],
-      [id],
-    );
-    await DbUtilsExecSQL(
-      SQL_QUERIES.DELETE_TASK_COMMENTS_BY_PROJECT[DbUtilsGetType()],
-      [id],
-    );
-    await DbUtilsExecSQL(
-      SQL_QUERIES.DELETE_TASK_ATTACHMENTS_BY_PROJECT[DbUtilsGetType()],
-      [id],
-    );
-    await DbUtilsExecSQL(
-      SQL_QUERIES.DELETE_TASKS_BY_PROJECT[DbUtilsGetType()],
-      [id],
-    );
+    if (moveTasksTo) {
+      tasksMoved = await moveTasks(moveTasksTo, id);
+    } else {
+      await DbUtilsExecSQL(
+        SQL_QUERIES.DELETE_TASK_LABELS_BY_PROJECT[DbUtilsGetType()],
+        [id],
+      );
+      await DbUtilsExecSQL(
+        SQL_QUERIES.DELETE_TASK_ASSIGNEES_BY_PROJECT[DbUtilsGetType()],
+        [id],
+      );
+      await DbUtilsExecSQL(
+        SQL_QUERIES.DELETE_TASK_COMMENTS_BY_PROJECT[DbUtilsGetType()],
+        [id],
+      );
+      await DbUtilsExecSQL(
+        SQL_QUERIES.DELETE_TASK_ATTACHMENTS_BY_PROJECT[DbUtilsGetType()],
+        [id],
+      );
+      await DbUtilsExecSQL(
+        SQL_QUERIES.DELETE_TASKS_BY_PROJECT[DbUtilsGetType()],
+        [id],
+      );
+    }
     await DbUtilsExecSQL(
       SQL_QUERIES.DELETE_NOTE_LABELS_BY_PROJECT[DbUtilsGetType()],
       [id],
@@ -252,16 +263,48 @@ export async function ProjectsDataDelete(id: string): Promise<void> {
     await DbUtilsExecSQL(SQL_QUERIES.DELETE_PROJECT[DbUtilsGetType()], [id]);
   });
   await removeFilesQuietly(attachmentPaths);
+  return tasksMoved;
+}
+
+/**
+ * Reassigns every task of `sourceProjectId` to the target project, bumping
+ * dateUpdated like a regular project change. A task whose status is not
+ * part of the target project's selection falls back to its first status,
+ * mirroring the single-task project change.
+ */
+async function moveTasks(
+  targetProject: Project,
+  sourceProjectId: string,
+): Promise<number> {
+  const dbType = DbUtilsGetType();
+  const moved = await DbUtilsExecSQL(
+    SQL_QUERIES.MOVE_TASKS_TO_PROJECT[dbType],
+    [targetProject.id, new Date().toISOString(), sourceProjectId],
+  );
+  const statuses = targetProject.statuses || [];
+  if (statuses.length > 0) {
+    await DbUtilsExecSQL(
+      SQL_QUERIES.RESET_MOVED_TASK_STATUSES[dbType].replace(
+        ":statuses",
+        buildInPlaceholders(statuses.length),
+      ),
+      [statuses[0], targetProject.id, ...statuses],
+    );
+  }
+  return moved;
 }
 
 async function getProjectAttachmentPaths(
   projectId: string,
+  includeTaskAttachments = true,
 ): Promise<string[]> {
   const dbType = DbUtilsGetType();
-  const taskRows = await DbUtilsQuerySQL(
-    SQL_QUERIES.GET_TASK_ATTACHMENT_PATHS_BY_PROJECT[dbType],
-    [projectId],
-  );
+  const taskRows = includeTaskAttachments
+    ? await DbUtilsQuerySQL(
+        SQL_QUERIES.GET_TASK_ATTACHMENT_PATHS_BY_PROJECT[dbType],
+        [projectId],
+      )
+    : [];
   const noteRows = await DbUtilsQuerySQL(
     SQL_QUERIES.GET_NOTE_ATTACHMENT_PATHS_BY_PROJECT[dbType],
     [projectId],
@@ -309,6 +352,17 @@ const SQL_QUERIES = {
   DELETE_TASKS_BY_PROJECT: {
     postgres: 'DELETE FROM tasks WHERE "projectId" = $1',
     sqlite: "DELETE FROM tasks WHERE projectId = ?",
+  },
+  MOVE_TASKS_TO_PROJECT: {
+    postgres:
+      'UPDATE tasks SET "projectId" = $1, "dateUpdated" = $2 WHERE "projectId" = $3',
+    sqlite: "UPDATE tasks SET projectId = ?, dateUpdated = ? WHERE projectId = ?",
+  },
+  RESET_MOVED_TASK_STATUSES: {
+    postgres:
+      'UPDATE tasks SET "status" = $1 WHERE "projectId" = $2 AND "status" NOT IN (:statuses)',
+    sqlite:
+      "UPDATE tasks SET status = ? WHERE projectId = ? AND status NOT IN (:statuses)",
   },
   DELETE_TASK_LABELS_BY_PROJECT: {
     postgres:

@@ -249,7 +249,10 @@ export class ProjectsRoutes {
     });
 
     // ==================== DELETE ====================
-    fastify.delete<{ Params: { id: string } }>("/:id", async (req, res) => {
+    fastify.delete<{
+      Params: { id: string };
+      Querystring: { moveTasksTo?: string };
+    }>("/:id", async (req, res) => {
       try {
         await AuthMustBeAdmin(req, res);
       } catch {
@@ -262,13 +265,37 @@ export class ProjectsRoutes {
       if (project.isDefault) {
         return res.status(400).send({ error: "Cannot delete default project" });
       }
+      // Optional reassignment: the project's tasks move to another project
+      // instead of being deleted with it (tasks cannot land in an archived
+      // project and the destination must be another existing project).
+      const moveTasksToId = req.query.moveTasksTo?.trim();
+      let moveTasksTo: Project = null;
+      if (moveTasksToId) {
+        if (moveTasksToId === project.id) {
+          return res
+            .status(400)
+            .send({ error: "Cannot move tasks to the deleted project" });
+        }
+        moveTasksTo = await ProjectsDataGet(moveTasksToId);
+        if (!moveTasksTo) {
+          return res.status(404).send({ error: "Project Not Found" });
+        }
+        if (moveTasksTo.archived) {
+          return res
+            .status(400)
+            .send({ error: "Cannot move tasks to an archived project" });
+        }
+      }
       const templateIds = await TaskTemplatesListIdsByProject(req.params.id);
-      await ProjectsDataDelete(req.params.id);
+      const tasksMoved = await ProjectsDataDelete(
+        req.params.id,
+        moveTasksTo,
+      );
       // The templates (and their cron jobs) are gone with the project
       for (const templateId of templateIds) {
         TaskTemplatesSchedulerRefresh(templateId);
       }
-      return res.status(201).send({});
+      return res.status(201).send({ tasksMoved });
     });
   }
 }

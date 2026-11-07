@@ -4,6 +4,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { computed, defineComponent, nextTick, ref, watch } from "vue";
 
 import ProjectDetailDialog from "./ProjectDetailDialog.vue";
+import api from "../utils/api";
 
 vi.mock("../utils/api", () => ({
   default: { get: vi.fn().mockResolvedValue({ data: [] }) },
@@ -60,7 +61,20 @@ vi.stubGlobal("useProjectsStore", () => projectsStore);
 vi.stubGlobal("useStatusesStore", () => statusesStore);
 vi.stubGlobal("useAuthStore", () => authStore);
 
-const stubs = { UserMultiSelect: defineComponent({ render: () => null }) };
+const ProjectSelectStub = defineComponent({
+  name: "ProjectSelect",
+  props: {
+    modelValue: { type: String, default: "" },
+    excludeId: { type: String, default: "" },
+  },
+  emits: ["update:modelValue"],
+  template: `<button type="button" class="project-select-stub" @click="$emit('update:modelValue', 'p9')">pick</button>`,
+});
+
+const stubs = {
+  UserMultiSelect: defineComponent({ render: () => null }),
+  ProjectSelect: ProjectSelectStub,
+};
 
 async function mountDialog() {
   const wrapper = mount(ProjectDetailDialog, {
@@ -94,6 +108,9 @@ beforeEach(() => {
   projectsStore.remove.mockReset().mockResolvedValue(undefined);
   projectsStore.fetchById.mockReset().mockResolvedValue(project);
   statusesStore.fetchAll.mockReset().mockResolvedValue(undefined);
+  (api.get as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({
+    data: [],
+  });
 });
 
 afterEach(() => {
@@ -188,5 +205,76 @@ describe("ProjectDetailDialog custom confirms and banners", () => {
     expect(banner.text()).toContain("0 of 1 sub-project updates succeeded");
     expect(banner.text()).toContain("rename failed");
     expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it("moves the project's tasks to the chosen destination project", async () => {
+    projectsStore.descendantsOf.mockReturnValue([]);
+    (api.get as ReturnType<typeof vi.fn>).mockImplementation(
+      async (url: string) => ({
+        data: url === "/tasks" ? [{ id: "t1" }, { id: "t2" }] : [],
+      }),
+    );
+    const wrapper = await mountDialog();
+
+    await wrapper.find(".danger-item").trigger("click");
+    await flushPromises();
+
+    const dialog = deleteDialog(wrapper);
+    expect(dialog?.text()).toContain("It contains 2 tasks.");
+
+    const moveRadio = dialog
+      ?.findAll(".delete-mode-option input")
+      .find((input) => input.attributes("value") === "move");
+    await moveRadio?.setValue(true);
+    await dialog?.find(".project-select-stub").trigger("click");
+
+    const deleteButton = dialog
+      ?.findAll("button")
+      .find((button) => button.text() === "Delete");
+    await deleteButton?.trigger("click");
+    await flushPromises();
+
+    expect(projectsStore.remove).toHaveBeenCalledWith("p1", "p9");
+  });
+
+  it("requires a destination project when moving tasks", async () => {
+    projectsStore.descendantsOf.mockReturnValue([]);
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [{ id: "t1" }],
+    });
+    const wrapper = await mountDialog();
+
+    await wrapper.find(".danger-item").trigger("click");
+    await flushPromises();
+
+    const dialog = deleteDialog(wrapper);
+    const moveRadio = dialog
+      ?.findAll(".delete-mode-option input")
+      .find((input) => input.attributes("value") === "move");
+    await moveRadio?.setValue(true);
+    const deleteButton = dialog
+      ?.findAll("button")
+      .find((button) => button.text() === "Delete");
+    await deleteButton?.trigger("click");
+    await flushPromises();
+
+    expect(dialog?.text()).toContain(
+      "Select the destination project for the tasks.",
+    );
+    expect(projectsStore.remove).not.toHaveBeenCalled();
+  });
+
+  it("deletes the tasks by default", async () => {
+    projectsStore.descendantsOf.mockReturnValue([]);
+    (api.get as ReturnType<typeof vi.fn>).mockImplementation(
+      async (url: string) => ({
+        data: url === "/tasks" ? [{ id: "t1" }] : [],
+      }),
+    );
+    const wrapper = await mountDialog();
+
+    await clickDelete(wrapper);
+
+    expect(projectsStore.remove).toHaveBeenCalledWith("p1", undefined);
   });
 });
