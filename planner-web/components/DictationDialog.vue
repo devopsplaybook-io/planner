@@ -446,6 +446,11 @@
         <MeetingImportPanel
           v-else-if="activeTab === 'import' && open"
           @close="requestClose"
+          @open-inbox="activeTab = 'inbox'"
+        />
+        <InboxPanel
+          v-else-if="activeTab === 'inbox' && open"
+          @close="requestClose"
         />
       </div>
     </article>
@@ -477,9 +482,9 @@ const dialogError = ref("");
 const submittedDurationSeconds = ref(0);
 const recentJobs = computed(() => dictationStore.recentJobs || []);
 
-// Consolidated dictation menu: dictate, quick capture and meeting import are
-// presented as tabs (same tab pattern as the Settings page) instead of
-// separate navigation entries.
+// Consolidated dictation menu: dictate, quick capture, meeting import and the
+// voice inbox are presented as tabs (same tab pattern as the Settings page)
+// instead of separate navigation entries.
 const activeTab = ref("dictate");
 const canDictate = computed(
   () => recommendationStore.isDictationSttConfigured,
@@ -504,6 +509,7 @@ const tabs = computed(() => {
       icon: "bi-file-earmark-music",
     });
   }
+  list.push({ id: "inbox", label: "Inbox", icon: "bi-inbox" });
   return list;
 });
 
@@ -514,6 +520,18 @@ function ensureAvailableTab() {
 }
 
 watch(tabs, ensureAvailableTab);
+
+// Deep links (push notification, share target) can request a tab while the
+// menu is already open
+watch(
+  () => dictationStore.dialogTab,
+  (tab) => {
+    if (props.open && tab) {
+      activeTab.value = tab;
+      ensureAvailableTab();
+    }
+  },
+);
 
 // Modal dialog wiring: backdrop, focus trap, Escape to close
 const dialogEl = useModalDialog(() => props.open);

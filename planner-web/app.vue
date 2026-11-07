@@ -26,7 +26,7 @@
       @close="closeDialog('projectId')"
       @updated="onDialogUpdated"
     />
-    <!-- Global dictation menu (dictate, capture, import), opened from the navigation -->
+    <!-- Global dictation menu (dictate, capture, import, inbox), opened from the navigation -->
     <DictationDialog
       :open="dictationStore.dialogOpen"
       @close="dictationStore.closeDialog()"

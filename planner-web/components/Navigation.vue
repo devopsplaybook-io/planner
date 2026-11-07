@@ -29,6 +29,12 @@
         >
           <i class="bi bi-mic"></i>
           <span class="nav-label">Dictation</span>
+          <span
+            v-if="badgeCount || processingCount"
+            class="nav-badge"
+            :class="{ 'nav-badge--processing': !badgeCount && processingCount }"
+            >{{ badgeCount > 9 ? "9+" : badgeCount || processingCount }}</span
+          >
         </button>
       </li>
     </ul>
@@ -37,25 +43,6 @@
         <NuxtLink to="/" :class="activeRoute == '/' ? 'active' : 'inactive'"
           ><i class="bi bi-speedometer2"></i>
           <span class="nav-label">Dashboard</span></NuxtLink
-        >
-      </li>
-      <li>
-        <NuxtLink
-          to="/inbox"
-          :class="activeRoute == '/inbox' ? 'active' : 'inactive'"
-          :title="
-            processingCount
-              ? `${processingCount} recording(s) processing`
-              : 'Inbox'
-          "
-          ><i class="bi bi-inbox"></i>
-          <span class="nav-label">Inbox</span>
-          <span
-            v-if="badgeCount || processingCount"
-            class="nav-badge"
-            :class="{ 'nav-badge--processing': !badgeCount && processingCount }"
-            >{{ badgeCount > 9 ? "9+" : badgeCount || processingCount }}</span
-          ></NuxtLink
         >
       </li>
       <li>
@@ -158,12 +145,7 @@ onUnmounted(() => {
 const dictationAvailable = computed(
   () => authStore.isAuthenticated && recommendationStore.isDictationEnabled,
 );
-const dictationDisabled = computed(
-  () =>
-    !online.value ||
-    (!recommendationStore.isDictationSttConfigured &&
-      !recommendationStore.dictationImportEnabled),
-);
+const dictationDisabled = computed(() => !online.value);
 const dictationTooltip = computed(() => {
   if (!online.value) {
     return "Dictation is unavailable offline";
@@ -172,21 +154,25 @@ const dictationTooltip = computed(() => {
     !recommendationStore.isDictationSttConfigured &&
     !recommendationStore.dictationImportEnabled
   ) {
-    return "Dictation needs a speech-to-text server configuration";
+    return "Open the voice inbox";
   }
   if (!recommendationStore.isDictationSttConfigured) {
-    return "Import a meeting recording";
+    return "Inbox and meeting import";
   }
   if (recommendationStore.dictationEngineState === "preparing") {
     return "Preparing speech engine…";
   }
-  return "Dictation, capture and meeting import";
+  return "Dictation, capture, inbox and meeting import";
 });
 
 function openDictationMenu() {
-  dictationStore.openDialog(
-    recommendationStore.isDictationSttConfigured ? "dictate" : "import",
-  );
+  if (recommendationStore.isDictationSttConfigured) {
+    dictationStore.openDialog("dictate");
+  } else if (recommendationStore.dictationImportEnabled) {
+    dictationStore.openDialog("import");
+  } else {
+    dictationStore.openDialog("inbox");
+  }
 }
 </script>
 

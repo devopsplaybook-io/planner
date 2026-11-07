@@ -87,9 +87,9 @@
         <button type="button" class="btn-secondary" @click="close">
           Close
         </button>
-        <NuxtLink to="/inbox" class="btn-primary" @click="close">
+        <button type="button" class="btn-primary" @click="openInbox">
           Open inbox
-        </NuxtLink>
+        </button>
       </div>
     </template>
   </div>
@@ -99,13 +99,12 @@
 import { onUnmounted } from "vue";
 import api from "../utils/api";
 
-const emit = defineEmits(["close"]);
+const emit = defineEmits(["close", "open-inbox"]);
 
 const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
 const inboxStore = useInboxStore();
 const { pushToast } = useToasts();
-const router = useRouter();
 
 const file = ref(null);
 const fileLabel = ref("");
@@ -274,8 +273,7 @@ async function pollJob(jobId) {
       url: "/inbox",
     });
     await inboxStore.fetchBadge();
-    emit("close");
-    router.push("/inbox");
+    emit("open-inbox");
   } else if (job.value?.status === "error") {
     error.value = job.value.error || "The meeting import failed.";
     pushToast({
@@ -284,6 +282,11 @@ async function pollJob(jobId) {
       message: error.value,
     });
   }
+}
+
+function openInbox() {
+  pollToken += 1;
+  emit("open-inbox");
 }
 
 function close() {
