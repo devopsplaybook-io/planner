@@ -133,6 +133,21 @@ export class Config {
   public RATE_LIMIT_DICTATION_ASK_MAX: number;
   /** Hard timeout of the optional answer-phrasing LLM call */
   public DICTATION_ASK_TIMEOUT_MS: number;
+  // Long-form / meeting imports and the voice inbox
+  public DICTATION_IMPORT_ENABLED: boolean;
+  public DICTATION_IMPORT_MAX_MB: number;
+  public DICTATION_IMPORT_MAX_DURATION_SECONDS: number;
+  /** Target length of one transcription chunk (silence-aware plan) */
+  public DICTATION_IMPORT_SEGMENT_SECONDS: number;
+  public DICTATION_INBOX_TTL_HOURS: number;
+  public DICTATION_MEETING_TTL_DAYS: number;
+  /** Cap of kept (not deleted after transcription) audio bytes per user */
+  public DICTATION_AUDIO_KEEP_MAX_MB: number;
+  public DICTATION_AUDIO_RETENTION_DAYS: number;
+  /** Global kill switch for the "dictation ready" push notification */
+  public DICTATION_NOTIFY_READY: boolean;
+  /** Per-user hourly limit of long-form imports */
+  public RATE_LIMIT_DICTATION_IMPORT_MAX: number;
 
   // Web Push Notifications
   public WEB_PUSH_ENABLED: boolean;
@@ -186,6 +201,16 @@ export class Config {
     this.DICTATION_PHRASES_MAX = 50;
     this.RATE_LIMIT_DICTATION_ASK_MAX = 30;
     this.DICTATION_ASK_TIMEOUT_MS = 15000;
+    this.DICTATION_IMPORT_ENABLED = true;
+    this.DICTATION_IMPORT_MAX_MB = 200;
+    this.DICTATION_IMPORT_MAX_DURATION_SECONDS = 7200;
+    this.DICTATION_IMPORT_SEGMENT_SECONDS = 30;
+    this.DICTATION_INBOX_TTL_HOURS = 168;
+    this.DICTATION_MEETING_TTL_DAYS = 7;
+    this.DICTATION_AUDIO_KEEP_MAX_MB = 500;
+    this.DICTATION_AUDIO_RETENTION_DAYS = 30;
+    this.DICTATION_NOTIFY_READY = true;
+    this.RATE_LIMIT_DICTATION_IMPORT_MAX = 5;
     this.WEB_PUSH_ENABLED = true;
     this.WEB_PUSH_SUBJECT = "mailto:admin@localhost";
     this.WEB_PUSH_NOTIFY_HOUR = 9; // send notifications from 9:00
@@ -285,6 +310,56 @@ export class Config {
       1000,
       60000,
       15000,
+    );
+    this.DICTATION_IMPORT_ENABLED = config.DICTATION_IMPORT_ENABLED ?? true;
+    this.DICTATION_IMPORT_MAX_MB = clampInteger(
+      config.DICTATION_IMPORT_MAX_MB,
+      1,
+      2048,
+      200,
+    );
+    this.DICTATION_IMPORT_MAX_DURATION_SECONDS = clampInteger(
+      config.DICTATION_IMPORT_MAX_DURATION_SECONDS,
+      60,
+      43200,
+      7200,
+    );
+    this.DICTATION_IMPORT_SEGMENT_SECONDS = clampInteger(
+      config.DICTATION_IMPORT_SEGMENT_SECONDS,
+      10,
+      120,
+      30,
+    );
+    this.DICTATION_INBOX_TTL_HOURS = clampInteger(
+      config.DICTATION_INBOX_TTL_HOURS,
+      1,
+      8760,
+      168,
+    );
+    this.DICTATION_MEETING_TTL_DAYS = clampInteger(
+      config.DICTATION_MEETING_TTL_DAYS,
+      1,
+      365,
+      7,
+    );
+    this.DICTATION_AUDIO_KEEP_MAX_MB = clampInteger(
+      config.DICTATION_AUDIO_KEEP_MAX_MB,
+      0,
+      102400,
+      500,
+    );
+    this.DICTATION_AUDIO_RETENTION_DAYS = clampInteger(
+      config.DICTATION_AUDIO_RETENTION_DAYS,
+      1,
+      3650,
+      30,
+    );
+    this.DICTATION_NOTIFY_READY = config.DICTATION_NOTIFY_READY ?? true;
+    this.RATE_LIMIT_DICTATION_IMPORT_MAX = clampInteger(
+      config.RATE_LIMIT_DICTATION_IMPORT_MAX,
+      1,
+      1000,
+      5,
     );
     this.WEB_PUSH_ENABLED = config.WEB_PUSH_ENABLED ?? true;
     this.WEB_PUSH_SUBJECT = config.WEB_PUSH_SUBJECT || "mailto:admin@localhost";
@@ -455,6 +530,78 @@ export class Config {
         1000,
         60000,
         this.DICTATION_ASK_TIMEOUT_MS,
+      );
+    }
+    if (process.env.DICTATION_IMPORT_ENABLED) {
+      this.DICTATION_IMPORT_ENABLED =
+        process.env.DICTATION_IMPORT_ENABLED === "true";
+    }
+    if (process.env.DICTATION_IMPORT_MAX_MB) {
+      this.DICTATION_IMPORT_MAX_MB = clampInteger(
+        process.env.DICTATION_IMPORT_MAX_MB,
+        1,
+        2048,
+        this.DICTATION_IMPORT_MAX_MB,
+      );
+    }
+    if (process.env.DICTATION_IMPORT_MAX_DURATION_SECONDS) {
+      this.DICTATION_IMPORT_MAX_DURATION_SECONDS = clampInteger(
+        process.env.DICTATION_IMPORT_MAX_DURATION_SECONDS,
+        60,
+        43200,
+        this.DICTATION_IMPORT_MAX_DURATION_SECONDS,
+      );
+    }
+    if (process.env.DICTATION_IMPORT_SEGMENT_SECONDS) {
+      this.DICTATION_IMPORT_SEGMENT_SECONDS = clampInteger(
+        process.env.DICTATION_IMPORT_SEGMENT_SECONDS,
+        10,
+        120,
+        this.DICTATION_IMPORT_SEGMENT_SECONDS,
+      );
+    }
+    if (process.env.DICTATION_INBOX_TTL_HOURS) {
+      this.DICTATION_INBOX_TTL_HOURS = clampInteger(
+        process.env.DICTATION_INBOX_TTL_HOURS,
+        1,
+        8760,
+        this.DICTATION_INBOX_TTL_HOURS,
+      );
+    }
+    if (process.env.DICTATION_MEETING_TTL_DAYS) {
+      this.DICTATION_MEETING_TTL_DAYS = clampInteger(
+        process.env.DICTATION_MEETING_TTL_DAYS,
+        1,
+        365,
+        this.DICTATION_MEETING_TTL_DAYS,
+      );
+    }
+    if (process.env.DICTATION_AUDIO_KEEP_MAX_MB) {
+      this.DICTATION_AUDIO_KEEP_MAX_MB = clampInteger(
+        process.env.DICTATION_AUDIO_KEEP_MAX_MB,
+        0,
+        102400,
+        this.DICTATION_AUDIO_KEEP_MAX_MB,
+      );
+    }
+    if (process.env.DICTATION_AUDIO_RETENTION_DAYS) {
+      this.DICTATION_AUDIO_RETENTION_DAYS = clampInteger(
+        process.env.DICTATION_AUDIO_RETENTION_DAYS,
+        1,
+        3650,
+        this.DICTATION_AUDIO_RETENTION_DAYS,
+      );
+    }
+    if (process.env.DICTATION_NOTIFY_READY) {
+      this.DICTATION_NOTIFY_READY =
+        process.env.DICTATION_NOTIFY_READY === "true";
+    }
+    if (process.env.RATE_LIMIT_DICTATION_IMPORT_MAX) {
+      this.RATE_LIMIT_DICTATION_IMPORT_MAX = clampInteger(
+        process.env.RATE_LIMIT_DICTATION_IMPORT_MAX,
+        1,
+        1000,
+        this.RATE_LIMIT_DICTATION_IMPORT_MAX,
       );
     }
     if (process.env.WEB_PUSH_ENABLED) {

@@ -35,7 +35,7 @@ export default defineNuxtConfig({
       // Offline navigations fall back to the cached app shell; API calls are
       // never navigation requests and stay excluded
       navigateFallback: "/",
-      navigateFallbackDenylist: [/^\/api\//],
+      navigateFallbackDenylist: [/^\/api\//, /^\/share-target/],
       skipWaiting: true,
       clientsClaim: true,
       importScripts: ["sw-push.js"],
@@ -60,6 +60,22 @@ export default defineNuxtConfig({
           type: "image/png",
         },
       ],
+      // Best-effort PWA audio share: supported browsers POST the audio file
+      // to /share-target, which redirects to the inbox. The file is not
+      // retained by the server; the user can import it from the inbox.
+      share_target: {
+        action: "/share-target",
+        method: "POST",
+        enctype: "multipart/form-data",
+        params: {
+          files: [
+            {
+              name: "file",
+              accept: ["audio/*", "video/mp4"],
+            },
+          ],
+        },
+      },
     },
   },
 });

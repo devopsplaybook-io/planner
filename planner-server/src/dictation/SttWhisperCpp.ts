@@ -30,8 +30,57 @@ const WHISPER_MAX_THREADS = 4;
 const MODEL_DOWNLOAD_ATTEMPTS = 3;
 const MIN_SPEECH_DURATION_MS = 300;
 
-// The embedded engine is CPU-heavy: run one transcription at a time
-let transcriptionChain: Promise<unknown> = Promise.resolve();
+// The embedded engine is CPU-heavy: one transcription at a time, interactive
+// work always dequeued before long-form batch chunks.
+export type SttPriority = "interactive" | "batch";
+
+interface SttQueueEntry {
+  run: () => Promise<SttWhisperCppResult>;
+  resolve: (value: SttWhisperCppResult) => void;
+  reject: (error: unknown) => void;
+}
+
+const sttQueues: Record<SttPriority, SttQueueEntry[]> = {
+  interactive: [],
+  batch: [],
+};
+let sttWorkerRunning = false;
+
+async function drainSttQueue(): Promise<void> {
+  if (sttWorkerRunning) {
+    return;
+  }
+  sttWorkerRunning = true;
+  try {
+    for (;;) {
+      const entry =
+        sttQueues.interactive.shift() ?? sttQueues.batch.shift();
+      if (!entry) {
+        break;
+      }
+      try {
+        entry.resolve(await entry.run());
+      } catch (error) {
+        // A failed transcription must never stall the queue
+        entry.reject(error);
+      }
+    }
+  } finally {
+    sttWorkerRunning = false;
+  }
+}
+
+function enqueueTranscription(
+  priority: SttPriority,
+  run: () => Promise<SttWhisperCppResult>,
+): Promise<SttWhisperCppResult> {
+  return new Promise((resolve, reject) => {
+    sttQueues[priority].push({ run, resolve, reject });
+    if (!sttWorkerRunning) {
+      void drainSttQueue();
+    }
+  });
+}
 
 export interface SttWhisperCppResult {
   text: string;
@@ -51,6 +100,8 @@ export interface SttWhisperCppTranscribeOptions {
   prompt?: string | null;
   /** Benchmark hook: called with the spawned whisper-cli process */
   onSpawn?: (child: childProcess.ChildProcessWithoutNullStreams) => void;
+  /** Queue lane: interactive recordings overtake long-form batch chunks. */
+  priority?: SttPriority;
 }
 
 export interface SttWhisperCppPrepareOptions {
@@ -613,8 +664,12 @@ async function transcribe(
 /**
  * Transcribes an audio file with the embedded whisper.cpp engine. The engine
  * only runs while a transcription is in progress: the model is loaded by a
- * short-lived whisper-cli process spawned per call. Runs are serialized
- * (one embedded transcription at a time).
+ * short-lived whisper-cli process spawned per call. Runs are serialized (one
+ * embedded transcription at a time) through a two-lane FIFO scheduler:
+ * queued interactive recordings always run before the next batch chunk, so a
+ * long-form import can never starve dictation. Each entry is enqueued
+ * separately by its caller, which lets interactive work interleave between
+ * long-form chunks.
  */
 export async function SttWhisperCppTranscribe(
   config: Config,
@@ -623,10 +678,9 @@ export async function SttWhisperCppTranscribe(
   language: string | null,
   options: SttWhisperCppTranscribeOptions = {},
 ): Promise<SttWhisperCppResult> {
-  const run = transcriptionChain.then(() =>
+  const priority: SttPriority =
+    options.priority === "batch" ? "batch" : "interactive";
+  return enqueueTranscription(priority, () =>
     transcribe(config, audioFilePath, language, options),
   );
-  // Keep the chain alive even when a transcription fails
-  transcriptionChain = run.catch(() => undefined);
-  return run;
 }

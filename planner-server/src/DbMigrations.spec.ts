@@ -189,6 +189,50 @@ describe("RunMigrations (fresh database)", () => {
     expect(applied.filter((f: string) => f === "init-0026.sql")).toHaveLength(1);
     expect(applied).toContain("init-0027.sql");
     expect(applied.filter((f: string) => f === "init-0027.sql")).toHaveLength(1);
+    expect(applied).toContain("init-0029.sql");
+    expect(applied.filter((f: string) => f === "init-0029.sql")).toHaveLength(1);
+  });
+
+  it("should add the voice inbox and long-form schema of init-0029", async () => {
+    const jobColumns = (
+      await DbUtilsQuerySQL("PRAGMA table_info(dictation_jobs)")
+    ).map((c) => c.name as string);
+    expect(jobColumns).toEqual(
+      expect.arrayContaining([
+        "jobKind",
+        "clientId",
+        "projectId",
+        "archivedAt",
+        "transcriptSegments",
+        "summary",
+        "decisionsJson",
+        "chunkPlan",
+        "segmentsDone",
+        "segmentsTotal",
+        "audioPath",
+        "audioRetained",
+        "audioDeletedAt",
+        "convertedAt",
+        "convertedType",
+        "convertedTargetId",
+      ]),
+    );
+    const userColumns = (
+      await DbUtilsQuerySQL("PRAGMA table_info(users)")
+    ).map((c) => c.name as string);
+    expect(userColumns).toEqual(
+      expect.arrayContaining(["notificationDictation", "dictationKeepAudio"]),
+    );
+    const indexes = (
+      await DbUtilsQuerySQL("PRAGMA index_list(dictation_jobs)")
+    ).map((i) => i.name as string);
+    expect(indexes).toEqual(
+      expect.arrayContaining([
+        "idx_dictation_jobs_user_archived",
+        "idx_dictation_jobs_user_client",
+        "idx_dictation_jobs_kind_status",
+      ]),
+    );
   });
 
   it("should add the dictation vocabulary schema of init-0027", async () => {

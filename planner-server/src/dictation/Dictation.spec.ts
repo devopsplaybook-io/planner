@@ -16,6 +16,22 @@ jest.mock("./DictationData", () => {
       taskId: null,
       attachmentId: null,
       commentId: null,
+      jobKind: "short",
+      clientId: null,
+      projectId: null,
+      archivedAt: null,
+      transcriptSegments: null,
+      summary: null,
+      decisions: [],
+      chunkPlan: null,
+      segmentsDone: 0,
+      segmentsTotal: 0,
+      audioPath: null,
+      audioRetained: false,
+      audioDeletedAt: null,
+      convertedAt: null,
+      convertedType: null,
+      convertedTargetId: null,
       stage: null,
       language: null,
       targetLanguage: null,
@@ -63,15 +79,24 @@ jest.mock("./DictationData", () => {
       job.dateUpdated = now();
     }),
     DictationDataGetInFlightForUser: jest.fn(
-      async (userId: string, source: string) =>
-        [...jobs.values()]
-          .filter(
-            (job) =>
-              job.userId === userId &&
-              job.source === source &&
-              job.status === "processing",
-          )
-          .pop() ?? null,
+      async (
+        userId: string,
+        source: string | string[] | undefined,
+        jobKind?: string,
+      ) => {
+        const sources = Array.isArray(source) ? source : [source];
+        return (
+          [...jobs.values()]
+            .filter(
+              (job) =>
+                job.userId === userId &&
+                (source === undefined || sources.includes(job.source)) &&
+                job.status === "processing" &&
+                (!jobKind || job.jobKind === jobKind),
+            )
+            .pop() ?? null
+        );
+      },
     ),
     DictationDataListRecent: jest.fn(
       async (userId: string, source: string | undefined, limit: number) =>
@@ -119,6 +144,17 @@ jest.mock("./DictationData", () => {
           job.status === "processing" && job.rawTranscript !== null,
       ),
     ),
+    DictationDataListKeptAudio: jest.fn(async () =>
+      [...jobs.values()].filter((job) => job.audioPath),
+    ),
+    DictationDataListResumableMeeting: jest.fn(async () =>
+      [...jobs.values()].filter(
+        (job) => job.status === "processing" && job.jobKind === "meeting",
+      ),
+    ),
+    DictationDataSetAudioState: jest.fn(async (jobId: string, state: any) => {
+      Object.assign(jobs.get(jobId) ?? {}, state);
+    }),
   };
   return api;
 });
@@ -395,7 +431,7 @@ describe("Dictation pipeline", () => {
       "/tmp/dictation/e1.audio",
       "audio/webm",
       "en",
-      { prompt: null },
+      { prompt: null, priority: "interactive" },
     );
     // axios is used only for the LLM stages, never for the STT call
     expect(mockAxios.post).toHaveBeenCalledTimes(2);
@@ -476,7 +512,7 @@ describe("Dictation pipeline", () => {
       "/tmp/dictation/hot.audio",
       "audio/webm",
       "en",
-      { prompt: "Vocabulary: Planner." },
+      { prompt: "Vocabulary: Planner.", priority: "interactive" },
     );
   });
 
@@ -739,7 +775,7 @@ describe("Dictation pipeline", () => {
 
     jest
       .spyOn(Date, "now")
-      .mockReturnValue(Date.now() + 2 * 60 * 60 * 1000);
+      .mockReturnValue(Date.now() + 8 * 24 * 60 * 60 * 1000);
     expect(await DictationSweepExpiredJobs()).toBeGreaterThanOrEqual(1);
     expect(await DictationGetJob("user-9", jobId)).toBeNull();
   });
@@ -1035,7 +1071,7 @@ describe("Dictation pipeline", () => {
       expect(mockAxios.post.mock.calls[0][0]).toBe(
         "https://stt.test/v1/audio/transcriptions",
       );
-      expect(mockRemove).not.toHaveBeenCalled();
+      expect(mockRemove).not.toHaveBeenCalledWith("/tmp/dictation/x1.audio");
     });
 
     it("should transcribe through the embedded engine without deleting the audio", async () => {
@@ -1066,9 +1102,9 @@ describe("Dictation pipeline", () => {
         "/tmp/dictation/x2.audio",
         "audio/webm",
         null,
-        { prompt: null },
+        { prompt: null, priority: "interactive" },
       );
-      expect(mockRemove).not.toHaveBeenCalled();
+      expect(mockRemove).not.toHaveBeenCalledWith("/tmp/dictation/x2.audio");
     });
 
     it("should polish a transcript and report it as polished", async () => {
@@ -1142,7 +1178,7 @@ describe("Dictation pipeline", () => {
         sttMs: expect.any(Number),
         polishMs: expect.any(Number),
       });
-      expect(mockRemove).not.toHaveBeenCalled();
+      expect(mockRemove).not.toHaveBeenCalledWith("/tmp/dictation/x3.audio");
     });
 
     it("should send the vocabulary prompt to the external endpoint", async () => {

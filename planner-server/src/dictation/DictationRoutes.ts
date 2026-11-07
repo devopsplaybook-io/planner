@@ -10,9 +10,14 @@ import {
   AuthMustBeAuthenticated,
   AuthRateLimitKey,
 } from "../users/Auth";
-import { UsersDataGet, UsersDataSetDictationTargetLanguage } from "../users/UsersData";
+import {
+  UsersDataGet,
+  UsersDataSetDictationKeepAudio,
+  UsersDataSetDictationTargetLanguage,
+} from "../users/UsersData";
 import { ProjectsDataGet } from "../projects/ProjectsData";
 import { isProjectVisible } from "../projects/ProjectVisibility";
+import { DbUtilsIsUniqueViolation } from "../utils/DbUtils";
 import {
   DictationGetInFlightJobId,
   DictationGetJob,
@@ -21,6 +26,7 @@ import {
   DictationWaitForJob,
 } from "./Dictation";
 import {
+  DictationDataGetByClientId,
   DictationDataGetForUser,
   DictationJobRecord,
   DictationJobSource,
@@ -278,21 +284,64 @@ export class DictationRoutes {
         );
 
         // Inline jobs are tagged so inline usage and latency can be measured
-        // separately from the modal; unknown sources keep the historic value.
+        // separately from the modal; quick captures (and offline queue
+        // retries) are tagged too. Import has its own long-form route.
+        if (fields.source === "import") {
+          await fs.remove(audioPath).catch(() => undefined);
+          return res
+            .status(400)
+            .send({ error: "Invalid: source (use /api/dictation/import)" });
+        }
         const source: DictationJobSource =
-          fields.source === "inline" ? "inline" : "dictation";
-        const jobId = await DictationStartJob(
-          userSession.userId,
-          audioPath,
-          audio.mimetype,
-          language,
-          source,
-          {
-            prompt: hotwordPrompt,
-            hotwordsCount: vocabularyTerms.length,
-            targetLanguage: target.value,
-          },
-        );
+          fields.source === "inline"
+            ? "inline"
+            : fields.source === "quick_capture"
+              ? "quick_capture"
+              : "dictation";
+        const clientId =
+          typeof fields.clientId === "string"
+            ? fields.clientId.trim().slice(0, 100) || null
+            : null;
+        if (clientId) {
+          const existing = await DictationDataGetByClientId(
+            userSession.userId,
+            clientId,
+          );
+          if (existing) {
+            await fs.remove(audioPath).catch(() => undefined);
+            return res.status(202).send({ jobId: existing.id });
+          }
+        }
+        let jobId: string;
+        try {
+          jobId = await DictationStartJob(
+            userSession.userId,
+            audioPath,
+            audio.mimetype,
+            language,
+            source,
+            {
+              prompt: hotwordPrompt,
+              hotwordsCount: vocabularyTerms.length,
+              targetLanguage: target.value,
+              clientId,
+            },
+          );
+        } catch (error) {
+          // Two concurrent retries of the same clientId: the unique index
+          // decides, and the loser returns the winner's job.
+          if (clientId && DbUtilsIsUniqueViolation(error)) {
+            await fs.remove(audioPath).catch(() => undefined);
+            const existing = await DictationDataGetByClientId(
+              userSession.userId,
+              clientId,
+            );
+            if (existing) {
+              return res.status(202).send({ jobId: existing.id });
+            }
+          }
+          throw error;
+        }
         return res.status(202).send({ jobId });
       },
     );
@@ -361,32 +410,52 @@ export class DictationRoutes {
         return res.status(401).send({ error: "Access Denied" });
       }
       const user = await UsersDataGet(userSession.userId);
-      return res
-        .status(200)
-        .send({ targetLanguage: user?.dictationTargetLanguage ?? null });
+      return res.status(200).send({
+        targetLanguage: user?.dictationTargetLanguage ?? null,
+        keepAudio: user ? !!user.dictationKeepAudio : false,
+      });
     });
 
     interface PutPreferences extends RequestGenericInterface {
-      Body: { targetLanguage?: string | null };
+      Body: { targetLanguage?: string | null; keepAudio?: boolean };
     }
     fastify.put<PutPreferences>("/preferences", async (req, res) => {
       const userSession = await AuthGetUserSession(req);
       if (!userSession.isAuthenticated) {
         return res.status(401).send({ error: "Access Denied" });
       }
-      const normalized = this.normalizeTargetLanguage(
-        req.body?.targetLanguage,
-      );
-      if (!normalized.valid) {
+      const hasLanguage = req.body?.targetLanguage !== undefined;
+      const hasKeepAudio = typeof req.body?.keepAudio === "boolean";
+      if (!hasLanguage && !hasKeepAudio) {
         return res
           .status(400)
-          .send({ error: "Invalid: targetLanguage (unsupported language)" });
+          .send({ error: "Missing: targetLanguage or keepAudio" });
       }
-      await UsersDataSetDictationTargetLanguage(
-        userSession.userId,
-        normalized.value,
-      );
-      return res.status(200).send({ targetLanguage: normalized.value });
+      const response: { targetLanguage?: string | null; keepAudio?: boolean } =
+        {};
+      if (hasLanguage) {
+        const normalized = this.normalizeTargetLanguage(
+          req.body?.targetLanguage,
+        );
+        if (!normalized.valid) {
+          return res
+            .status(400)
+            .send({ error: "Invalid: targetLanguage (unsupported language)" });
+        }
+        await UsersDataSetDictationTargetLanguage(
+          userSession.userId,
+          normalized.value,
+        );
+        response.targetLanguage = normalized.value;
+      }
+      if (hasKeepAudio) {
+        await UsersDataSetDictationKeepAudio(
+          userSession.userId,
+          req.body.keepAudio as boolean,
+        );
+        response.keepAudio = req.body.keepAudio;
+      }
+      return res.status(200).send(response);
     });
 
     // GET /api/dictation/jobs — recent jobs of the caller (bounded previews)

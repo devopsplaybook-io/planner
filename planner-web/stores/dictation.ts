@@ -2,7 +2,13 @@ import { acceptHMRUpdate, defineStore } from "pinia";
 import api from "../utils/api";
 import { fileExtensionForMimeType } from "../utils/dictationMime";
 
-export type DictationStage = "transcribing" | "polishing" | "actions";
+export type DictationStage =
+  | "queued"
+  | "chunking"
+  | "transcribing"
+  | "polishing"
+  | "actions"
+  | "summarizing";
 export type DictationStatus = "processing" | "done" | "error";
 export type DictationEngineState = "idle" | "downloading" | "ready" | "error";
 
@@ -201,6 +207,7 @@ export interface DictationTimings {
 export interface DictationJobView {
   jobId: string;
   source: string;
+  jobKind?: "short" | "meeting";
   status: DictationStatus;
   stage: DictationStage | null;
   engine: string;
@@ -212,6 +219,17 @@ export interface DictationJobView {
   timings: DictationTimings | null;
   engineState: DictationEngineState | null;
   error: string | null;
+  // Long-form jobs (absent on older servers)
+  transcriptSegments?: { fromMs: number; toMs: number; text: string }[] | null;
+  summary?: string | null;
+  decisions?: string[];
+  segmentsDone?: number;
+  segmentsTotal?: number;
+  archivedAt?: string | null;
+  audioRetained?: boolean;
+  convertedAt?: string | null;
+  convertedType?: string | null;
+  convertedTargetId?: string | null;
   dateCreated: string;
   dateUpdated: string;
 }
@@ -266,6 +284,8 @@ export const useDictationStore = defineStore("dictation", {
     language: loadStoredLanguage(),
     // Output language for the polish stage ("" = keep the spoken language)
     targetLanguage: loadStoredTargetLanguage(),
+    // Keep imported/quick-capture audio on the server after transcription
+    keepAudio: false,
     // Translation target of the job currently open in the dialog
     jobTargetLanguage: null as string | null,
     recentJobs: [] as DictationJobView[],
@@ -340,15 +360,34 @@ export const useDictationStore = defineStore("dictation", {
         };
       }
     },
-    /** Loads the stored translation target; failures keep the local fallback. */
+    /** Loads the stored preferences; failures keep the local fallbacks. */
     async fetchPreferences(): Promise<void> {
       try {
         const res = await api.get("/dictation/preferences");
         const value = res.data?.targetLanguage || "";
         this.targetLanguage = value;
         persistTargetLanguage(value);
+        if (typeof res.data?.keepAudio === "boolean") {
+          this.keepAudio = res.data.keepAudio;
+        }
       } catch {
         // Keep the localStorage fallback when the request fails
+      }
+    },
+    /** Stores the audio retention preference (server-side, all devices). */
+    async setKeepAudio(keepAudio: boolean): Promise<{ error?: string }> {
+      const previous = this.keepAudio;
+      this.keepAudio = keepAudio;
+      try {
+        await api.put("/dictation/preferences", { keepAudio });
+        return {};
+      } catch (err) {
+        this.keepAudio = previous;
+        return {
+          error:
+            (err as { response?: { data?: { error?: string } } })?.response
+              ?.data?.error || "The preference could not be saved.",
+        };
       }
     },
     /** Clears every field of the current job, keeping recent jobs. */
@@ -418,10 +457,17 @@ export const useDictationStore = defineStore("dictation", {
       blob: Blob,
       mimeType: string,
       language?: string,
-      source: "dictation" | "inline" = "dictation",
+      source: "dictation" | "inline" | "quick_capture" = "dictation",
       projectId?: string | null,
       targetLanguage?: string | null,
-    ): Promise<{ jobId?: string; conflictJobId?: string; error?: string }> {
+      options: { clientId?: string } = {},
+    ): Promise<{
+      jobId?: string;
+      conflictJobId?: string;
+      error?: string;
+      offline?: boolean;
+      status?: number;
+    }> {
       const form = new FormData();
       form.append(
         "file",
@@ -430,11 +476,15 @@ export const useDictationStore = defineStore("dictation", {
         }),
       );
       form.append("language", language || this.language);
-      if (source === "inline") {
-        form.append("source", "inline");
+      if (source === "inline" || source === "quick_capture") {
+        form.append("source", source);
       }
       if (projectId) {
         form.append("projectId", projectId);
+      }
+      if (options.clientId) {
+        // Idempotent retry: a queued upload never creates two jobs
+        form.append("clientId", options.clientId);
       }
       // Always sent: an empty value explicitly disables the stored preference
       const target =
@@ -460,6 +510,9 @@ export const useDictationStore = defineStore("dictation", {
           error:
             (err as { response?: { data?: { error?: string } } })?.response
               ?.data?.error || "The dictation could not be uploaded.",
+          // No HTTP response means the network failed: the queue keeps it
+          offline: !(err as { response?: unknown })?.response,
+          status,
         };
       }
     },

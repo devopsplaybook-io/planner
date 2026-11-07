@@ -565,6 +565,61 @@ describe("SttWhisperCpp embedded STT engine", () => {
     // Each run removes its temporary WAV and whisper JSON output
     expect(mockRemove).toHaveBeenCalledTimes(4);
   });
+it("should run interactive transcriptions before queued batch work", async () => {
+    const gate = deferred();
+    let whisperSpawnCount = 0;
+    mockSpawn.mockImplementation((command: string) => {
+      const child = fakeChild();
+      if (command === "ffmpeg") {
+        setImmediate(() => child.emit("close", 0));
+      } else {
+        whisperSpawnCount++;
+        const run = whisperSpawnCount;
+        setImmediate(() => {
+          child.stdout.emit("data", `run${run}\n`);
+          if (run === 1) {
+            gate.promise.then(() => child.emit("close", 0));
+          } else {
+            child.emit("close", 0);
+          }
+        });
+      }
+      return child;
+    });
+
+    const batch1 = SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/m1.audio",
+      "audio/webm",
+      "en",
+      { priority: "batch" },
+    );
+    await waitFor(() => whisperSpawnCount === 1);
+    const batch2 = SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/m2.audio",
+      "audio/webm",
+      "en",
+      { priority: "batch" },
+    );
+    const live = SttWhisperCppTranscribe(
+      config,
+      "/tmp/stt-test/dictation/i1.audio",
+      "audio/webm",
+      "en",
+      { priority: "interactive" },
+    );
+    await flush();
+    // Only the running transcription is active; both are queued
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+
+    gate.resolve(undefined);
+    const [first, third, second] = await Promise.all([batch1, live, batch2]);
+    expect(first.text).toBe("run1");
+    // The interactive job jumped ahead of the queued batch job
+    expect(third.text).toBe("run2");
+    expect(second.text).toBe("run3");
+  });
 });
 
 describe("SttWhisperCpp model preparation", () => {

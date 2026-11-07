@@ -130,10 +130,20 @@ The server is engine-agnostic in `external` mode: `STT_API_URL` is the base URL 
 | `DICTATION_VOCABULARY_MAX`       | Maximum stored vocabulary terms per user                 | `200`                     |
 | `DICTATION_CONFIDENCE_THRESHOLD` | Confidence below which the review highlights a word      | `0.6`                     |
 | `RATE_LIMIT_DICTATION_MAX`       | Max dictation uploads per user per hour                  | `30`                      |
+| `DICTATION_IMPORT_ENABLED`       | Allow importing long meeting recordings                  | `true`                    |
+| `DICTATION_IMPORT_MAX_MB`        | Maximum meeting import size in megabytes                 | `200`                     |
+| `DICTATION_IMPORT_MAX_DURATION_SECONDS` | Maximum imported recording duration               | `7200` (2 h)              |
+| `DICTATION_IMPORT_SEGMENT_SECONDS` | Target length of one transcription chunk               | `30`                      |
+| `DICTATION_INBOX_TTL_HOURS`      | Retention of inbox jobs without kept audio               | `168` (7 days)            |
+| `DICTATION_MEETING_TTL_DAYS`     | Retention of imported meeting jobs                       | `7`                       |
+| `DICTATION_AUDIO_KEEP_MAX_MB`    | Maximum kept audio per user (`0` disables keeping)       | `500`                     |
+| `DICTATION_AUDIO_RETENTION_DAYS` | Maximum age of kept audio                                | `30`                      |
+| `DICTATION_NOTIFY_READY`         | Send "Dictation ready" / "Meeting ready" push notifications | `true`                |
+| `RATE_LIMIT_DICTATION_IMPORT_MAX` | Max meeting imports per user per hour                   | `5`                       |
 
-Audio is never persisted: the uploaded file is deleted immediately after transcription, and transcripts are never logged. Vocabulary terms and the prompt composed from them are never logged either; only aggregate counters reach telemetry. The web client gets the recording/upload limits, the language list, the vocabulary/confidence limits and the engine state from `GET /api/status/config`, so a configuration change does not require a web rebuild.
+For short recordings (dialog, inline, quick capture, voice comments) audio is never persisted: the uploaded file is deleted immediately after transcription, and transcripts are never logged. Imported meeting audio is deleted as soon as the job finishes unless the user keeps it (per-import choice or the stored `keepAudio` preference), in which case it is removed after `DICTATION_AUDIO_RETENTION_DAYS` or when the per-user `DICTATION_AUDIO_KEEP_MAX_MB` cap is exceeded. Vocabulary terms and the prompt composed from them are never logged either; only aggregate counters reach telemetry. The web client gets the recording/upload/import limits, the language list, the vocabulary/confidence limits, the retention settings and the engine state from `GET /api/status/config`, so a configuration change does not require a web rebuild.
 
-Users can manage a custom vocabulary (personal and per-project) that biases transcription, choose an optional target output language, and review low-confidence words. Vocabulary is available through `GET/POST/PUT /api/dictation/vocabulary` and `DELETE /api/dictation/vocabulary/:id`; the target language is stored per user through `GET/PUT /api/dictation/preferences`. A `projectId` and an optional `targetLanguage` can be sent with a dictation upload.
+Users can manage a custom vocabulary (personal and per-project) that biases transcription, choose an optional target output language, and review low-confidence words. Vocabulary is available through `GET/POST/PUT /api/dictation/vocabulary` and `DELETE /api/dictation/vocabulary/:id`; the target language and the "keep audio" retention preference are stored per user through `GET/PUT /api/dictation/preferences`. A `projectId` and an optional `targetLanguage` can be sent with a dictation upload.
 
 Example setups:
 
@@ -155,6 +165,24 @@ With `STT_MODE=embedded`, Planner embeds its own speech-to-text engine ([whisper
 ### Voice comments
 
 Voice comments on tasks reuse the same STT and polish stages. When an audio attachment is uploaded, the transcription runs in the background and posts the transcript as a task comment; the task dialog shows the transcription status per audio attachment and offers a **Retry** action for failed or skipped transcriptions. The hourly voice quota is shared with dictation, and a skipped transcription is reported inline (the audio is still kept). Transcripts can be corrected by editing the generated comment.
+
+### Voice inbox and capture anywhere
+
+The **Inbox** page (`/inbox`, also in the navigation with a badge) lists every dictation, inline transcription, quick capture and imported meeting. Each entry can be opened in the review dialog, converted into a task, note, task comment or checklist items (project and permissions are re-checked server-side), archived (the state survives reloads and restarts) or deleted. The list supports filters and pagination; `voice_comment` jobs stay on their task and are excluded unless requested explicitly. Jobs expire by source: voice comments after 1 hour, inbox jobs after `DICTATION_INBOX_TTL_HOURS` and meeting imports after `DICTATION_MEETING_TTL_DAYS`.
+
+**Quick capture** records a thought from the navigation or with `Ctrl/Cmd+Shift+D` and uploads it in the background with `source=quick_capture`; the dialog closes immediately, so the recording is safe even if the page or app is closed. A client-generated `clientId` makes retries idempotent. When the job finishes, the user gets a **content-free** "Dictation ready" / "Meeting ready" push notification (if web push is configured and the user opted in under Settings → Notifications → Dictation ready) plus an in-app toast and a refreshed badge; the notification deep-links to `/inbox?jobId=<id>` and opens the finished job. The notification never contains audio, transcript or summary text, and a push failure never fails the job.
+
+**Offline queue**: recordings made offline are stored in the browser (IndexedDB, with an in-memory fallback) and uploaded automatically on reconnect, on the next app start or after sign-in. The queue is limited to **20 recordings / 100 MB per device**; the oldest recordings are evicted first and an oversized single recording is refused with a visible error. A queued recording keeps its `clientId`, so the server deduplicates retries; permanent rejections are reported and dropped, transient failures are retried.
+
+**Share to Planner** (best effort): the PWA manifest registers an audio share target. Supported browsers (Android/Chrome-class; iOS Safari does not support share targets) can share an audio file to the installed app; the service worker queues it and redirects to the inbox, which uploads it. Without service-worker support the server redirects to the inbox with an explanation, and **Import meeting** remains the fallback.
+
+The STT priority scheduler, the per-user single-flight checks and the meeting worker are in-process: **a single server replica is assumed**. Long-running jobs are stored in SQLite/PostgreSQL and resume after a restart, but a multi-replica deployment would need a shared queue and coordination.
+
+### Meeting import (long-form)
+
+`POST /api/dictation/import` uploads a 30 s–2 h recording (`wav/mp3/m4a/webm`, up to `DICTATION_IMPORT_MAX_MB`) and starts a durable background job; only one import may be processing per user at a time. The server probes the duration, detects silences with `ffmpeg`, splits the audio into chunks of roughly `DICTATION_IMPORT_SEGMENT_SECONDS` (never longer than 45 s), transcribes them sequentially with timestamped segments, and resumes from the last finished chunk after a restart. A final map-reduce LLM pass produces a summary, decisions and action items; the action items become regular task proposals scoped to the import project, reviewable and applicable through the existing structured-action flow.
+
+The import dialog shows the stage, `segmentsDone/segmentsTotal`, elapsed time and an ETA based on the configured real-time factor. Import chunks run in a **batch** lane behind interactive dictation, so a dialog, inline or quick-capture recording never waits for a long meeting chunk. Imported audio is deleted when the job finishes unless the user keeps it (per-import or via Settings → Dictation → Keep audio after transcription); kept audio is bounded by `DICTATION_AUDIO_RETENTION_DAYS` and `DICTATION_AUDIO_KEEP_MAX_MB`. Embedded transcription is CPU-bound (roughly 0.4–0.5× real time for `ggml-base` on 2 CPU), so a 60-minute meeting can take about 25–30 minutes; the UI states this explicitly. Diarization, real-time streaming and sharing transcripts are out of scope.
 
 ## Web Push Notifications
 
@@ -225,10 +253,18 @@ Planner exposes a RESTful API under the `/api/` prefix:
 | POST /api/dictation/vocabulary | Add a vocabulary term (personal or project scope) |
 | PUT /api/dictation/vocabulary | Replace one vocabulary scope from a plain-text list |
 | DELETE /api/dictation/vocabulary/:id | Delete a vocabulary term owned by the caller |
-| GET /api/dictation/preferences | Read the stored dictation preferences (target output language) |
-| PUT /api/dictation/preferences | Update the target output language preference |
+| GET /api/dictation/preferences | Read the stored dictation preferences (target output language, keep audio) |
+| PUT /api/dictation/preferences | Update the target output language and/or the keep-audio preference |
+| GET /api/dictation/inbox | List the caller's voice inbox (`limit`, `offset`, `status`, `source`, `includeArchived`) |
+| GET /api/dictation/inbox/badge | Unread and processing counts for the navigation badge (`since`) |
+| PATCH /api/dictation/inbox/:jobId | Archive or unarchive an inbox job |
+| DELETE /api/dictation/inbox/:jobId | Delete a settled inbox job and its kept audio |
+| POST /api/dictation/inbox/:jobId/convert | Convert a job into a task, note, task comment or checklist items |
+| POST /api/dictation/import | Upload a long recording for chunked transcription, summary and action items |
 | GET /api/tasks/:taskId/voice-transcriptions | Latest voice-transcription status per audio attachment |
 | POST /api/tasks/:taskId/attachments/:attachmentId/transcribe | Retry a failed or skipped voice transcription |
+| GET /api/notifications/preferences | Read the notification preferences (`digest`, `dictation`) |
+| PUT /api/notifications/preferences | Update the notification preferences |
 | GET /api/users/calendar.ics | ICS calendar feed of the authenticated user's visible task due dates (API key required) |
 
 Additional API endpoints for projects, tasks, notes, and users will be available as the implementation progresses.

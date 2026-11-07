@@ -47,6 +47,11 @@
       @close="showNoteCreate = false"
       @created="onNoteCreated"
     />
+    <!-- Global quick capture and meeting import dialogs -->
+    <QuickCaptureDialog />
+    <MeetingImportDialog />
+    <!-- In-app notifications (also fed by service-worker push messages) -->
+    <AppToast />
   </div>
 </template>
 
@@ -54,9 +59,36 @@
 const route = useRoute();
 const router = useRouter();
 const dictationStore = useDictationStore();
+const inboxStore = useInboxStore();
+const authStore = useAuthStore();
+const recommendationStore = useRecommendationStore();
+const { pushToast } = useToasts();
+const offlineQueue = useOfflineDictationQueue();
+const { openQuickCapture } = useQuickCapture();
 
 const showTaskCreate = ref(false);
 const showNoteCreate = ref(false);
+
+/**
+ * The service worker forwards displayed pushes to the page so the user gets
+ * an in-app toast and the inbox badge refreshes without a reload. The
+ * payload is content-free (a generic status title/body and a URL).
+ */
+function onServiceWorkerMessage(event) {
+  const data = event.data;
+  if (!data || data.type !== "push") {
+    return;
+  }
+  pushToast({
+    kind: "info",
+    title: data.title || "Planner",
+    message: data.body || "",
+    url: data.url || undefined,
+  });
+  if (data.kind === "dictation" || String(data.url || "").startsWith("/inbox")) {
+    inboxStore.fetchBadge().catch(() => undefined);
+  }
+}
 
 /**
  * Point the open task dialog at the freshly created task.
@@ -105,6 +137,28 @@ function onTaskCloned(newTaskId) {
   router.replace({ path: route.path, query });
 }
 
+/**
+ * Ctrl/Cmd+Shift+D opens quick capture from anywhere (the inline dictation
+ * shortcut Ctrl/Cmd+Alt+D stays scoped to the focused field).
+ */
+function onGlobalKeydown(event) {
+  if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey) {
+    return;
+  }
+  if (String(event.key).toLowerCase() !== "d") {
+    return;
+  }
+  if (
+    !authStore.isAuthenticated ||
+    !recommendationStore.isDictationEnabled ||
+    !recommendationStore.isDictationSttConfigured
+  ) {
+    return;
+  }
+  event.preventDefault();
+  openQuickCapture();
+}
+
 // Theme management
 const theme = ref(localStorage.getItem("theme") || "system");
 
@@ -145,14 +199,34 @@ onMounted(() => {
   updateAppHeight();
   window.addEventListener("resize", updateAppHeight);
   window.visualViewport?.addEventListener("resize", updateAppHeight);
+  offlineQueue.init();
+  window.addEventListener("keydown", onGlobalKeydown);
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", onServiceWorkerMessage);
+  }
 });
+
+// After login, retry the recordings queued while signed out or offline
+watch(
+  () => authStore.isAuthenticated,
+  (authenticated) => {
+    if (authenticated) {
+      offlineQueue.init();
+    }
+  },
+);
 
 onUnmounted(() => {
   window.removeEventListener("resize", updateAppHeight);
+  window.removeEventListener("keydown", onGlobalKeydown);
   window.visualViewport?.removeEventListener("resize", updateAppHeight);
   window
     .matchMedia("(prefers-color-scheme: dark)")
     .removeEventListener("change", applyTheme);
+  navigator.serviceWorker?.removeEventListener(
+    "message",
+    onServiceWorkerMessage,
+  );
 });
 
 // Provide theme to child components

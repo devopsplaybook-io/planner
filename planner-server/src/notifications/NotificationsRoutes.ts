@@ -1,6 +1,6 @@
 import { FastifyInstance, RequestGenericInterface } from "fastify";
 import { AuthGetUserSession } from "../users/Auth";
-import { UsersDataGet, UsersDataSetNotificationDigest } from "../users/UsersData";
+import { UsersDataGet, UsersDataSetNotificationDictation, UsersDataSetNotificationDigest } from "../users/UsersData";
 import {
   NotificationsGetPublicKey,
   NotificationsIsEnabled,
@@ -90,12 +90,16 @@ export class NotificationsRoutes {
         return res.status(401).send({ error: "Access Denied" });
       }
       const user = await UsersDataGet(userSession.userId);
-      return res.status(200).send({ digest: !!user?.notificationDigest });
+      return res.status(200).send({
+        digest: !!user?.notificationDigest,
+        dictation: user ? !!user.notificationDictation : true,
+      });
     });
 
     interface PutPreferences extends RequestGenericInterface {
       Body: {
-        digest: boolean;
+        digest?: boolean;
+        dictation?: boolean;
       };
     }
     fastify.put<PutPreferences>("/preferences", async (req, res) => {
@@ -103,11 +107,26 @@ export class NotificationsRoutes {
       if (!userSession.isAuthenticated) {
         return res.status(401).send({ error: "Access Denied" });
       }
-      if (typeof req.body?.digest !== "boolean") {
-        return res.status(400).send({ error: "Missing: digest (boolean)" });
+      const digest = req.body?.digest;
+      const dictation = req.body?.dictation;
+      if (typeof digest !== "boolean" && typeof dictation !== "boolean") {
+        return res
+          .status(400)
+          .send({ error: "Missing: digest or dictation (boolean)" });
       }
-      await UsersDataSetNotificationDigest(userSession.userId, req.body.digest);
-      return res.status(200).send({ digest: req.body.digest });
+      const updated: { digest?: boolean; dictation?: boolean } = {};
+      if (typeof digest === "boolean") {
+        await UsersDataSetNotificationDigest(userSession.userId, digest);
+        updated.digest = digest;
+      }
+      if (typeof dictation === "boolean") {
+        await UsersDataSetNotificationDictation(
+          userSession.userId,
+          dictation,
+        );
+        updated.dictation = dictation;
+      }
+      return res.status(200).send(updated);
     });
   }
 }

@@ -16,8 +16,14 @@ export class User {
     user.role = (json.role as UserRole) || "user";
     user.tokenVersion = Number(json.tokenVersion || 0);
     user.notificationDigest = !!json.notificationDigest;
+    user.notificationDictation =
+      json.notificationDictation === undefined ||
+      json.notificationDictation === null
+        ? true
+        : !!json.notificationDictation;
     user.dictationTargetLanguage =
       (json.dictationTargetLanguage as string) || null;
+    user.dictationKeepAudio = !!json.dictationKeepAudio;
     return user;
   }
 
@@ -29,8 +35,12 @@ export class User {
   public tokenVersion = 0;
   /** Opts the user into one consolidated daily reminders push instead of one per task. */
   public notificationDigest = false;
+  /** Opts the user into the "dictation ready" push (default on). */
+  public notificationDictation = true;
   /** Optional "speak X, write Y" translation target for dictation (null = off). */
   public dictationTargetLanguage: string | null = null;
+  /** Keeps the original audio file after transcription (default off). */
+  public dictationKeepAudio = false;
   public dateCreated: string;
 
   constructor() {
@@ -45,7 +55,9 @@ export class User {
       passwordEncrypted: this.passwordEncrypted,
       role: this.role,
       tokenVersion: this.tokenVersion,
+      notificationDictation: this.notificationDictation,
       dictationTargetLanguage: this.dictationTargetLanguage,
+      dictationKeepAudio: this.dictationKeepAudio,
       dateCreated: this.dateCreated,
     };
   }

@@ -38,6 +38,17 @@ export interface DictationConfig {
   applyActions?: boolean;
   ask?: boolean;
   phrasesMax?: number;
+  // Voice inbox / long-form import / audio retention (absent on older servers)
+  importEnabled?: boolean;
+  importMaxMb?: number;
+  importMaxDurationSeconds?: number;
+  segmentSeconds?: number;
+  inboxTtlHours?: number;
+  meetingTtlDays?: number;
+  keepAudioDefault?: boolean;
+  audioKeepMaxMb?: number;
+  audioRetentionDays?: number;
+  notificationsSupported?: boolean;
 }
 
 export interface AppConfig {
@@ -87,6 +98,16 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     applyActions: false,
     ask: false,
     phrasesMax: 50,
+    importEnabled: false,
+    importMaxMb: 200,
+    importMaxDurationSeconds: 7200,
+    segmentSeconds: 30,
+    inboxTtlHours: 168,
+    meetingTtlDays: 7,
+    keepAudioDefault: false,
+    audioKeepMaxMb: 500,
+    audioRetentionDays: 30,
+    notificationsSupported: false,
   },
 };
 
@@ -166,6 +187,32 @@ export const useRecommendationStore = defineStore("recommendation", {
     dictationPhrasesMax: (state) =>
       state.config?.dictation?.phrasesMax ??
       DEFAULT_APP_CONFIG.dictation!.phrasesMax!,
+    dictationImportEnabled: (state) =>
+      (state.config?.dictationEnabled ?? false) &&
+      (state.config?.dictation?.importEnabled ??
+        DEFAULT_APP_CONFIG.dictation!.importEnabled ??
+        false),
+    dictationImportMaxMb: (state) =>
+      state.config?.dictation?.importMaxMb ??
+      DEFAULT_APP_CONFIG.dictation!.importMaxMb!,
+    dictationImportMaxDurationSeconds: (state) =>
+      state.config?.dictation?.importMaxDurationSeconds ??
+      DEFAULT_APP_CONFIG.dictation!.importMaxDurationSeconds!,
+    dictationSegmentSeconds: (state) =>
+      state.config?.dictation?.segmentSeconds ??
+      DEFAULT_APP_CONFIG.dictation!.segmentSeconds!,
+    dictationInboxTtlHours: (state) =>
+      state.config?.dictation?.inboxTtlHours ??
+      DEFAULT_APP_CONFIG.dictation!.inboxTtlHours!,
+    dictationMeetingTtlDays: (state) =>
+      state.config?.dictation?.meetingTtlDays ??
+      DEFAULT_APP_CONFIG.dictation!.meetingTtlDays!,
+    dictationAudioKeepMaxMb: (state) =>
+      state.config?.dictation?.audioKeepMaxMb ??
+      DEFAULT_APP_CONFIG.dictation!.audioKeepMaxMb!,
+    dictationAudioRetentionDays: (state) =>
+      state.config?.dictation?.audioRetentionDays ??
+      DEFAULT_APP_CONFIG.dictation!.audioRetentionDays!,
   },
 
   actions: {

@@ -19,6 +19,7 @@ import {
 } from "./DictationLlm";
 import {
   SttNoSpeechError,
+  SttPriority,
   SttWhisperCppCleanStalePartFiles,
   SttWhisperCppGetStatus,
   SttWhisperCppGetThreads,
@@ -26,6 +27,7 @@ import {
   SttWhisperCppTranscribe,
 } from "./SttWhisperCpp";
 import {
+  DictationJobKind,
   DictationJobRecord,
   DictationJobSource,
   DictationDataCreate,
@@ -33,9 +35,11 @@ import {
   DictationDataGet,
   DictationDataGetForUser,
   DictationDataGetInFlightForUser,
+  DictationDataListKeptAudio,
   DictationDataListRecent,
   DictationDataListResumable,
   DictationDataMarkInterruptedBeforeStt,
+  DictationDataSetAudioState,
   DictationDataUpdate,
 } from "./DictationData";
 import {
@@ -43,11 +47,17 @@ import {
   DictationTelemetryRecordError,
   DictationTelemetryRecordJob,
   DictationTelemetryRecordNoSpeech,
+  DictationTelemetryRecordNotification,
   DictationTelemetryRecordQueue,
   DictationTelemetryRecordStage,
   DictationTelemetryStartSpan,
 } from "./DictationTelemetry";
-import { DictationSegment } from "./DictationTypes";
+import {
+  DICTATION_INTERACTIVE_SOURCES,
+  DictationSegment,
+  TimestampedTranscriptSegment,
+} from "./DictationTypes";
+import { NotificationsDictationReady } from "../notifications/Notifications";
 import {
   DictationPhraseRecord,
   DictationPhrasesListForUser,
@@ -59,18 +69,43 @@ const logger = console;
 
 let config: Config;
 
-const DICTATION_JOB_TTL_MS = 60 * 60 * 1000;
+const VOICE_COMMENT_TTL_MS = 60 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const WAIT_DEFAULT_TIMEOUT_MS = 25 * 1000;
 const WAIT_RECHECK_MS = 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const NO_SPEECH_ERROR = "No speech detected, please try again.";
 const GENERIC_ERROR = "Dictation failed, please try again";
 const INTERRUPTED_ERROR = "Interrupted, please record again.";
 
+/**
+ * Job lifetime by origin: voice comments stay with their task for an hour,
+ * meeting imports follow DICTATION_MEETING_TTL_DAYS and short inbox jobs
+ * follow DICTATION_INBOX_TTL_HOURS.
+ */
+export function DictationJobTtlMs(
+  source: DictationJobSource,
+  jobKind: DictationJobKind,
+): number {
+  if (source === "voice_comment") {
+    return VOICE_COMMENT_TTL_MS;
+  }
+  if (jobKind === "meeting") {
+    return (config?.DICTATION_MEETING_TTL_DAYS ?? 7) * DAY_MS;
+  }
+  return (config?.DICTATION_INBOX_TTL_HOURS ?? 168) * 60 * 60 * 1000;
+}
+
 // ── Public Interface ──────────────────────────────────────────────────────────
 
-export type DictationStage = "transcribing" | "polishing" | "actions";
+export type DictationStage =
+  | "queued"
+  | "chunking"
+  | "transcribing"
+  | "polishing"
+  | "actions"
+  | "summarizing";
 export type DictationStatus = "processing" | "done" | "error";
 
 export interface DictationResult {
@@ -101,6 +136,7 @@ export interface DictationTimings {
 export interface DictationJobView {
   jobId: string;
   source: DictationJobSource;
+  jobKind: DictationJobKind;
   status: DictationStatus;
   stage: DictationStage | null;
   engine: string;
@@ -113,6 +149,17 @@ export interface DictationJobView {
   timings: DictationTimings;
   engineState: "idle" | "downloading" | "ready" | "error";
   error: string | null;
+  /** Long-form only: bounded timestamped transcript */
+  transcriptSegments: TimestampedTranscriptSegment[] | null;
+  summary: string | null;
+  decisions: string[];
+  segmentsDone: number;
+  segmentsTotal: number;
+  archivedAt: string | null;
+  audioRetained: boolean;
+  convertedAt: string | null;
+  convertedType: string | null;
+  convertedTargetId: string | null;
   dateCreated: string;
   dateUpdated: string;
 }
@@ -131,6 +178,11 @@ export interface DictationStartJobOptions {
   /** Number of terms in the prompt, exported as an aggregate counter only */
   hotwordsCount?: number;
   targetLanguage?: string | null;
+  /** Client-generated idempotency key (offline queue / share target) */
+  clientId?: string | null;
+  jobKind?: DictationJobKind;
+  /** Queue lane override; short recordings always default to interactive. */
+  priority?: SttPriority;
 }
 
 export async function DictationInit(configIn: Config): Promise<void> {
@@ -189,6 +241,7 @@ function buildView(record: DictationJobRecord): DictationJobView {
   return {
     jobId: record.id,
     source: record.source,
+    jobKind: record.jobKind,
     status: record.status,
     stage: record.stage as DictationStage | null,
     engine: record.engine,
@@ -211,6 +264,16 @@ function buildView(record: DictationJobRecord): DictationJobView {
     },
     engineState,
     error: record.error,
+    transcriptSegments: record.transcriptSegments,
+    summary: record.summary,
+    decisions: record.decisions,
+    segmentsDone: record.segmentsDone,
+    segmentsTotal: record.segmentsTotal,
+    archivedAt: record.archivedAt,
+    audioRetained: record.audioRetained,
+    convertedAt: record.convertedAt,
+    convertedType: record.convertedType,
+    convertedTargetId: record.convertedTargetId,
     dateCreated: record.dateCreated,
     dateUpdated: record.dateUpdated,
   };
@@ -244,17 +307,22 @@ export async function DictationStartJob(
 ): Promise<string> {
   const jobId = uuidv4();
   const startedAt = Date.now();
+  const jobKind = options.jobKind ?? "short";
   await DictationDataCreate({
     id: jobId,
     userId,
     source,
+    jobKind,
+    clientId: options.clientId ?? null,
     status: "processing",
     stage: "transcribing",
     language,
     targetLanguage: options.targetLanguage ?? null,
     engine: currentEngine(),
     model: currentModel(),
-    expiresAt: new Date(startedAt + DICTATION_JOB_TTL_MS).toISOString(),
+    expiresAt: new Date(
+      startedAt + DictationJobTtlMs(source, jobKind),
+    ).toISOString(),
   });
   inFlightJobIds.set(userId, jobId);
   void runDictationJob(
@@ -290,12 +358,15 @@ export async function DictationGetInFlightJobId(
   if (inFlight) {
     return inFlight;
   }
-  // Inline jobs recover like dialog jobs after a restart: check both sources
-  for (const source of ["inline", "dictation"] as const) {
-    const record = await DictationDataGetInFlightForUser(userId, source);
-    if (record && Date.parse(record.expiresAt) >= Date.now()) {
-      return record.id;
-    }
+  // Short jobs recover like dialog jobs after a restart; quick captures and
+  // inline recordings are the same interactive lane.
+  const record = await DictationDataGetInFlightForUser(
+    userId,
+    DICTATION_INTERACTIVE_SOURCES,
+    "short",
+  );
+  if (record && Date.parse(record.expiresAt) >= Date.now()) {
+    return record.id;
   }
   return null;
 }
@@ -407,7 +478,7 @@ export async function DictationResumeJob(jobId: string): Promise<void> {
   if (!record.rawTranscript) {
     return;
   }
-  if (record.source !== "dictation" && record.source !== "inline") {
+  if (!DICTATION_INTERACTIVE_SOURCES.includes(record.source)) {
     await DictationDataUpdate(jobId, {
       status: "error",
       stage: null,
@@ -433,6 +504,8 @@ export async function DictationResumeJob(jobId: string): Promise<void> {
       createdAt,
       root,
       record.source,
+      undefined,
+      record.jobKind,
     );
   } catch (error) {
     root.fail(error);
@@ -443,11 +516,90 @@ export async function DictationResumeJob(jobId: string): Promise<void> {
 }
 
 /**
- * Removes expired jobs. Returns the number of jobs removed. Exported for
- * tests and called by the periodic sweep timer.
+ * Removes expired jobs (after removing their kept audio) and enforces the
+ * per-user audio retention caps. Returns the number of jobs removed. Exported
+ * for tests and called by the periodic sweep timer.
  */
-export async function DictationSweepExpiredJobs(): Promise<number> {
-  return DictationDataDeleteExpired();
+export async function DictationSweepExpiredJobs(
+  now: number = Date.now(),
+): Promise<number> {
+  await DictationCleanupAudioRetention(now);
+  return DictationDataDeleteExpired(new Date(now).toISOString());
+}
+
+/**
+ * Deletes kept audio that outlived its job or the retention window, then the
+ * oldest recordings of each user while their total exceeds the cap. Only
+ * file paths and sizes are involved: never audio content.
+ */
+async function DictationCleanupAudioRetention(now: number): Promise<void> {
+  if (!config) {
+    return;
+  }
+  const maxBytes =
+    Math.max(0, config.DICTATION_AUDIO_KEEP_MAX_MB) * 1024 * 1024;
+  const maxAgeMs =
+    Math.max(1, config.DICTATION_AUDIO_RETENTION_DAYS) * DAY_MS;
+  const records = await DictationDataListKeptAudio();
+  const perUser = new Map<
+    string,
+    { id: string; audioPath: string; size: number }[]
+  >();
+  for (const record of records) {
+    const audioPath = record.audioPath;
+    if (!audioPath) {
+      continue;
+    }
+    let size: number;
+    try {
+      size = (await fs.stat(audioPath)).size;
+    } catch {
+      // The file is already gone; forget the reference
+      await DictationDataSetAudioState(record.id, {
+        audioPath: null,
+        audioDeletedAt: new Date(now).toISOString(),
+      });
+      continue;
+    }
+    const expired =
+      Date.parse(record.expiresAt) < now ||
+      now - Date.parse(record.dateCreated) > maxAgeMs;
+    if (expired) {
+      await removeKeptAudio(record.id, audioPath, now);
+      continue;
+    }
+    const list = perUser.get(record.userId) ?? [];
+    list.push({ id: record.id, audioPath, size });
+    perUser.set(record.userId, list);
+  }
+  // Entries arrive oldest first (ListKeptAudio order): drop the oldest files
+  // until the user's total fits the cap.
+  for (const entries of perUser.values()) {
+    let total = entries.reduce((sum, entry) => sum + entry.size, 0);
+    for (const entry of entries) {
+      if (total <= maxBytes) {
+        break;
+      }
+      await removeKeptAudio(entry.id, entry.audioPath, now);
+      total -= entry.size;
+    }
+  }
+}
+
+async function removeKeptAudio(
+  jobId: string,
+  audioPath: string,
+  now: number,
+): Promise<void> {
+  try {
+    await fs.remove(audioPath);
+  } catch {
+    // Best effort: the reference is cleared either way
+  }
+  await DictationDataSetAudioState(jobId, {
+    audioPath: null,
+    audioDeletedAt: new Date(now).toISOString(),
+  });
 }
 
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -519,6 +671,21 @@ async function DictationStartupRecovery(): Promise<void> {
         );
       });
     }
+    // Long-form jobs keep durable audio: they resume from their persisted
+    // progress instead of failing. Chunk work files belong to dead processes.
+    await fs.remove(path.join(config.DATA_DIR, "dictation-work")).catch(
+      () => undefined,
+    );
+    try {
+      const { DictationLongformStartupRecovery } = await import(
+        "./DictationLongform"
+      );
+      await DictationLongformStartupRecovery();
+    } catch (error) {
+      logger.error(
+        `[Dictation] Long-form startup recovery failed: ${(error as Error).message}`,
+      );
+    }
   } catch (error) {
     logger.error(
       `[Dictation] Startup recovery failed: ${(error as Error).message}`,
@@ -557,7 +724,7 @@ async function runDictationJob(
         audioFilePath,
         audioMimeType,
         language,
-        { prompt: options.prompt },
+        { prompt: options.prompt, priority: options.priority },
       );
     } finally {
       // No audio retention: delete the temp file right after the STT call,
@@ -587,6 +754,7 @@ async function runDictationJob(
       root,
       source,
       transcription,
+      options.jobKind ?? "short",
     );
   } catch (error) {
     root.fail(error);
@@ -651,6 +819,7 @@ async function runPostTranscription(
   root: ReturnType<typeof DictationTelemetryStartSpan>,
   source: DictationJobSource,
   transcription?: DictationAudioResult,
+  jobKind: DictationJobKind = "short",
 ): Promise<void> {
   root.setAttribute("transcript.chars", rawTranscript.length);
   if (transcription) {
@@ -746,7 +915,25 @@ async function runPostTranscription(
   DictationNotifyJobChange(jobId);
   DictationTelemetryRecordJob(source, "done", totalMs);
   root.setAttribute("dictation.status", "done");
+  await DictationNotifyReady(jobId, userId, jobKind);
   logger.info(`[Dictation] Job ${jobId} done`);
+}
+
+/**
+ * Best-effort "dictation ready" push. Never throws: a push failure must not
+ * fail the job, and only ids/kinds reach telemetry.
+ */
+export async function DictationNotifyReady(
+  jobId: string,
+  userId: string,
+  jobKind: DictationJobKind,
+): Promise<void> {
+  try {
+    const sent = await NotificationsDictationReady(userId, { id: jobId, jobKind });
+    DictationTelemetryRecordNotification(sent ? "sent" : "skipped", jobKind);
+  } catch {
+    DictationTelemetryRecordNotification("error", jobKind);
+  }
 }
 
 async function failJob(
@@ -794,7 +981,7 @@ export async function DictationTranscribeAudio(
   audioFilePath: string,
   audioMimeType: string,
   language: string | null,
-  options: { prompt?: string | null } = {},
+  options: { prompt?: string | null; priority?: SttPriority } = {},
 ): Promise<DictationAudioResult> {
   if (config.STT_MODE === "embedded") {
     return SttWhisperCppTranscribe(
@@ -802,7 +989,10 @@ export async function DictationTranscribeAudio(
       audioFilePath,
       audioMimeType,
       language,
-      { prompt: options.prompt ?? null },
+      {
+        prompt: options.prompt ?? null,
+        priority: options.priority === "batch" ? "batch" : "interactive",
+      },
     );
   }
   const span = DictationTelemetryStartSpan("dictation.stt", undefined, {
@@ -956,6 +1146,23 @@ export async function DictationTranscribeAndPolish(
 }
 
 // ── LLM API call with retry ───────────────────────────────────────────────────
+
+/**
+ * Runs one completion with the dictation retry policy. Exported for the
+ * long-form summarizer, which shares the same endpoint and key.
+ */
+export async function DictationLlmComplete(
+  systemPrompt: string,
+  prompt: string,
+  maxTokens: number,
+): Promise<string> {
+  return callLLMWithRetry(systemPrompt, prompt, maxTokens);
+}
+
+/** Whether an LLM is configured (translation, polish, summaries, actions). */
+export function DictationIsLlmConfigured(): boolean {
+  return !!config?.LLM_API_KEY;
+}
 
 async function callLLMWithRetry(
   systemPrompt: string,
