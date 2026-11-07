@@ -45,19 +45,33 @@
         </label>
         <label>
           Title
-          <input
-            v-model="form.title"
-            type="text"
-            required
-            placeholder="Task title"
-          />
+          <span class="with-dictation">
+            <input
+              ref="titleInput"
+              v-model="form.title"
+              type="text"
+              required
+              placeholder="Task title"
+            />
+            <InlineDictationButton
+              :target="titleInput"
+              aria-label="Dictate task title"
+            />
+          </span>
         </label>
         <label>
           Description
-          <textarea
-            v-model="form.description"
-            placeholder="Optional description"
-          />
+          <span class="with-dictation">
+            <textarea
+              ref="descriptionInput"
+              v-model="form.description"
+              placeholder="Optional description"
+            />
+            <InlineDictationButton
+              :target="descriptionInput"
+              aria-label="Dictate task description"
+            />
+          </span>
         </label>
         <label>
           Priority
@@ -90,11 +104,18 @@
             :key="idx"
             class="checklist-input-row"
           >
-            <input
-              v-model="form.checklist[idx].text"
-              type="text"
-              placeholder="Checklist item"
-            />
+            <span class="with-dictation">
+              <input
+                :ref="(el) => setChecklistInput(idx, el)"
+                v-model="form.checklist[idx].text"
+                type="text"
+                placeholder="Checklist item"
+              />
+              <InlineDictationButton
+                :target="() => checklistInputs[idx]"
+                aria-label="Dictate checklist item"
+              />
+            </span>
             <button
               type="button"
               class="small secondary"
@@ -136,6 +157,15 @@ const labelsStore = useLabelsStore();
 const users = ref([]);
 const creating = ref(false);
 const dialogError = ref("");
+const titleInput = ref(null);
+const descriptionInput = ref(null);
+// Checklist rows are created dynamically: function refs keep one field per row
+const checklistInputs = {};
+function setChecklistInput(idx, el) {
+  // A null entry means the row is unmounted; never delete the key so the
+  // per-row getters stay stable
+  checklistInputs[idx] = el || null;
+}
 
 function setDialogError(e, fallback) {
   dialogError.value = e?.response?.data?.error || fallback;
@@ -225,6 +255,14 @@ async function createTask() {
 </script>
 
 <style scoped>
+.with-dictation {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
 .checklist-input-row {
   display: grid;
   grid-template-columns: 1fr auto;

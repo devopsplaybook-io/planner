@@ -307,3 +307,126 @@ describe("dictation store", () => {
     expect(store.isProcessing).toBe(false);
   });
 });
+
+describe("dictation store helpers", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("should submit an inline job with its own source", async () => {
+    mockApiPost.mockResolvedValue({ data: { jobId: "job-9" } });
+    const store = useDictationStore();
+
+    const result = await store.uploadJob(
+      new Blob(["audio"]),
+      "audio/webm",
+      "fr",
+      "inline",
+    );
+
+    expect(result).toEqual({ jobId: "job-9" });
+    const [url, form] = mockApiPost.mock.calls[0]!;
+    expect(url).toBe("/dictation");
+    expect(form.get("language")).toBe("fr");
+    expect(form.get("source")).toBe("inline");
+    expect(form.get("file").name).toBe("dictation.webm");
+  });
+
+  it("should leave the source out for dialog dictation", async () => {
+    mockApiPost.mockResolvedValue({ data: { jobId: "job-9" } });
+    const store = useDictationStore();
+
+    await store.uploadJob(new Blob(["audio"]), "audio/webm", "fr");
+
+    const [, form] = mockApiPost.mock.calls[0]!;
+    expect(form.get("source")).toBeNull();
+  });
+
+  it("should fall back to the persisted language", async () => {
+    mockApiPost.mockResolvedValue({ data: { jobId: "job-9" } });
+    const store = useDictationStore();
+    store.setLanguage("de");
+
+    await store.uploadJob(new Blob(["audio"]), "audio/webm");
+
+    const [, form] = mockApiPost.mock.calls[0]!;
+    expect(form.get("language")).toBe("de");
+  });
+
+  it("should report a running job on 409", async () => {
+    mockApiPost.mockRejectedValue({
+      response: { status: 409, data: { jobId: "job-running" } },
+    });
+    const store = useDictationStore();
+
+    const result = await store.uploadJob(
+      new Blob(["audio"]),
+      "audio/webm",
+      "auto",
+      "inline",
+    );
+
+    expect(result).toEqual({ conflictJobId: "job-running" });
+  });
+
+  it("should return the server error message on failure", async () => {
+    mockApiPost.mockRejectedValue({
+      response: { status: 400, data: { error: "Invalid: an audio file is expected" } },
+    });
+    const store = useDictationStore();
+
+    const result = await store.uploadJob(new Blob(["audio"]), "audio/webm");
+
+    expect(result).toEqual({ error: "Invalid: an audio file is expected" });
+  });
+
+  it("should fall back to a generic upload error", async () => {
+    mockApiPost.mockRejectedValue(new Error("Network Error"));
+    const store = useDictationStore();
+
+    const result = await store.uploadJob(new Blob(["audio"]), "audio/webm");
+
+    expect(result.error).toBe("The dictation could not be uploaded.");
+  });
+
+  it("should fetch one job with long-poll parameters", async () => {
+    mockApiGet.mockResolvedValue({ data: jobView({ revision: 7 }) });
+    const store = useDictationStore();
+
+    const result = await store.fetchJob("job-1", { wait: true, since: 6 });
+
+    expect(mockApiGet).toHaveBeenCalledWith("/dictation/job-1", {
+      params: { wait: 1, since: 6 },
+      timeout: 30000,
+    });
+    expect(result.job?.revision).toBe(7);
+  });
+
+  it("should fetch one job without wait parameters", async () => {
+    mockApiGet.mockResolvedValue({ data: jobView() });
+    const store = useDictationStore();
+
+    await store.fetchJob("job-1");
+
+    expect(mockApiGet).toHaveBeenCalledWith("/dictation/job-1", {
+      params: undefined,
+      timeout: undefined,
+    });
+  });
+
+  it("should report an expired job as notFound", async () => {
+    mockApiGet.mockRejectedValue({ response: { status: 404 } });
+    const store = useDictationStore();
+
+    expect(await store.fetchJob("job-gone")).toEqual({ notFound: true });
+  });
+
+  it("should report transient failures without notFound", async () => {
+    mockApiGet.mockRejectedValue(new Error("Network Error"));
+    const store = useDictationStore();
+
+    expect(await store.fetchJob("job-1")).toEqual({});
+  });
+});

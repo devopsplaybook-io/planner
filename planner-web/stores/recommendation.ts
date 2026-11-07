@@ -25,6 +25,8 @@ export interface DictationConfig {
   engine: "embedded" | "external";
   engineState: "ready" | "preparing" | "error";
   model: string;
+  // Inline dictation advertises itself so older servers keep the control hidden
+  inlineJobs?: boolean;
 }
 
 export interface AppConfig {
@@ -62,6 +64,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     engine: "external",
     engineState: "ready",
     model: "",
+    inlineJobs: false,
   },
 };
 
@@ -99,6 +102,10 @@ export const useRecommendationStore = defineStore("recommendation", {
     dictationEngineState: (state) =>
       state.config?.dictation?.engineState ??
       DEFAULT_APP_CONFIG.dictation!.engineState,
+    dictationInlineJobs: (state) =>
+      state.config?.dictation?.inlineJobs ??
+      DEFAULT_APP_CONFIG.dictation!.inlineJobs ??
+      false,
   },
 
   actions: {

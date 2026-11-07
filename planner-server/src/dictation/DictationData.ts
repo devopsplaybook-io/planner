@@ -5,7 +5,7 @@ import {
 } from "../utils/DbUtils";
 import { DictationActionProposal } from "./DictationLlm";
 
-export type DictationJobSource = "dictation" | "voice_comment";
+export type DictationJobSource = "dictation" | "voice_comment" | "inline";
 export type DictationJobStatus = "processing" | "done" | "error";
 
 export interface DictationJobRecord {

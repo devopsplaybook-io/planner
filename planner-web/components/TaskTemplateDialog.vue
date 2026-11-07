@@ -101,18 +101,32 @@
         </p>
         <label>
           Title
-          <input
-            v-model="form.title"
-            type="text"
-            required
-            placeholder="Template title">
+          <span class="with-dictation">
+            <input
+              ref="titleInput"
+              v-model="form.title"
+              type="text"
+              required
+              placeholder="Template title">
+            <InlineDictationButton
+              :target="titleInput"
+              aria-label="Dictate template title"
+            />
+          </span>
         </label>
         <label>
           Description
-          <textarea
-            v-model="form.description"
-            placeholder="Optional description"
-          />
+          <span class="with-dictation">
+            <textarea
+              ref="descriptionInput"
+              v-model="form.description"
+              placeholder="Optional description"
+            />
+            <InlineDictationButton
+              :target="descriptionInput"
+              aria-label="Dictate template description"
+            />
+          </span>
         </label>
         <label>
           Priority
@@ -625,6 +639,8 @@ const loadError = ref("");
 const dialogError = ref("");
 const labelsText = ref("");
 const advancedMenuEl = ref(null);
+const titleInput = ref(null);
+const descriptionInput = ref(null);
 
 const form = ref(emptyForm());
 
@@ -1245,6 +1261,14 @@ section h4 {
   gap: var(--space-xs);
   margin-bottom: var(--space-xs);
   align-items: center;
+}
+
+.with-dictation {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
 }
 
 .checklist-input-row button {

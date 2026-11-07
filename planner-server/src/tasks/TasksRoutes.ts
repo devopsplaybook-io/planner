@@ -1116,7 +1116,7 @@ export class TasksRoutes {
     // ==================== ATTACHMENTS ====================
     interface PostTaskAttachment extends RequestGenericInterface {
       Params: { id: string };
-      Querystring: { language?: string };
+      Querystring: { language?: string; transcribe?: string };
     }
     fastify.post<PostTaskAttachment>(
       "/:id/attachments",
@@ -1192,18 +1192,23 @@ export class TasksRoutes {
         // transcript as a comment. Never fails the upload: a no-op when the
         // feature is not enabled. A rate-limited upload is stored either way;
         // the response tells the client the transcript was skipped.
-        const transcription = data.mimetype.startsWith("audio/")
-          ? await TaskVoiceCommentsEnqueue({
-              taskId: req.params.id,
-              userId: userSession.userId,
-              userName: userSession.userName,
-              fileName: data.filename,
-              filePath,
-              mimeType: data.mimetype,
-              attachmentId,
-              requestedLanguage: req.query.language,
-            })
-          : null;
+        // `transcribe=0` skips it: the inline dictation flow transcribes the
+        // clip into the composer and posts exactly one comment.
+        const transcribe =
+          req.query.transcribe !== "0" && req.query.transcribe !== "false";
+        const transcription =
+          data.mimetype.startsWith("audio/") && transcribe
+            ? await TaskVoiceCommentsEnqueue({
+                taskId: req.params.id,
+                userId: userSession.userId,
+                userName: userSession.userName,
+                fileName: data.filename,
+                filePath,
+                mimeType: data.mimetype,
+                attachmentId,
+                requestedLanguage: req.query.language,
+              })
+            : null;
 
         return res.status(201).send({
           id: attachmentId,

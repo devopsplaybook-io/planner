@@ -209,6 +209,9 @@ Promise.resolve()
           maxUploadMb: config.DICTATION_MAX_UPLOAD_MB,
           defaultLanguage: config.DICTATION_LANGUAGE,
           languages: ["auto", ...config.DICTATION_LANGUAGES],
+          // Capability flag: this server accepts source=inline on the
+          // dictation API and transcribe=0 on task attachment uploads.
+          inlineJobs: true,
           estimatedRtf:
             config.DICTATION_ESTIMATED_RTF > 0
               ? config.DICTATION_ESTIMATED_RTF

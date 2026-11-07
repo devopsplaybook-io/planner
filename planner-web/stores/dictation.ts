@@ -151,12 +151,17 @@ export const useDictationStore = defineStore("dictation", {
       this.jobId = jobId;
       this.status = "processing";
     },
-    async submitAudio(
+    /**
+     * Uploads a recording without touching the store state, so inline
+     * dictation edits can submit into their own job without hijacking the
+     * full dialog's view.
+     */
+    async uploadJob(
       blob: Blob,
       mimeType: string,
       language?: string,
-    ): Promise<void> {
-      this.resetJob();
+      source: "dictation" | "inline" = "dictation",
+    ): Promise<{ jobId?: string; conflictJobId?: string; error?: string }> {
       const form = new FormData();
       form.append(
         "file",
@@ -165,12 +170,14 @@ export const useDictationStore = defineStore("dictation", {
         }),
       );
       form.append("language", language || this.language);
+      if (source === "inline") {
+        form.append("source", "inline");
+      }
       try {
         const res = await api.post("/dictation", form, {
           headers: { "Content-Type": "multipart/form-data" },
         });
-        this.jobId = res.data.jobId;
-        this.status = "processing";
+        return { jobId: res.data.jobId };
       } catch (err) {
         const status = (err as { response?: { status?: number } })?.response
           ?.status;
@@ -178,15 +185,56 @@ export const useDictationStore = defineStore("dictation", {
           err as { response?: { data?: { jobId?: string } } }
         )?.response?.data?.jobId;
         if (status === 409 && conflictJobId) {
-          // A job is already running: keep polling it instead of failing
-          this.resumeFrom(conflictJobId);
-          return;
+          return { conflictJobId };
         }
-        this.error =
-          (err as { response?: { data?: { error?: string } } })?.response?.data
-            ?.error || "The dictation could not be uploaded.";
-        this.status = "error";
+        return {
+          error:
+            (err as { response?: { data?: { error?: string } } })?.response
+              ?.data?.error || "The dictation could not be uploaded.",
+        };
       }
+    },
+    /**
+     * Reads one job without touching the store state. `notFound` reports an
+     * expired job; other failures are transient so the caller can retry.
+     */
+    async fetchJob(
+      jobId: string,
+      options: { wait?: boolean; since?: number } = {},
+    ): Promise<{ job?: DictationJobView; notFound?: boolean }> {
+      try {
+        const res = await api.get(`/dictation/${jobId}`, {
+          params: options.wait
+            ? { wait: 1, since: options.since ?? 0 }
+            : undefined,
+          timeout: options.wait ? LONG_POLL_TIMEOUT_MS : undefined,
+        });
+        return { job: res.data as DictationJobView };
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response
+          ?.status;
+        return status === 404 ? { notFound: true } : {};
+      }
+    },
+    async submitAudio(
+      blob: Blob,
+      mimeType: string,
+      language?: string,
+    ): Promise<void> {
+      this.resetJob();
+      const uploaded = await this.uploadJob(blob, mimeType, language);
+      if (uploaded.jobId) {
+        this.jobId = uploaded.jobId;
+        this.status = "processing";
+        return;
+      }
+      if (uploaded.conflictJobId) {
+        // A job is already running: keep polling it instead of failing
+        this.resumeFrom(uploaded.conflictJobId);
+        return;
+      }
+      this.error = uploaded.error || "The dictation could not be uploaded.";
+      this.status = "error";
     },
     /**
      * Fetches the job once, or long-polls it: with `wait` the request returns
@@ -198,25 +246,21 @@ export const useDictationStore = defineStore("dictation", {
       if (!this.jobId) {
         return false;
       }
-      try {
-        const res = await api.get(`/dictation/${this.jobId}`, {
-          params: wait ? { wait: 1, since: this.revision } : undefined,
-          timeout: wait ? LONG_POLL_TIMEOUT_MS : undefined,
-        });
-        this.applyJob(res.data);
+      const { job, notFound } = await this.fetchJob(this.jobId, {
+        wait,
+        since: this.revision,
+      });
+      if (job) {
+        this.applyJob(job);
         return true;
-      } catch (err) {
-        const status = (err as { response?: { status?: number } })?.response
-          ?.status;
-        if (status === 404) {
-          // The job expired server-side: stop polling
-          this.error = "The dictation job expired. Please record again.";
-          this.status = "error";
-          return false;
-        }
-        // Other errors are transient: keep polling
-        return false;
       }
+      if (notFound) {
+        // The job expired server-side: stop polling
+        this.error = "The dictation job expired. Please record again.";
+        this.status = "error";
+      }
+      // Other errors are transient: keep polling
+      return false;
     },
     async fetchRecentJobs(limit = 20): Promise<void> {
       try {

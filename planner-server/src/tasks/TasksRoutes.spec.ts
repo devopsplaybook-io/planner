@@ -1995,6 +1995,39 @@ describe("TasksRoutes project visibility", () => {
     );
   });
 
+  it("should not enqueue a transcription when transcribe=0 is requested", async () => {
+    const task = makeTask(publicProject);
+    (TasksDataGet as jest.Mock).mockResolvedValue(task);
+    (ProjectsDataGet as jest.Mock).mockResolvedValue(publicProject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+    const mockFs = require("fs-extra") as any;
+    mockFs.ensureDir.mockResolvedValue(undefined);
+    mockFs.createWriteStream.mockReturnValue(
+      new Writable({ write(_chunk, _enc, cb) { cb(); } }),
+    );
+
+    const boundary = "----jestformboundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="voice-message.webm"',
+      "Content-Type: audio/webm",
+      "",
+      "fake-audio-bytes",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await app.inject({
+      method: "POST",
+      url: `/${task.id}/attachments?transcribe=0&language=fr`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(addTaskAttachment).toHaveBeenCalledTimes(1);
+    expect(TaskVoiceCommentsEnqueue).not.toHaveBeenCalled();
+  });
+
   it("should report a skipped transcription on a rate-limited voice upload", async () => {
     const task = makeTask(publicProject);
     (TasksDataGet as jest.Mock).mockResolvedValue(task);

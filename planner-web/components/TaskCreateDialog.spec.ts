@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { defineComponent, ref, watch } from "vue";
+import { defineComponent, h, ref, watch } from "vue";
 
 import TaskCreateDialog from "./TaskCreateDialog.vue";
 
@@ -29,10 +29,22 @@ vi.stubGlobal("useAuthStore", () => authStore);
 vi.stubGlobal("useLabelsStore", () => labelsStore);
 
 const NullStub = defineComponent({ render: () => null });
+// Nuxt auto-imports InlineDictationButton; its own spec covers the control
+const InlineDictationButtonStub = defineComponent({
+  name: "InlineDictationButton",
+  props: {
+    target: { type: [Object, Function], default: null },
+    ariaLabel: { type: String, default: "" },
+    disabled: { type: Boolean, default: false },
+    showButton: { type: Boolean, default: true },
+  },
+  render: () => h("span", { class: "inline-dictation-stub" }),
+});
 const stubs = {
   ProjectSelect: NullStub,
   UserMultiSelect: NullStub,
   LabelMultiSelect: NullStub,
+  InlineDictationButton: InlineDictationButtonStub,
 };
 
 function mountDialog() {
@@ -108,5 +120,30 @@ describe("TaskCreateDialog design language", () => {
     await wrapper.setProps({ open: true });
     await flushPromises();
     expect(wrapper.find(".dialog-error").exists()).toBe(false);
+  });
+});
+
+describe("TaskCreateDialog inline dictation", () => {
+  it("should offer a microphone on the title and description", async () => {
+    const wrapper = await openDialog();
+    const buttons = wrapper.findAllComponents(InlineDictationButtonStub);
+    expect(buttons.map((button) => button.props("ariaLabel"))).toEqual([
+      "Dictate task title",
+      "Dictate task description",
+    ]);
+  });
+
+  it("should offer a microphone on every checklist item", async () => {
+    const wrapper = await openDialog();
+    const addItem = wrapper
+      .findAll("button")
+      .find((button) => button.text().includes("Add item"));
+    await addItem!.trigger("click");
+    await flushPromises();
+
+    const buttons = wrapper.findAllComponents(InlineDictationButtonStub);
+    expect(buttons).toHaveLength(3);
+    expect(buttons[2]!.props("ariaLabel")).toBe("Dictate checklist item");
+    expect(typeof buttons[2]!.props("target")).toBe("function");
   });
 });

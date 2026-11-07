@@ -25,18 +25,18 @@
         v-if="showVoiceButton"
         type="button"
         class="composer-tab composer-voice-btn"
-        :class="{ recording: isVoiceRecording }"
-        :aria-pressed="isVoiceRecording"
+        :class="{ recording: isRecording }"
+        :aria-pressed="isRecording"
         :aria-label="
-          isVoiceRecording ? 'Stop recording' : 'Record a voice comment'
+          isRecording ? 'Stop recording' : 'Record a voice comment'
         "
-        @click="isVoiceRecording ? stopVoiceRecording() : startVoiceRecording()"
+        @click="isRecording ? stopVoiceRecording() : startVoiceMessage()"
       >
-        <i class="bi" :class="isVoiceRecording ? 'bi-stop-circle' : 'bi-mic'" />
+        <i class="bi" :class="isRecording ? 'bi-stop-circle' : 'bi-mic'" />
       </button>
     </div>
     <div
-      v-if="isVoiceRecording"
+      v-if="isRecording"
       class="composer-voice-status"
       aria-live="polite"
     >
@@ -66,17 +66,25 @@
         <i class="bi bi-x" /> Cancel
       </button>
     </div>
-    <p v-if="voiceError && !isVoiceRecording" class="composer-voice-error" role="alert">
+    <p v-if="voiceError && !isRecording" class="composer-voice-error" role="alert">
       {{ voiceError }}
     </p>
-    <textarea
-      v-show="mode === 'write'"
-      ref="textarea"
-      v-model="input"
-      rows="2"
-      :placeholder="placeholder"
-      @keydown="onKeydown"
-    />
+    <div v-show="mode === 'write'" class="composer-input-row">
+      <textarea
+        ref="textarea"
+        v-model="input"
+        rows="2"
+        :placeholder="placeholder"
+        @keydown="onKeydown"
+      />
+      <InlineDictationButton
+        :controller="inline"
+        :target="textarea"
+        :disabled="busy"
+        :show-button="!isVoiceMessageActive"
+        aria-label="Dictate comment"
+      />
+    </div>
     <div
       v-if="mode === 'preview'"
       class="composer-preview markdown-body"
@@ -90,7 +98,9 @@ import { ref, computed, watch, nextTick } from "vue";
 import { useTextareaAutosize } from "@vueuse/core";
 import { renderMarkdown } from "../composables/useMarkdown";
 import { saveCommentDraft } from "../composables/useCommentDraft";
-import { useDictation, isVoiceRecordingSupported } from "../composables/useDictation";
+import { useInlineDictation } from "../composables/useInlineDictation";
+import { isVoiceRecordingSupported } from "../composables/useDictation";
+import { voiceMessageFileName } from "../utils/dictationMime";
 
 const props = defineProps({
   modelValue: { type: String, default: "" },
@@ -102,41 +112,46 @@ const props = defineProps({
     default: "Add a comment... (Markdown supported)",
   },
   busy: { type: Boolean, default: false },
-  // Voice comments: when true, offer a record button (the parent uploads
-  // the recording through the voice event)
+  // Voice messages: offer the record button when the comment belongs to a
+  // task and the server supports the inline (no auto-comment) flow
   allowVoice: { type: Boolean, default: false },
+  taskId: { type: String, default: null },
 });
-const emit = defineEmits(["update:modelValue", "submit", "voice"]);
+const emit = defineEmits(["update:modelValue", "submit", "voice-busy"]);
 
 const recommendationStore = useRecommendationStore();
-const dictationStore = useDictationStore();
+const tasksStore = useTasksStore();
 
 const mode = ref("write");
 const { textarea, input, triggerResize } = useTextareaAutosize();
 
-// Voice recording shares the dictation dialog's recorder composable; the
-// composer stays decoupled from the task APIs: it only emits the result.
-// Auto-stop at the max duration emits the captured audio like a manual stop.
-const {
-  isRecording: isVoiceRecording,
-  elapsedSeconds: voiceElapsedSeconds,
-  error: voiceError,
-  start: startVoiceRecordingInternal,
-  stop: stopVoiceRecordingInternal,
-  cancel: cancelVoiceRecordingInternal,
-} = useDictation({
-  // The server config owns the limit; the composable reads it on each tick
-  maxDurationSeconds: computed(
-    () => recommendationStore.dictationMaxDurationSeconds,
-  ),
-  onAutoStop: (recording) => emitVoiceRecording(recording),
+// Dictation into the comment text and recorded voice messages share one
+// controller so they can never run at the same time.
+const inline = useInlineDictation({
+  target: () => textarea.value,
+  onKeepAudio: (recording) => uploadVoiceMessage(recording),
+  onInserted: () => triggerResize(),
 });
 
-const voiceLanguages = computed(() => recommendationStore.dictationLanguages);
-const voiceLanguage = computed({
-  get: () => dictationStore.language,
-  set: (value) => dictationStore.setLanguage(value),
-});
+const {
+  phase,
+  recordingMode,
+  isRecording,
+  elapsedSeconds: voiceElapsedSeconds,
+  error: inlineError,
+  languages: voiceLanguages,
+  language: voiceLanguage,
+} = inline;
+
+const voiceUploadError = ref("");
+const voiceError = computed(() => inlineError.value || voiceUploadError.value);
+
+const isVoiceMessageActive = computed(
+  () => recordingMode.value === "voice-message" && phase.value !== "idle",
+);
+const isInlineDictationActive = computed(
+  () => recordingMode.value === "dictation" && phase.value !== "idle",
+);
 
 const LANGUAGE_LABELS = {
   auto: "Automatic detection",
@@ -153,23 +168,16 @@ function languageLabel(code) {
   return LANGUAGE_LABELS[code] || code.toUpperCase();
 }
 
-// A timer race between the auto-stop and a manual stop must not emit twice
-let voiceEmitted = false;
-
-function emitVoiceRecording(recording) {
-  if (!recording || voiceEmitted) {
-    return;
-  }
-  voiceEmitted = true;
-  // The parent uploads the recording and passes the language to the
-  // transcription job
-  emit("voice", { recording, language: voiceLanguage.value });
-}
-
 // MediaRecorder APIs are probed once; SSR is disabled in this app
 const voiceSupported = isVoiceRecordingSupported();
 const showVoiceButton = computed(
-  () => props.allowVoice && voiceSupported && !props.busy,
+  () =>
+    props.allowVoice &&
+    !!props.taskId &&
+    recommendationStore.dictationInlineJobs === true &&
+    voiceSupported &&
+    !props.busy &&
+    !isInlineDictationActive.value,
 );
 
 const formattedVoiceElapsed = computed(() => {
@@ -178,18 +186,46 @@ const formattedVoiceElapsed = computed(() => {
   return `${minutes}:${seconds}`;
 });
 
-async function startVoiceRecording() {
-  voiceEmitted = false;
-  await startVoiceRecordingInternal();
+/**
+ * The audio is kept as a task attachment; the server skips its automatic
+ * transcript comment so the composer posts the single, edited comment.
+ */
+async function uploadVoiceMessage(recording) {
+  if (!props.taskId || !recording?.blob) {
+    return;
+  }
+  voiceUploadError.value = "";
+  emit("voice-busy", true);
+  try {
+    const file = new File(
+      [recording.blob],
+      voiceMessageFileName(recording.mimeType),
+      { type: recording.mimeType },
+    );
+    await tasksStore.uploadAttachment(props.taskId, file, {
+      language: voiceLanguage.value,
+      transcribe: false,
+    });
+  } catch (e) {
+    voiceUploadError.value =
+      e?.response?.data?.error || "Failed to upload the voice message.";
+  } finally {
+    emit("voice-busy", false);
+  }
+}
+
+async function startVoiceMessage() {
+  voiceUploadError.value = "";
+  mode.value = "write";
+  await inline.start({ keepAudio: true });
 }
 
 async function stopVoiceRecording() {
-  const recording = await stopVoiceRecordingInternal();
-  emitVoiceRecording(recording);
+  await inline.stop();
 }
 
 function cancelVoiceRecording() {
-  void cancelVoiceRecordingInternal();
+  void inline.cancel();
 }
 
 // External value changes (draft restore, clear on send) flow into the
@@ -222,9 +258,14 @@ watch(mode, async () => {
 const previewHtml = computed(() => renderMarkdown(props.modelValue));
 
 function onKeydown(event) {
-  if (event.key === "Escape" && isVoiceRecording.value) {
+  if (event.key === "Escape" && isRecording.value) {
     event.stopPropagation();
     cancelVoiceRecording();
+    return;
+  }
+  if (event.key === "Enter" && isRecording.value) {
+    // Recording must never submit the comment form
+    event.preventDefault();
     return;
   }
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -323,6 +364,14 @@ textarea {
   width: 100%;
   overflow: hidden;
   resize: none;
+}
+
+.composer-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: var(--space-xs);
+  min-width: 0;
 }
 
 /* Mirrors the .comment-body look so Preview shows what readers will get */
