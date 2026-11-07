@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
-import { computed, ref } from "vue";
+import { ref } from "vue";
 import InlineDictationButton from "./InlineDictationButton.vue";
 
 const recommendationStore = {
@@ -16,26 +16,17 @@ function makeController() {
   const elapsedSeconds = ref(0);
   const level = ref(0);
   const error = ref<string | null>(null);
-  const language = ref("auto");
   const pendingInsert = ref<string | null>(null);
   const canApplyPolished = ref(false);
   const hasJob = ref(false);
   const isAvailable = ref(true);
   const isOnline = ref(true);
-  const setLanguage = vi.fn((value: string) => {
-    language.value = value;
-  });
   return {
     phase,
     isRecording,
     elapsedSeconds,
     level,
     error,
-    languages: ref(["auto", "fr"]),
-    language: computed({
-      get: () => language.value,
-      set: setLanguage,
-    }),
     pendingInsert,
     canApplyPolished,
     hasJob,
@@ -56,7 +47,6 @@ function makeController() {
     insertPending: vi.fn(),
     applyPolished: vi.fn(),
     promote: vi.fn(async () => undefined),
-    setLanguage,
   };
 }
 
@@ -127,6 +117,11 @@ describe("InlineDictationButton visibility", () => {
   it("should stay hidden when the host hides the button", () => {
     const wrapper = mountButton({ showButton: false });
     expect(wrapper.find(".inline-dictation").exists()).toBe(false);
+  });
+
+  it("should not render a language selector next to the microphone", () => {
+    const wrapper = mountButton();
+    expect(wrapper.find("select").exists()).toBe(false);
   });
 });
 
@@ -275,26 +270,6 @@ describe("InlineDictationButton recording", () => {
     expect(
       wrapper.find(".inline-dictation-btn").attributes("disabled"),
     ).toBeDefined();
-  });
-});
-
-describe("InlineDictationButton language", () => {
-  it("should show the language selector when several languages are allowed", async () => {
-    const wrapper = mountButton();
-    const select = wrapper.find('select[aria-label="Dictation language"]');
-    expect(select.exists()).toBe(true);
-    expect(select.findAll("option")).toHaveLength(2);
-
-    await select.setValue("fr");
-    expect(controller.setLanguage).toHaveBeenCalledWith("fr");
-  });
-
-  it("should hide the selector when only one language is allowed", () => {
-    controller.languages.value = ["auto"];
-    const wrapper = mountButton();
-    expect(wrapper.find('select[aria-label="Dictation language"]').exists()).toBe(
-      false,
-    );
   });
 });
 

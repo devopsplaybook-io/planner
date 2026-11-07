@@ -340,15 +340,12 @@ describe("CommentComposer voice message", () => {
     wrapper.unmount();
   });
 
-  it("should record with the selected language", async () => {
+  it("should record with the dictation language from preferences", async () => {
     const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
+    dictationStore.setLanguage("fr");
 
     await startRecording(wrapper);
-    const select = wrapper.find(".composer-voice-language select");
-    expect(select.exists()).toBe(true);
-    await select.setValue("fr");
-    expect(dictationStore.language).toBe("fr");
-    expect(localStorage.getItem("dictation-language")).toBe("fr");
+    expect(wrapper.find(".composer-voice-language").exists()).toBe(false);
 
     await stopRecording(wrapper);
     expect(
