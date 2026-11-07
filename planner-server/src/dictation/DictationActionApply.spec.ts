@@ -317,6 +317,25 @@ describe("ApplyDictationActions", () => {
     expect(task.status).toBe("Done");
   });
 
+  it("should refuse to write into a project invisible to the caller", async () => {
+    (isProjectVisible as jest.Mock).mockReturnValue(false);
+    const outcome = await ApplyDictationActions(
+      userSession,
+      makeRecord([{ type: "create_task", title: "Hidden", project: "proj-2" }]),
+      "req-hidden",
+      [{ index: 0, projectId: "proj-2" }],
+    );
+    expect(outcome.results).toEqual([
+      {
+        index: 0,
+        type: "create_task",
+        status: "failed",
+        error: "Project Not Found",
+      },
+    ]);
+    expect(mockTasksAdd).not.toHaveBeenCalled();
+  });
+
   it("should apply a chosen ambiguous target", async () => {
     mockListByRequest.mockResolvedValue([]);
     await ApplyDictationActions(
