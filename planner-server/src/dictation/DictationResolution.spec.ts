@@ -173,12 +173,29 @@ describe("BuildActionPreviews", () => {
     });
     expect(preview.resolvedProjectId).toBe("proj-1");
     expect(preview.resolvedStatus).toBe("Done");
-    expect(preview.diff).toEqual(
-      expect.arrayContaining([
-        { field: "title", before: null, after: "Ship it" },
-        { field: "project", before: null, after: "Café Ops" },
-      ]),
+    expect(preview.diff).toEqual([]);
+  });
+
+  it("should not repeat the created values as a before/after diff", () => {
+    const previews = BuildActionPreviews(
+      [
+        { type: "create_task", title: "Ship it", project: "Work" },
+        { type: "create_note", title: "Ideas", project: "Work" },
+        { type: "instantiate_template", template: "Weekly" },
+      ],
+      context({
+        projects: [project({ id: "proj-1", name: "Work" })],
+        templates: [
+          template({ id: "tpl-1", title: "Weekly", projectId: "proj-1" }),
+        ],
+      }),
     );
+    expect(previews.map((preview) => preview.status)).toEqual([
+      "resolved",
+      "resolved",
+      "resolved",
+    ]);
+    expect(previews.map((preview) => preview.diff)).toEqual([[], [], []]);
   });
 
   it("should use the default project when the action has no project", () => {

@@ -554,38 +554,8 @@ function previewCreateTask(
   preview.resolvedProjectId = project.id;
   preview.resolvedStatus = statusResolution.status;
   preview.resolvedAssigneeIds = assigneeIds;
-
-  const diff: DictationFieldDiff[] = [
-    { field: "title", before: null, after: action.title || "" },
-  ];
-  if (action.description) {
-    diff.push({ field: "description", before: null, after: action.description });
-  }
-  diff.push({ field: "project", before: null, after: project.name });
-  diff.push({ field: "status", before: null, after: statusResolution.status });
-  if (action.priority) {
-    diff.push({ field: "priority", before: null, after: action.priority });
-  }
-  if (action.dueDate) {
-    diff.push({ field: "dueDate", before: null, after: action.dueDate });
-  }
-  if (action.labels && action.labels.length > 0) {
-    diff.push({ field: "labels", before: null, after: formatLabels(action.labels) });
-  }
-  const assigneeNames =
-    assigneeIds.length > 0
-      ? assigneeIds.map((id) => userName(context, id))
-      : context.userSession.userName
-        ? [context.userSession.userName]
-        : [];
-  if (assigneeNames.length > 0) {
-    diff.push({
-      field: "assignees",
-      before: null,
-      after: formatLabels(assigneeNames),
-    });
-  }
-  preview.diff = diff;
+  // Nothing existed before a creation: the card's editable fields already
+  // show the new values, so repeating them as a before/after diff is noise.
   return preview;
 }
 
@@ -616,14 +586,6 @@ function previewCreateNote(
     projectName: project.name,
   };
   preview.resolvedProjectId = project.id;
-  const diff: DictationFieldDiff[] = [
-    { field: "title", before: null, after: action.title || "" },
-  ];
-  if (action.description) {
-    diff.push({ field: "description", before: null, after: action.description });
-  }
-  diff.push({ field: "project", before: null, after: project.name });
-  preview.diff = diff;
   return preview;
 }
 
@@ -980,15 +942,6 @@ function previewInstantiateTemplate(
     projectName: project.name,
   };
   preview.resolvedProjectId = project.id;
-  preview.diff = [
-    {
-      field: "title",
-      before: null,
-      after: action.title || template.title,
-    },
-    { field: "project", before: null, after: project.name },
-    { field: "template", before: null, after: template.title },
-  ];
   return preview;
 }
 

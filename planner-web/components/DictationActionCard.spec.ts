@@ -135,6 +135,12 @@ describe("DictationActionCard", () => {
     });
   });
 
+  it("should not repeat the created values as a diff", () => {
+    const wrapper = mountCard();
+
+    expect(wrapper.find(".action-diff").exists()).toBe(false);
+  });
+
   it("should render the diff and the apply result", () => {
     const wrapper = mountCard({
       preview: preview({

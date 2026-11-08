@@ -212,6 +212,19 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("DictationDialog header", () => {
+  it("renders a visible close control that closes the dialog", async () => {
+    const wrapper = await openDialog();
+
+    const closeButton = wrapper.find(".close-btn");
+    expect(closeButton.exists()).toBe(true);
+    expect(closeButton.text()).toBe("×");
+
+    await closeButton.trigger("click");
+    expect(wrapper.emitted("close")).toBeTruthy();
+  });
+});
+
 describe("DictationDialog review errors", () => {
   it("shows the dismissible banner and never alerts when creating items fails", async () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});

@@ -501,6 +501,10 @@ dialog article > footer {
 /* Dialog body grid: header / content / footer */
 dialog article {
   display: grid;
+  /* An explicit 1fr column keeps long unbreakable content (e.g. a nowrap
+     title) from inflating the auto track, which would widen the whole dialog
+     past the viewport and clip its content on narrow screens. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   gap: var(--space-md);
 }
