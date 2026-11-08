@@ -292,7 +292,7 @@ function openDictationMenu() {
 .nav-badge {
   position: absolute;
   top: -0.4em;
-  right: -0.4em;
+  right: -0.2em;
   min-width: 1.35em;
   padding: 0 0.3em;
   border-radius: var(--radius-full);
