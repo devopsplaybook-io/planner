@@ -492,14 +492,6 @@
                 >
                   Preview unavailable — download to open
                 </p>
-                <VoiceTranscriptionStatus
-                  v-if="voiceCommentsAvailable && isAudioFile(att.fileName)"
-                  :attachment-id="att.id"
-                  :status="voiceTranscriptionStatusFor(att.id)"
-                  :stage="voiceTranscriptionFor(att.id)?.stage || null"
-                  :retrying="retryingVoiceTranscriptionId === att.id"
-                  @retry="retryVoiceTranscription(att)"
-                />
               </div>
               <button
                 class="secondary small-btn"
@@ -649,13 +641,6 @@
               </template>
             </div>
           </div>
-          <p
-            v-if="voiceTranscriptionNotice"
-            class="voice-transcription-notice"
-            role="status"
-          >
-            {{ voiceTranscriptionNotice }}
-          </p>
           <form class="add-comment" @submit.prevent="addComment">
             <CommentComposer
               v-model="newComment"
@@ -795,18 +780,16 @@ const statusesStore = useStatusesStore();
 const labelsStore = useLabelsStore();
 const authStore = useAuthStore();
 const recommendationStore = useRecommendationStore();
-const dictationStore = useDictationStore();
 
 const task = computed(() => tasksStore.currentTask);
 const isImproveEnabled = computed(() => recommendationStore.isImproveEnabled);
-// Voice comments: transcription statuses stay available whenever dictation
-// is on; the composer mic additionally needs the inline-jobs capability so
-// the audio is not transcribed twice.
-const voiceCommentsAvailable = computed(
-  () => recommendationStore.isDictationEnabled && recommendationStore.isDictationSttConfigured,
-);
+// Voice dictation in the add-comment composer: the single microphone
+// transcribes inline and can optionally keep the audio as an attachment.
 const voiceMessagesAvailable = computed(
-  () => voiceCommentsAvailable.value && recommendationStore.dictationInlineJobs,
+  () =>
+    recommendationStore.isDictationEnabled &&
+    recommendationStore.isDictationSttConfigured &&
+    recommendationStore.dictationInlineJobs,
 );
 const loading = ref(false);
 const notFound = ref(false);
@@ -819,12 +802,6 @@ const showCancelConfirm = ref(false);
 const cancelDialogEl = useModalDialog(() => showCancelConfirm.value);
 const cancelling = ref(false);
 const uploading = ref(false);
-const voiceTranscriptionNotice = ref("");
-// att.id -> latest persisted transcription status (status/stage/error only)
-const voiceTranscriptions = ref({});
-const retryingVoiceTranscriptionId = ref("");
-const VOICE_STATUS_POLL_MS = 3000;
-let voiceStatusPollTimer = null;
 const deletingAttachmentId = ref("");
 const fileInput = ref(null);
 const newChecklistText = ref("");
@@ -1158,9 +1135,6 @@ watch(
       highlightTimer = null;
     }
     dialogError.value = "";
-    voiceTranscriptionNotice.value = "";
-    voiceTranscriptions.value = {};
-    stopVoiceStatusPolling();
     editingCommentId.value = "";
     editingCommentText.value = "";
     pendingDeleteCommentId.value = "";
@@ -1201,8 +1175,6 @@ watch(
       }
     } else {
       tasksStore.currentTask = null;
-      voiceTranscriptions.value = {};
-      stopVoiceStatusPolling();
     }
   },
   { immediate: true },
@@ -1294,11 +1266,6 @@ watch(
       }
     }
     attachmentPreviewStates.value = nextStates;
-    if (props.taskId) {
-      // Voice transcription jobs follow attachment changes (upload, delete,
-      // dialog opening); polling starts automatically while one is running
-      await loadVoiceTranscriptions();
-    }
     await nextTick();
     if (attachmentObserver) {
       // Rows may have been re-created for the new list; observe them again
@@ -1792,106 +1759,6 @@ async function uploadAttachment() {
   }
 }
 
-// Voice comment recorded in the add-comment composer: upload it as a
-// regular audio attachment (the server transcribes it in the background
-// when STT is configured). A failed upload surfaces in the banner; a
-// transcription skipped because the hourly limit is reached is reported
-// inline instead of silently dropping the transcript.
-const hasProcessingVoiceTranscriptions = computed(() =>
-  Object.values(voiceTranscriptions.value).some(
-    (entry) => entry?.status === "processing",
-  ),
-);
-
-function voiceTranscriptionFor(attachmentId) {
-  return voiceTranscriptions.value[attachmentId] || null;
-}
-
-function voiceTranscriptionStatusFor(attachmentId) {
-  return voiceTranscriptions.value[attachmentId]?.status || null;
-}
-
-async function loadVoiceTranscriptions() {
-  if (!props.taskId) {
-    return;
-  }
-  try {
-    const res = await api.get(
-      `/tasks/${props.taskId}/voice-transcriptions`,
-    );
-    const next = {};
-    for (const entry of res.data?.transcriptions || []) {
-      next[entry.attachmentId] = entry;
-    }
-    voiceTranscriptions.value = next;
-  } catch {
-    // Transient failures are ignored: the next poll retries
-  }
-}
-
-function startVoiceStatusPolling() {
-  stopVoiceStatusPolling();
-  voiceStatusPollTimer = setInterval(
-    loadVoiceTranscriptions,
-    VOICE_STATUS_POLL_MS,
-  );
-}
-
-function stopVoiceStatusPolling() {
-  if (voiceStatusPollTimer) {
-    clearInterval(voiceStatusPollTimer);
-    voiceStatusPollTimer = null;
-  }
-}
-
-watch(hasProcessingVoiceTranscriptions, (processing) => {
-  if (processing && props.taskId) {
-    startVoiceStatusPolling();
-  } else {
-    stopVoiceStatusPolling();
-  }
-});
-
-async function retryVoiceTranscription(att) {
-  if (!props.taskId) {
-    return;
-  }
-  voiceTranscriptionNotice.value = "";
-  dialogError.value = "";
-  retryingVoiceTranscriptionId.value = att.id;
-  try {
-    await api.post(
-      `/tasks/${props.taskId}/attachments/${att.id}/transcribe`,
-      null,
-      {
-        params: dictationStore.language
-          ? { language: dictationStore.language }
-          : undefined,
-      },
-    );
-    await loadVoiceTranscriptions();
-  } catch (e) {
-    const status = e?.response?.status;
-    if (status === 409) {
-      // Already queued or processing: refresh instead of treating as an error
-      voiceTranscriptionNotice.value =
-        "A transcription is already in progress.";
-      await loadVoiceTranscriptions();
-    } else if (status === 429) {
-      voiceTranscriptionNotice.value =
-        "Hourly transcription limit reached. Try again later.";
-    } else if (status === 503) {
-      voiceTranscriptionNotice.value =
-        "Transcription is not available on this server.";
-    } else {
-      voiceTranscriptionNotice.value =
-        e?.response?.data?.error || "Failed to start the transcription.";
-    }
-  } finally {
-    retryingVoiceTranscriptionId.value = "";
-  }
-}
-
 async function deleteAttachment(attachmentId) {
   dialogError.value = "";
   deletingAttachmentId.value = attachmentId;
@@ -2223,12 +2090,6 @@ section h4 {
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--space-xs);
-}
-
-.voice-transcription-notice {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
 }
 
 .add-comment-actions {

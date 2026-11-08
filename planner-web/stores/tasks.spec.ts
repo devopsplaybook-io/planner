@@ -162,46 +162,4 @@ describe("tasks store attachment upload", () => {
     expect(formData.get("file")).toBe(file);
     expect(config.params).toBeUndefined();
   });
-
-  it("should forward the language option as a query param (voice comments)", async () => {
-    mockApiPost.mockResolvedValue({ data: { id: "att-2" } });
-    const store = useTasksStore();
-    const file = new File(["audio-bytes"], "voice-message.webm", {
-      type: "audio/webm",
-    });
-
-    await store.uploadAttachment("task-1", file, { language: "fr" });
-
-    const [, , config] = mockApiPost.mock.calls[0]!;
-    expect(config.params).toEqual({ language: "fr" });
-  });
-
-  it("should skip the background transcription when transcribe is false", async () => {
-    mockApiPost.mockResolvedValue({ data: { id: "att-3" } });
-    const store = useTasksStore();
-    const file = new File(["audio-bytes"], "voice-message.webm", {
-      type: "audio/webm",
-    });
-
-    await store.uploadAttachment("task-1", file, {
-      language: "fr",
-      transcribe: false,
-    });
-
-    const [, , config] = mockApiPost.mock.calls[0]!;
-    expect(config.params).toEqual({ language: "fr", transcribe: "0" });
-  });
-
-  it("should keep the background transcription for regular uploads", async () => {
-    mockApiPost.mockResolvedValue({ data: { id: "att-4" } });
-    const store = useTasksStore();
-    const file = new File(["audio-bytes"], "meeting.webm", {
-      type: "audio/webm",
-    });
-
-    await store.uploadAttachment("task-1", file, { transcribe: true });
-
-    const [, , config] = mockApiPost.mock.calls[0]!;
-    expect(config.params).toBeUndefined();
-  });
 });

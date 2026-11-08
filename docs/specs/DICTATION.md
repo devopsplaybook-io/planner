@@ -23,7 +23,7 @@ All long-running work is persisted in the database and resumed after a restart. 
 - [x] `POST /api/dictation` accepts an authenticated multipart audio upload:
   - [x] Only audio MIME types are accepted; the body is streamed and aborted as soon as it exceeds the configured upload limit, so an oversized upload is rejected with `413` (`DICTATION_MAX_UPLOAD_MB`) without buffering it in memory.
   - [x] When dictation is disabled or STT is not configured, the endpoint answers 404 (`Dictation Not Available`) instead of accepting a job that could never be processed.
-  - [x] The endpoint is rate-limited per user (hourly voice quota shared with voice-comment transcriptions).
+  - [x] The endpoint is rate-limited per user (hourly voice quota).
   - [x] It returns 202 with a job id and processes the dictation in the background; only one job may run at a time per user.
   - [x] An optional `source` field distinguishes the origin of the job: `dictation` (the full dialog, default), `inline` (a text-surface microphone) or `quick_capture` (the capture dialog). Unknown values and `import` (which has its own endpoint) fall back to `dictation`; the source is persisted with the job and exported only as a telemetry attribute. A quick capture may send a client-generated `clientId`, so a retry uploads at most once.
   - [x] An optional `projectId` field scopes the dictation to a visible project: it selects the project vocabulary and is validated with the usual project visibility rules (`404` deletes the temporary audio when the project is missing or invisible).
@@ -94,21 +94,12 @@ All long-running work is persisted in the database and resumed after a restart. 
 - [x] In embedded mode, STT is considered configured when the embedded model is set; the web UI's dictation availability logic keeps working without changes.
 - [x] The embedded model name, audio content and transcripts are never logged.
 
-### Server — Voice-comment transcriptions
-
-- [x] When an audio attachment is uploaded to a task and dictation is enabled with STT configured, the server queues a background transcription (dictation STT + polish stages, no action proposals).
-- [x] `GET /api/tasks/:taskId/voice-transcriptions` returns the latest status per audio attachment (`status`: `processing`/`done`/`error`/`skipped`, `stage`, `error`, timestamps), so the task dialog can show progress after a reload.
-- [x] `POST /api/tasks/:taskId/attachments/:attachmentId/transcribe` retries a failed or skipped transcription (`202`), returning `409` when one is already in flight, `429` when the hourly voice quota is exhausted and `503` when dictation/STT is not configured.
-- [x] The transcript is posted as a task comment attributed to the uploading user and referencing the voice message file name; a failed transcription never fails the upload and never deletes the audio.
-- [x] Transcripts are corrected by editing the generated comment: there is no separate "edit transcript" API.
-- [x] Voice-comment transcriptions are biased by the task project's vocabulary plus the caller's personal terms; they never translate (the spoken language is kept) so comments stay in the language they were recorded in.
-
 ### Server — Voice inbox
 
 - [x] `GET /api/dictation/inbox?limit=&offset=&status=&source=&includeArchived=` lists the caller's non-voice-comment jobs (`dictation`, `inline`, `quick_capture`, `import`), newest first, with `{ items, total, hasMore }`:
   - [x] `limit` defaults to 20 and is capped at 50; `offset` paginates; `status` accepts `processing`/`done`/`error`; `source` accepts any known source; unknown values answer `400`; `includeArchived=1` includes archived jobs (archived jobs are excluded by default).
   - [x] Each item carries `id`, `source`, `jobKind`, `status`, `stage`, a plain-text `preview` (bounded, no markdown), `language`, `audioDurationMs`, timestamps, `archivedAt`, conversion state (`convertedType`, `convertedTargetId`), `segmentsDone`/`segmentsTotal`, and an error code — never transcript or audio content beyond the bounded preview.
-  - [x] `voice_comment` jobs stay attached to their task and are excluded from the inbox unless explicitly requested with `source=voice_comment`.
+  - [x] `voice_comment` jobs from older versions stay attached to their task and are excluded from the inbox unless explicitly requested with `source=voice_comment`.
 - [x] `GET /api/dictation/inbox/badge?since=<iso>` returns `{ unread, processing }`: unread counts settled (`done`/`error`) non-archived jobs updated after `since`, processing counts non-archived running jobs. The client stores its last-seen timestamp locally; job state stays server-side.
 - [x] `PATCH /api/dictation/inbox/:jobId` with `{ archived: boolean }` persists or clears `archivedAt` (the archive survives reloads and restarts); `404` for a missing, expired or another user's job.
 - [x] `DELETE /api/dictation/inbox/:jobId` deletes the job and any kept audio, cascading its action rows; it answers `409` while the job is still processing and `404` for a job that is not the caller's.
@@ -117,7 +108,7 @@ All long-running work is persisted in the database and resumed after a restart. 
   - [x] `comment` appends a regular task comment (`comment` permission); `checklist` merges up to 25 items (200 characters each) into the task checklist (`update` permission).
   - [x] The text defaults to the polished text, then the raw transcript; the title defaults to the first transcript line (200 characters). Only a `done` job can be converted, and converting twice answers `409`.
   - [x] The conversion is recorded on the job (`convertedAt`, `convertedType`, `convertedTargetId`) so the inbox shows it and a duplicate request is refused. Visibility and permissions are re-checked server-side; the client never creates the item itself.
-- [x] Jobs have a source-aware TTL: voice comments expire after 1 hour, imports after `DICTATION_MEETING_TTL_DAYS` (default 7 days) and other inbox jobs after `DICTATION_INBOX_TTL_HOURS` (default 168 hours = 7 days). The periodic maintenance job purges expired jobs and their kept audio.
+- [x] Jobs have a source-aware TTL: legacy voice comments expire after 1 hour, imports after `DICTATION_MEETING_TTL_DAYS` (default 7 days) and other inbox jobs after `DICTATION_INBOX_TTL_HOURS` (default 168 hours = 7 days). The periodic maintenance job purges expired jobs and their kept audio.
 
 ### Server — Capture anywhere
 
@@ -143,7 +134,7 @@ All long-running work is persisted in the database and resumed after a restart. 
   - [x] Summarizing: a map-reduce LLM pass over bounded ~12,000-character groups produces `{ summary, decisions[], actionItems[] }`, bounded in size (summary 10,000 characters, at most 50 decisions, 25 action items). Summary chunks are independent so long recordings stay within token budgets.
   - [x] Action items are stored as regular `create_task` action proposals (`actionsAvailable`) scoped to the validated import project, so the existing preview/apply/undo flow and legacy review keep working unchanged; a summary failure fails the job after the transcript is already available.
 - [x] The job view exposes `jobKind`, `segmentsDone`/`segmentsTotal`, `summary`, parsed `decisions`, timestamped `transcriptSegments`, `audioRetained`, `archivedAt` and the conversion state, so a client can render progress and the result.
-- [x] Long-form transcription never starves interactive work: the embedded engine uses a two-lane FIFO scheduler where one worker dequeues the `interactive` lane (dialog, inline, quick capture, voice comments) before the `batch` lane (import chunks). Order is preserved within each lane and a failed transcription does not stall the queue.
+- [x] Long-form transcription never starves interactive work: the embedded engine uses a two-lane FIFO scheduler where one worker dequeues the `interactive` lane (dialog, inline, quick capture) before the `batch` lane (import chunks). Order is preserved within each lane and a failed transcription does not stall the queue.
 - [x] Retention: imported audio is deleted as soon as the job reaches a terminal state unless the caller (or the stored `keepAudio` preference) asked to keep it. Kept audio is removed after `DICTATION_AUDIO_RETENTION_DAYS` (default 30) and oldest-first while a user's total exceeds `DICTATION_AUDIO_KEEP_MAX_MB` (default 500 MB); the sweep updates `audioDeletedAt` and clears `audioPath`. Deleting an inbox job also deletes its kept audio.
 - [x] Temporary uploads, chunk files and work directories are removed after processing; no audio, transcript, summary, decision or action-item content is logged.
 
@@ -209,7 +200,7 @@ All long-running work is persisted in the database and resumed after a restart. 
 ### Inline dictation
 
 - [x] A reusable inline dictation control (composable + button component) sits next to every text field where free text is entered: task create (title, description, every checklist item), task edit (title, description), note create (title, content), note edit (title, content), task template create/edit (title, description) and the comment composer textarea.
-- [x] The control records with the same recorder and limits as the dialog, submits the audio to `POST /api/dictation` with `source=inline`, and long-polls its own job without touching the dialog's job state. Hosts that belong to a project pass its id, so project vocabulary biases the transcription; the comment composer has no project id and relies on personal terms (voice comments use the task project server-side).
+- [x] The control records with the same recorder and limits as the dialog, submits the audio to `POST /api/dictation` with `source=inline`, and long-polls its own job without touching the dialog's job state. Hosts that belong to a project pass its id, so project vocabulary biases the transcription; the comment composer has no project id and relies on personal terms.
 - [x] Inline dictations use the persisted target output language: the host can explicitly turn translation off, while the default follows the stored preference.
 - [x] The raw transcript is inserted as soon as it arrives, at the caret captured when recording started (replacing a partial selection). A selection covering the whole field is treated as a caret at the end, so the transcript is appended to the existing content instead of replacing it. The polished text replaces that exact range only while the field still holds the untouched insertion; after any user edit the control offers "Use improved text" instead of overwriting the edit.
 - [x] Insertion uses `document.execCommand("insertText")` when available so a single native undo restores the field to its state before dictation; the `setRangeText` fallback and the polish patch still fire input events so form state and `v-model` stay in sync. A single separator space is added when the insertion point follows non-whitespace text (between two words or at the end of the field) unless the transcript already starts with whitespace.
@@ -224,20 +215,17 @@ All long-running work is persisted in the database and resumed after a restart. 
 
 ### Voice comments on tasks
 
-- [x] The task comment composer offers a record-voice button when dictation is enabled, STT is configured and the server advertises inline jobs (shared availability logic with the inline control); recording state with elapsed time, stop and cancel, auto-stop at the maximum duration (which submits the recording), and microphone errors surfaced inline. Cancelling discards the audio, settles any stop already in flight and leaves no pending stop behind; stopping and cancelling are idempotent.
+- [x] The task comment composer offers exactly one microphone: the shared inline dictation control. Recording state with elapsed time, stop and cancel, auto-stop at the maximum duration (which submits the recording) and microphone errors come from that control. Cancelling discards the audio and leaves no pending stop behind.
+- [x] An **Attach audio** toggle next to the microphone (off by default) keeps the recording as a regular task attachment: when enabled, the finished recording is uploaded through the authenticated task attachment API and the same audio is submitted to the inline dictation API (`source=inline`). The transcript is inserted into the composer textarea either way, so the user reviews and edits it, and sending posts exactly one normal comment with the usual activity-feed entry and assignee notification.
 - [x] The composer sends the dictation language from the Settings preference with the recording (no per-recording selector).
-- [x] A finished recording uploads through the authenticated task attachment API with that language and `?transcribe=0`, so the audio stays a regular task attachment without starting a second transcription job; the same audio is submitted to the inline dictation API (`source=inline`). The progressive transcript (raw, then polished while untouched) is inserted into the composer textarea, where the user can review and edit it; sending posts exactly one normal comment, with the usual activity-feed entry and assignee notification.
 - [x] An attachment upload failure is shown inline and never drops the transcript; a dictation failure (permission, no speech, expired job, 409) is surfaced inline as for any inline field. Promoting the running job to the dictation dialog does not upload a duplicate.
-- [x] Existing audio attachments (uploaded with background transcription) keep their transcription status shown in the task dialog and the Retry action.
-- [x] The task dialog polls the transcription statuses every 3 s only while a transcription is processing and the dialog is open, and stops when the dialog closes or the task changes.
-- [x] Retry failures are surfaced inline (409 "already running", 429 hourly limit, 503 STT unavailable) without failing the dialog.
-- [x] Audio attachments play through an inline audio player in the task dialog and the server serves audio files inline with proper audio content types.
-- [x] Without dictation enabled or STT configured, nothing changes: no record button in the composer and no background transcription.
+- [x] Audio attachments play through an inline audio player in the task dialog and the server serves audio files inline with proper audio content types. Uploading audio does not start a background transcription: transcription only happens through the dictation API, so there is a single transcription path.
+- [x] Without dictation enabled or STT configured, nothing changes: no microphone and no attach option in the composer.
 - [x] Voice comments apply to tasks only; notes keep their existing comment and attachment behavior.
 
 ### Operations
 
-- [x] Dictation and voice-comment work is instrumented with OpenTelemetry spans and metrics (decode, STT, polish, actions, queue and total durations, job outcome, threads, model, engine); no audio/transcript/prompt content is exported.
+- [x] Dictation work is instrumented with OpenTelemetry spans and metrics (decode, STT, polish, actions, queue and total durations, job outcome, threads, model, engine); no audio/transcript/prompt content is exported.
 - [x] Structured preview/apply/undo, ask and custom phrases emit counters and spans with metadata only (action type, status, intent, counts); transcript, question, answer and phrase content are never logged or exported.
 - [x] A repeatable benchmark harness (`planner-server/src/dictation/bench/BenchStt.ts`, `npm run bench:stt`) measures RTF, p50/p95 latency, peak RSS and optional WER for the production flags; results and model selection are documented in [`docs/dictation-benchmark.md`](../dictation-benchmark.md).
 - [x] The reference deployment runs the embedded engine with 2 CPU / 2 GiB limits (250m / 512Mi requests), sized from the benchmark.

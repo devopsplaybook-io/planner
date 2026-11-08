@@ -121,6 +121,8 @@ const props = defineProps({
   // Shared controller so a host can render the button and drive the flow
   controller: { type: Object, default: null },
   showButton: { type: Boolean, default: true },
+  // Also hand the recording to the host (e.g. keep it as an attachment)
+  keepAudio: { type: Boolean, default: false },
   // Project being edited: its vocabulary biases the transcription
   projectId: { type: String, default: null },
 });
@@ -217,6 +219,10 @@ const statusVisible = computed(
     canApplyPolished.value,
 );
 
+function startRecording() {
+  void inline.start({ keepAudio: props.keepAudio });
+}
+
 function toggle() {
   if (isRecording.value) {
     void inline.stop();
@@ -225,7 +231,7 @@ function toggle() {
   if (buttonDisabled.value) {
     return;
   }
-  void inline.start();
+  startRecording();
 }
 
 let holdPointerId = null;
@@ -241,7 +247,7 @@ function onPointerDown(event) {
   holdPointerId = event.pointerId;
   suppressClick = true;
   event.preventDefault();
-  void inline.start();
+  startRecording();
 }
 
 function onPointerUp(event) {

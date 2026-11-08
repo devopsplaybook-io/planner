@@ -674,17 +674,6 @@ export async function DictationDataListAudioPaths(): Promise<string[]> {
   return rows.map((row) => String(row.audioPath));
 }
 
-export async function DictationDataGetLatestByAttachment(
-  attachmentId: string,
-): Promise<DictationJobRecord | null> {
-  const rows = await DbUtilsQuerySQL(
-    `SELECT ${SELECT_COLUMNS} FROM dictation_jobs
-     WHERE "attachmentId" = ? ORDER BY "dateCreated" DESC LIMIT 1`,
-    [attachmentId],
-  );
-  return rows.length > 0 ? mapRow(rows[0]) : null;
-}
-
 export async function DictationDataDeleteExpired(
   now: string = new Date().toISOString(),
 ): Promise<number> {

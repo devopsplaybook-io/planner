@@ -110,7 +110,6 @@ jest.mock("./DictationData", () => {
           .sort((a, b) => (a.dateCreated < b.dateCreated ? 1 : -1))
           .slice(0, limit),
     ),
-    DictationDataGetLatestByAttachment: jest.fn(async () => null),
     DictationDataDeleteExpired: jest.fn(async (at?: string) => {
       const threshold = at ?? now();
       let removed = 0;
@@ -193,7 +192,6 @@ import {
   DictationResumeJob,
   DictationStartJob,
   DictationSweepExpiredJobs,
-  DictationTranscribeAndPolish,
   DictationTranscribeAudio,
   DictationWaitForJob,
 } from "./Dictation";
@@ -1159,28 +1157,6 @@ describe("Dictation pipeline", () => {
       expect(mockAxios.post).not.toHaveBeenCalled();
     });
 
-    it("should transcribe and polish without deleting the audio file", async () => {
-      mockAxios.post.mockResolvedValueOnce(sttResponse("hello world") as never);
-      mockAxios.post.mockResolvedValueOnce(
-        llmResponse('{"text": "Hello world!"}') as never,
-      );
-
-      const result = await DictationTranscribeAndPolish(
-        "/tmp/dictation/x3.audio",
-        "audio/webm",
-        "en",
-      );
-
-      expect(result).toMatchObject({
-        rawTranscript: "hello world",
-        polishedText: "Hello world!",
-        polished: true,
-        sttMs: expect.any(Number),
-        polishMs: expect.any(Number),
-      });
-      expect(mockRemove).not.toHaveBeenCalledWith("/tmp/dictation/x3.audio");
-    });
-
     it("should send the vocabulary prompt to the external endpoint", async () => {
       mockAxios.post.mockResolvedValueOnce(sttResponse("hello") as never);
 
@@ -1257,25 +1233,6 @@ describe("Dictation pipeline", () => {
       await DictationPolishTranscript("hello", "en", "en");
 
       const body = mockAxios.post.mock.calls[0][1] as {
-        messages: { content: string }[];
-      };
-      expect(body.messages[1].content).not.toContain("Translate the polished");
-    });
-
-    it("should keep voice comments in their spoken language", async () => {
-      mockAxios.post.mockResolvedValueOnce(sttResponse("hello") as never);
-      mockAxios.post.mockResolvedValueOnce(
-        llmResponse('{"text": "Hello!"}') as never,
-      );
-
-      const result = await DictationTranscribeAndPolish(
-        "/tmp/dictation/x7.audio",
-        "audio/webm",
-        "en",
-      );
-
-      expect(result).toMatchObject({ rawTranscript: "hello", segments: null });
-      const body = mockAxios.post.mock.calls[1][1] as {
         messages: { content: string }[];
       };
       expect(body.messages[1].content).not.toContain("Translate the polished");

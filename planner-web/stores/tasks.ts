@@ -290,27 +290,11 @@ export const useTasksStore = defineStore("tasks", {
       await api.post(`/tasks/${taskId}/dependencies`, { dependencies });
     },
 
-    async uploadAttachment(
-      taskId: string,
-      file: File,
-      options?: { language?: string; transcribe?: boolean },
-    ) {
+    async uploadAttachment(taskId: string, file: File) {
       const formData = new FormData();
       formData.append("file", file);
-      const params: Record<string, string> = {};
-      // Voice comments: the dictation language guides the background
-      // transcription; absent for regular uploads
-      if (options?.language) {
-        params.language = options.language;
-      }
-      // Inline dictation transcribes client-side first: keep the audio
-      // attachment without starting a second background job
-      if (options?.transcribe === false) {
-        params.transcribe = "0";
-      }
       const res = await api.post(`/tasks/${taskId}/attachments`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        params: Object.keys(params).length > 0 ? params : undefined,
       });
       const task = this.tasks.find((t) => t.id === taskId);
       if (task) {

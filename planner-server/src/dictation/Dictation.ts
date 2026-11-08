@@ -80,9 +80,9 @@ const GENERIC_ERROR = "Dictation failed, please try again";
 const INTERRUPTED_ERROR = "Interrupted, please record again.";
 
 /**
- * Job lifetime by origin: voice comments stay with their task for an hour,
- * meeting imports follow DICTATION_MEETING_TTL_DAYS and short inbox jobs
- * follow DICTATION_INBOX_TTL_HOURS.
+ * Job lifetime by origin: legacy voice comments stay with their task for an
+ * hour, meeting imports follow DICTATION_MEETING_TTL_DAYS and short inbox
+ * jobs follow DICTATION_INBOX_TTL_HOURS.
  */
 export function DictationJobTtlMs(
   source: DictationJobSource,
@@ -1068,7 +1068,7 @@ export async function DictationTranscribeAudio(
 /**
  * Polishes a raw transcript with the LLM (Stage B), falling back to the raw
  * transcript on any LLM failure or unparseable response. Exported so the
- * voice comment feature reuses the exact dictation polish stage.
+ * stage can be tested in isolation.
  */
 export async function DictationPolishTranscript(
   transcript: string,
@@ -1096,53 +1096,6 @@ export async function DictationPolishTranscript(
     );
     return { polishedText: transcript, polished: false };
   }
-}
-
-/**
- * STT + LLM polish for audio that is kept by the caller (voice comments):
- * never deletes the audio file and never proposes actions. The raw
- * transcript is returned alongside the polished text so callers can
- * distinguish polish fallbacks.
- */
-export async function DictationTranscribeAndPolish(
-  audioFilePath: string,
-  audioMimeType: string,
-  language: string | null,
-  options: { prompt?: string | null } = {},
-): Promise<{
-  rawTranscript: string;
-  polishedText: string;
-  polished: boolean;
-  sttMs: number;
-  polishMs: number;
-  audioDurationMs: number | null;
-  threads: number;
-  segments: DictationSegment[] | null;
-}> {
-  const transcription = await DictationTranscribeAudio(
-    audioFilePath,
-    audioMimeType,
-    language,
-    options,
-  );
-  const polishStart = Date.now();
-  // Voice comments keep the spoken language: comments on existing content
-  // are never translated.
-  const { polishedText, polished } = await DictationPolishTranscript(
-    transcription.text,
-    language,
-    null,
-  );
-  return {
-    rawTranscript: transcription.text,
-    polishedText,
-    polished,
-    sttMs: transcription.sttMs,
-    polishMs: Date.now() - polishStart,
-    audioDurationMs: transcription.audioDurationMs,
-    threads: transcription.threads,
-    segments: transcription.segments,
-  };
 }
 
 // ── LLM API call with retry ───────────────────────────────────────────────────
