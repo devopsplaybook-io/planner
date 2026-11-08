@@ -314,6 +314,20 @@ describe("useInlineDictation", () => {
     expect(field.value).toBe("keep new text");
   });
 
+  it("should append to the existing text when the whole field is selected", async () => {
+    field.value = "existing content";
+    field.setSelectionRange(0, field.value.length);
+    fetchJob.mockResolvedValue({
+      job: jobView({ status: "done", raw: "dictated text" }),
+    });
+    inline = createInline();
+    await inline.start();
+    await inline.stop();
+    await flush();
+
+    expect(field.value).toBe("existing content dictated text");
+  });
+
   it("should defer insertion when the user abandoned the field", async () => {
     fetchJob.mockResolvedValue({
       job: jobView({ status: "done", raw: "hello" }),
