@@ -24,17 +24,21 @@
           class="dictation-button"
           :disabled="dictationDisabled"
           :title="dictationTooltip"
-          aria-label="Open the dictation menu"
+          :aria-label="dictationAriaLabel"
           @click="openDictationMenu()"
         >
-          <i class="bi bi-mic"></i>
+          <span class="dictation-icon">
+            <i class="bi bi-mic"></i>
+            <span
+              v-if="badgeCount || processingCount"
+              class="nav-badge"
+              :class="{
+                'nav-badge--processing': !badgeCount && processingCount,
+              }"
+              >{{ badgeCount > 9 ? "9+" : badgeCount || processingCount }}</span
+            >
+          </span>
           <span class="nav-label">Dictation</span>
-          <span
-            v-if="badgeCount || processingCount"
-            class="nav-badge"
-            :class="{ 'nav-badge--processing': !badgeCount && processingCount }"
-            >{{ badgeCount > 9 ? "9+" : badgeCount || processingCount }}</span
-          >
         </button>
       </li>
     </ul>
@@ -129,6 +133,16 @@ useRegularRefresh(() => {
 const badgeCount = computed(() => inboxStore.badge.unread);
 const processingCount = computed(() => inboxStore.badge.processing);
 
+const dictationAriaLabel = computed(() => {
+  if (badgeCount.value) {
+    return `Open the dictation menu (${badgeCount.value} unread)`;
+  }
+  if (processingCount.value) {
+    return `Open the dictation menu (${processingCount.value} processing)`;
+  }
+  return "Open the dictation menu";
+});
+
 const online = ref(typeof navigator === "undefined" || navigator.onLine);
 function updateOnlineStatus() {
   online.value = navigator.onLine;
@@ -221,9 +235,6 @@ function openDictationMenu() {
   display: flex;
   align-items: center;
   gap: var(--space-2xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-weight: var(--weight-bold);
   font-size: inherit;
   color: inherit;
@@ -231,6 +242,24 @@ function openDictationMenu() {
   border: none;
   cursor: pointer;
   padding: 0;
+}
+
+.dictation-entry .nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The unread/processing count is pinned to the mic icon: inline it looked
+   like an extra button next to the icon once the label is hidden on mobile */
+.dictation-icon {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.dictation-icon i {
+  margin-right: 0;
 }
 
 .dictation-entry .dictation-button:disabled {
@@ -261,15 +290,19 @@ function openDictationMenu() {
 }
 
 .nav-badge {
-  min-width: 1.4em;
-  padding: 0 0.35em;
+  position: absolute;
+  top: -0.4em;
+  right: -0.4em;
+  min-width: 1.35em;
+  padding: 0 0.3em;
   border-radius: var(--radius-full);
   background: var(--color-primary);
   color: var(--color-on-primary, #fff);
-  font-size: var(--text-xs);
+  font-size: 0.6em;
   font-weight: var(--weight-bold);
   text-align: center;
-  line-height: 1.4;
+  line-height: 1.35;
+  pointer-events: none;
 }
 
 .nav-badge--processing {
