@@ -44,6 +44,21 @@ export function readSelection(field: TextField): InsertedRange {
 }
 
 /**
+ * The range dictation inserts into. A selection covering the whole field
+ * (browser select-all on focus, Ctrl/Cmd+A, stale selection) is treated as a
+ * caret at the end so the transcript appends to the existing content instead
+ * of wiping it.
+ */
+function insertionRange(field: TextField): InsertedRange {
+  const { start, end } = currentSelection(field);
+  const length = readValue(field).length;
+  if (length > 0 && start === 0 && end === length) {
+    return { start: length, end: length };
+  }
+  return { start, end };
+}
+
+/**
  * True when the field is attached, editable and laid out. Layout APIs are
  * unreliable in jsdom (empty rects), so an empty rect list is only treated
  * as hidden when the computed style explicitly hides the element.
@@ -78,22 +93,23 @@ export function isTextFieldVisible(field: TextField | null | undefined): boolean
 }
 
 /**
- * Inserts `text` at the current caret (replacing the selection) and returns
- * the inserted range. A single space is prefixed when the caret sits between
- * two non-whitespace characters.
+ * Inserts `text` at the caret (replacing a partial selection, appending when
+ * the whole field is selected) and returns the inserted range. A single space
+ * is prefixed after non-whitespace content so the transcript never sticks to
+ * existing text.
  */
 export function insertAtSelection(field: TextField, text: string): InsertedRange {
   const normalized = normalizeTextForField(field, text);
-  const { start, end } = currentSelection(field);
+  const { start, end } = insertionRange(field);
   const value = readValue(field);
   const before = value.slice(start - 1, start);
   const after = value.slice(end, end + 1);
   const needsSpace =
     normalized.length > 0 &&
+    !/^\s/.test(normalized) &&
     before !== "" &&
-    after !== "" &&
     !/\s/.test(before) &&
-    !/\s/.test(after);
+    (after === "" || !/\s/.test(after));
   const insertion = needsSpace ? ` ${normalized}` : normalized;
 
   try {

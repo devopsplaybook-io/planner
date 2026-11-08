@@ -66,6 +66,34 @@ describe("inlineDictationInsert", () => {
     expect(input.value).toBe("hello there");
   });
 
+  it("should append instead of replacing the field when everything is selected", () => {
+    const textarea = makeTextarea("keep this text");
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    const range = insertAtSelection(textarea, "and add this");
+
+    expect(textarea.value).toBe("keep this text and add this");
+    expect(textarea.value.slice(range.start, range.end)).toBe("and add this");
+  });
+
+  it("should separate the transcript from text when appending at the end", () => {
+    const textarea = makeTextarea("existing text.");
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    insertAtSelection(textarea, "New sentence.");
+
+    expect(textarea.value).toBe("existing text. New sentence.");
+  });
+
+  it("should not add a separator when the transcript already starts with whitespace", () => {
+    const input = makeInput("hello");
+    input.setSelectionRange(5, 5);
+
+    insertAtSelection(input, " world");
+
+    expect(input.value).toBe("hello world");
+  });
+
   it("should add a separating space between two words", () => {
     const input = makeInput("foobar");
     input.setSelectionRange(3, 3);
@@ -97,9 +125,9 @@ describe("inlineDictationInsert", () => {
     const onInput = vi.fn();
     document.body.addEventListener("input", onInput);
 
-    insertAtSelection(input, "!");
+    insertAtSelection(input, "there");
 
-    expect(input.value).toBe("hello!");
+    expect(input.value).toBe("hello there");
     expect(onInput).toHaveBeenCalledTimes(1);
     document.body.removeEventListener("input", onInput);
   });
@@ -111,7 +139,7 @@ describe("inlineDictationInsert", () => {
 
     insertAtSelection(input, "b\nc");
 
-    expect(input.value).toBe("ab c");
+    expect(input.value).toBe("a b c");
   });
 
   it("should keep newlines in a textarea", () => {
@@ -121,7 +149,7 @@ describe("inlineDictationInsert", () => {
 
     insertAtSelection(textarea, "b\nc");
 
-    expect(textarea.value).toBe("ab\nc");
+    expect(textarea.value).toBe("a b\nc");
   });
 
   it("should replace an exact range and dispatch input", () => {
