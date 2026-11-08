@@ -3,7 +3,9 @@
     <article>
       <header>
         <h3><i class="bi bi-mic" /> Dictation</h3>
-        <button class="close-btn" aria-label="Close" @click="requestClose" />
+        <button class="close-btn" aria-label="Close" @click="requestClose">
+          ×
+        </button>
       </header>
 
       <div class="dictation-body">
