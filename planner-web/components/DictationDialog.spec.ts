@@ -84,6 +84,7 @@ function makeDictationStore() {
     engineState: "ready",
     engine: "embedded",
     language: "auto",
+    dialogTab: "dictate" as "dictate" | "capture" | "import" | "inbox",
     jobTargetLanguage: null as string | null,
     availability: {
       rawTranscript: true,
@@ -159,6 +160,18 @@ async function openDialog() {
       components: {
         ProjectSelect: defineComponent({ render: () => null }),
         InlineDictationButton: defineComponent({ render: () => null }),
+        QuickCapturePanel: defineComponent({
+          name: "QuickCapturePanel",
+          template: '<div class="quick-capture-panel-stub" />',
+        }),
+        MeetingImportPanel: defineComponent({
+          name: "MeetingImportPanel",
+          template: '<div class="meeting-import-panel-stub" />',
+        }),
+        InboxPanel: defineComponent({
+          name: "InboxPanel",
+          template: '<div class="inbox-panel-stub" />',
+        }),
         DictationActionCard,
         DictationAskPanel,
         DictationConfidenceReview,
@@ -180,6 +193,8 @@ beforeEach(() => {
     config: {},
     isDictationEnabled: true,
     isImproveEnabled: true,
+    isDictationSttConfigured: true,
+    dictationImportEnabled: true,
     dictationMaxDurationSeconds: 300,
     dictationMaxUploadMb: 10,
     dictationLanguages: ["auto", "en", "fr"],
@@ -874,5 +889,100 @@ describe("DictationDialog ask", () => {
 
     expect(wrapper.find(".review-tabs").exists()).toBe(false);
     expect(wrapper.find(".ask-panel").exists()).toBe(false);
+  });
+});
+
+describe("DictationDialog consolidated menu", () => {
+  function tabLabels(wrapper: ReturnType<typeof mount>) {
+    return wrapper.findAll(".dictation-tab").map((tab) => tab.text());
+  }
+
+  it("renders Dictate, Capture, Import and Inbox as one tab strip", async () => {
+    const wrapper = await openDialog();
+
+    expect(wrapper.find(".dictation-tabs").exists()).toBe(true);
+    expect(tabLabels(wrapper)).toEqual([
+      "Dictate",
+      "Capture",
+      "Import",
+      "Inbox",
+    ]);
+    expect(
+      wrapper.findAll(".dictation-tab").map((tab) =>
+        tab.attributes("aria-selected"),
+      ),
+    ).toEqual(["true", "false", "false", "false"]);
+    expect(wrapper.find(".dictation-review").exists()).toBe(true);
+  });
+
+  it("switches between the dictate, capture, import and inbox panels", async () => {
+    const wrapper = await openDialog();
+
+    await findButton(wrapper, "Capture")!.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".quick-capture-panel-stub").exists()).toBe(true);
+    expect(wrapper.find(".dictation-review").exists()).toBe(false);
+
+    await findButton(wrapper, "Import")!.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".meeting-import-panel-stub").exists()).toBe(true);
+    expect(wrapper.find(".quick-capture-panel-stub").exists()).toBe(false);
+
+    await findButton(wrapper, "Inbox")!.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".inbox-panel-stub").exists()).toBe(true);
+    expect(wrapper.find(".meeting-import-panel-stub").exists()).toBe(false);
+
+    await findButton(wrapper, "Dictate")!.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".dictation-review").exists()).toBe(true);
+    expect(wrapper.find(".inbox-panel-stub").exists()).toBe(false);
+  });
+
+  it("opens on the tab requested by the store", async () => {
+    dictationStore.dialogTab = "capture";
+
+    const wrapper = await openDialog();
+
+    expect(wrapper.find(".quick-capture-panel-stub").exists()).toBe(true);
+    expect(
+      findButton(wrapper, "Capture")!.attributes("aria-selected"),
+    ).toBe("true");
+  });
+
+  it("opens the inbox tab requested by a deep link", async () => {
+    dictationStore.dialogTab = "inbox";
+
+    const wrapper = await openDialog();
+
+    expect(wrapper.find(".inbox-panel-stub").exists()).toBe(true);
+    expect(
+      findButton(wrapper, "Inbox")!.attributes("aria-selected"),
+    ).toBe("true");
+  });
+
+  it("switches to the inbox tab while the menu is already open", async () => {
+    const wrapper = await openDialog();
+    expect(wrapper.find(".dictation-review").exists()).toBe(true);
+
+    dictationStore.dialogTab = "inbox";
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".inbox-panel-stub").exists()).toBe(true);
+  });
+
+  it("opens on Import when speech-to-text is unavailable and keeps the inbox tab", async () => {
+    (recommendationStore as Record<string, unknown>).isDictationSttConfigured =
+      false;
+
+    const wrapper = await openDialog();
+
+    expect(tabLabels(wrapper)).toEqual(["Import", "Inbox"]);
+    expect(wrapper.find(".meeting-import-panel-stub").exists()).toBe(true);
+    expect(wrapper.find(".quick-capture-panel-stub").exists()).toBe(false);
   });
 });

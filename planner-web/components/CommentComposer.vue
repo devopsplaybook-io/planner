@@ -35,10 +35,6 @@
         <i class="bi" :class="isRecording ? 'bi-stop-circle' : 'bi-mic'" />
       </button>
     </div>
-    <p v-if="allowVoice" class="composer-retention">
-      <i class="bi bi-shield-lock" /> Voice-comment audio is kept as a task
-      attachment; delete the attachment to remove it.
-    </p>
     <div
       v-if="isRecording"
       class="composer-voice-status"
@@ -319,12 +315,6 @@ function onKeydown(event) {
   margin: 0;
   color: var(--color-danger);
   font-size: var(--text-sm);
-}
-
-.composer-retention {
-  margin: 0;
-  font-size: var(--text-xs);
-  opacity: 0.7;
 }
 
 textarea {

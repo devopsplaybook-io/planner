@@ -24,38 +24,21 @@
           class="dictation-button"
           :disabled="dictationDisabled"
           :title="dictationTooltip"
-          aria-label="Start dictation"
-          @click="dictationStore.openDialog()"
+          :aria-label="dictationAriaLabel"
+          @click="openDictationMenu()"
         >
-          <i class="bi bi-mic"></i>
+          <span class="dictation-icon">
+            <i class="bi bi-mic"></i>
+            <span
+              v-if="badgeCount || processingCount"
+              class="nav-badge"
+              :class="{
+                'nav-badge--processing': !badgeCount && processingCount,
+              }"
+              >{{ badgeCount > 9 ? "9+" : badgeCount || processingCount }}</span
+            >
+          </span>
           <span class="nav-label">Dictation</span>
-        </button>
-      </li>
-      <li v-if="captureAvailable" class="dictation-entry">
-        <button
-          class="dictation-button"
-          title="Quick capture"
-          aria-label="Quick capture"
-          @click="openQuickCapture()"
-        >
-          <i class="bi bi-lightning-charge"></i>
-          <span class="nav-label">Capture</span>
-        </button>
-      </li>
-      <li v-if="importAvailable" class="dictation-entry">
-        <button
-          class="dictation-button"
-          :disabled="!online"
-          :title="
-            online
-              ? 'Import a meeting recording'
-              : 'Importing needs a network connection'
-          "
-          aria-label="Import a meeting recording"
-          @click="openMeetingImport()"
-        >
-          <i class="bi bi-file-earmark-music"></i>
-          <span class="nav-label">Import</span>
         </button>
       </li>
     </ul>
@@ -64,25 +47,6 @@
         <NuxtLink to="/" :class="activeRoute == '/' ? 'active' : 'inactive'"
           ><i class="bi bi-speedometer2"></i>
           <span class="nav-label">Dashboard</span></NuxtLink
-        >
-      </li>
-      <li>
-        <NuxtLink
-          to="/inbox"
-          :class="activeRoute == '/inbox' ? 'active' : 'inactive'"
-          :title="
-            processingCount
-              ? `${processingCount} recording(s) processing`
-              : 'Inbox'
-          "
-          ><i class="bi bi-inbox"></i>
-          <span class="nav-label">Inbox</span>
-          <span
-            v-if="badgeCount || processingCount"
-            class="nav-badge"
-            :class="{ 'nav-badge--processing': !badgeCount && processingCount }"
-            >{{ badgeCount > 9 ? "9+" : badgeCount || processingCount }}</span
-          ></NuxtLink
         >
       </li>
       <li>
@@ -135,8 +99,6 @@ const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
 const inboxStore = useInboxStore();
 const commandPaletteStore = useCommandPaletteStore();
-const { openQuickCapture } = useQuickCapture();
-const { openMeetingImport } = useMeetingImport();
 const route = useRoute();
 
 const paletteHint = computed(() => {
@@ -171,6 +133,16 @@ useRegularRefresh(() => {
 const badgeCount = computed(() => inboxStore.badge.unread);
 const processingCount = computed(() => inboxStore.badge.processing);
 
+const dictationAriaLabel = computed(() => {
+  if (badgeCount.value) {
+    return `Open the dictation menu (${badgeCount.value} unread)`;
+  }
+  if (processingCount.value) {
+    return `Open the dictation menu (${processingCount.value} processing)`;
+  }
+  return "Open the dictation menu";
+});
+
 const online = ref(typeof navigator === "undefined" || navigator.onLine);
 function updateOnlineStatus() {
   online.value = navigator.onLine;
@@ -187,30 +159,35 @@ onUnmounted(() => {
 const dictationAvailable = computed(
   () => authStore.isAuthenticated && recommendationStore.isDictationEnabled,
 );
-const captureAvailable = computed(
-  () => authStore.isAuthenticated && recommendationStore.isDictationEnabled,
-);
-const importAvailable = computed(
-  () =>
-    authStore.isAuthenticated &&
-    recommendationStore.isDictationEnabled &&
-    recommendationStore.dictationImportEnabled,
-);
-const dictationDisabled = computed(
-  () => !recommendationStore.isDictationSttConfigured || !online.value,
-);
+const dictationDisabled = computed(() => !online.value);
 const dictationTooltip = computed(() => {
   if (!online.value) {
     return "Dictation is unavailable offline";
   }
+  if (
+    !recommendationStore.isDictationSttConfigured &&
+    !recommendationStore.dictationImportEnabled
+  ) {
+    return "Open the voice inbox";
+  }
   if (!recommendationStore.isDictationSttConfigured) {
-    return "Dictation needs a speech-to-text server configuration";
+    return "Inbox and meeting import";
   }
   if (recommendationStore.dictationEngineState === "preparing") {
     return "Preparing speech engine…";
   }
-  return "Start dictation";
+  return "Dictation, capture, inbox and meeting import";
 });
+
+function openDictationMenu() {
+  if (recommendationStore.isDictationSttConfigured) {
+    dictationStore.openDialog("dictate");
+  } else if (recommendationStore.dictationImportEnabled) {
+    dictationStore.openDialog("import");
+  } else {
+    dictationStore.openDialog("inbox");
+  }
+}
 </script>
 
 <style scoped>
@@ -258,9 +235,6 @@ const dictationTooltip = computed(() => {
   display: flex;
   align-items: center;
   gap: var(--space-2xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-weight: var(--weight-bold);
   font-size: inherit;
   color: inherit;
@@ -268,6 +242,24 @@ const dictationTooltip = computed(() => {
   border: none;
   cursor: pointer;
   padding: 0;
+}
+
+.dictation-entry .nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The unread/processing count is pinned to the mic icon: inline it looked
+   like an extra button next to the icon once the label is hidden on mobile */
+.dictation-icon {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.dictation-icon i {
+  margin-right: 0;
 }
 
 .dictation-entry .dictation-button:disabled {
@@ -298,15 +290,19 @@ const dictationTooltip = computed(() => {
 }
 
 .nav-badge {
-  min-width: 1.4em;
-  padding: 0 0.35em;
+  position: absolute;
+  top: -0.4em;
+  right: -0.2em;
+  min-width: 1.35em;
+  padding: 0 0.3em;
   border-radius: var(--radius-full);
   background: var(--color-primary);
   color: var(--color-on-primary, #fff);
-  font-size: var(--text-xs);
+  font-size: 0.6em;
   font-weight: var(--weight-bold);
   text-align: center;
-  line-height: 1.4;
+  line-height: 1.35;
+  pointer-events: none;
 }
 
 .nav-badge--processing {

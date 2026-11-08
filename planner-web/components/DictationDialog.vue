@@ -6,19 +6,36 @@
         <button class="close-btn" aria-label="Close" @click="requestClose" />
       </header>
 
-      <div v-if="dialogError" class="dialog-error" role="alert">
-        <span>{{ dialogError }}</span>
-        <button
-          class="dialog-error-dismiss"
-          aria-label="Dismiss error"
-          @click="dialogError = ''"
-        >
-          ×
-        </button>
-      </div>
+      <div class="dictation-body">
+        <div v-if="tabs.length > 1" class="dictation-tabs" role="tablist">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            type="button"
+            role="tab"
+            class="dictation-tab"
+            :class="{ active: activeTab === tab.id }"
+            :aria-selected="activeTab === tab.id"
+            @click="activeTab = tab.id"
+          >
+            <i class="bi" :class="tab.icon" /> {{ tab.label }}
+          </button>
+        </div>
 
-      <!-- RECORD -->
-      <section v-if="mode === 'record'" class="dictation-record">
+        <template v-if="activeTab === 'dictate'">
+          <div v-if="dialogError" class="dialog-error" role="alert">
+            <span>{{ dialogError }}</span>
+            <button
+              class="dialog-error-dismiss"
+              aria-label="Dismiss error"
+              @click="dialogError = ''"
+            >
+              ×
+            </button>
+          </div>
+
+          <!-- RECORD -->
+          <section v-if="mode === 'record'" class="dictation-record">
         <p v-if="enginePreparing" class="engine-preparing" role="status">
           <i class="bi bi-hourglass-split" />
           Preparing speech engine (first run)…
@@ -130,7 +147,7 @@
 
       <!-- REVIEW: opens as soon as the raw transcript exists -->
       <section v-else class="dictation-review">
-        <nav v-if="showAskTab" class="review-tabs" role="tablist">
+        <div v-if="showAskTab" class="review-tabs" role="tablist">
           <button
             type="button"
             role="tab"
@@ -149,7 +166,7 @@
           >
             <i class="bi bi-question-circle" /> Ask
           </button>
-        </nav>
+        </div>
 
         <DictationAskPanel
           v-if="showAskTab && reviewTab === 'ask'"
@@ -420,6 +437,22 @@
           </footer>
         </form>
       </section>
+        </template>
+
+        <QuickCapturePanel
+          v-else-if="activeTab === 'capture' && open"
+          @close="requestClose"
+        />
+        <MeetingImportPanel
+          v-else-if="activeTab === 'import' && open"
+          @close="requestClose"
+          @open-inbox="activeTab = 'inbox'"
+        />
+        <InboxPanel
+          v-else-if="activeTab === 'inbox' && open"
+          @close="requestClose"
+        />
+      </div>
     </article>
   </dialog>
 </template>
@@ -448,6 +481,57 @@ const committing = ref(false);
 const dialogError = ref("");
 const submittedDurationSeconds = ref(0);
 const recentJobs = computed(() => dictationStore.recentJobs || []);
+
+// Consolidated dictation menu: dictate, quick capture, meeting import and the
+// voice inbox are presented as tabs (same tab pattern as the Settings page)
+// instead of separate navigation entries.
+const activeTab = ref("dictate");
+const canDictate = computed(
+  () => recommendationStore.isDictationSttConfigured,
+);
+const canImport = computed(
+  () => recommendationStore.dictationImportEnabled,
+);
+const tabs = computed(() => {
+  const list = [];
+  if (canDictate.value) {
+    list.push({ id: "dictate", label: "Dictate", icon: "bi-mic" });
+    list.push({
+      id: "capture",
+      label: "Capture",
+      icon: "bi-lightning-charge",
+    });
+  }
+  if (canImport.value) {
+    list.push({
+      id: "import",
+      label: "Import",
+      icon: "bi-file-earmark-music",
+    });
+  }
+  list.push({ id: "inbox", label: "Inbox", icon: "bi-inbox" });
+  return list;
+});
+
+function ensureAvailableTab() {
+  if (!tabs.value.some((tab) => tab.id === activeTab.value)) {
+    activeTab.value = tabs.value[0]?.id || "dictate";
+  }
+}
+
+watch(tabs, ensureAvailableTab);
+
+// Deep links (push notification, share target) can request a tab while the
+// menu is already open
+watch(
+  () => dictationStore.dialogTab,
+  (tab) => {
+    if (props.open && tab) {
+      activeTab.value = tab;
+      ensureAvailableTab();
+    }
+  },
+);
 
 // Modal dialog wiring: backdrop, focus trap, Escape to close
 const dialogEl = useModalDialog(() => props.open);
@@ -1301,6 +1385,8 @@ watch(
   () => props.open,
   async (isOpen) => {
     if (isOpen) {
+      activeTab.value = dictationStore.dialogTab || "dictate";
+      ensureAvailableTab();
       dialogError.value = "";
       await ensureProjectsLoaded();
       ensureStatusesLoaded();
@@ -1335,6 +1421,43 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.dictation-body {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+/* Same tab pattern as the Settings page */
+.dictation-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--space-2xs);
+  border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
+}
+
+.dictation-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: var(--space-xs) var(--space-md);
+  color: var(--color-text-muted);
+  font-weight: var(--weight-medium);
+  margin-bottom: -1px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.dictation-tab:hover {
+  color: var(--color-primary);
+}
+
+.dictation-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
 .dictation-record,
 .dictation-processing {
   display: grid;
