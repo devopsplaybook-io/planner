@@ -223,7 +223,7 @@ export class Config {
   /**
    * True when the configured STT engine can actually run: embedded mode
    * needs a model, external mode needs endpoint URL, key and model. Shared
-   * by the dictation availability endpoint and the voice comment gate.
+   * by the dictation availability endpoint and the dictation job setup.
    */
   public IsDictationSttConfigured(): boolean {
     return this.STT_MODE === "embedded"

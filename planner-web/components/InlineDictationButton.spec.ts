@@ -139,6 +139,12 @@ describe("InlineDictationButton recording", () => {
     expect(controller.stop).toHaveBeenCalledTimes(1);
   });
 
+  it("should forward the attach-audio option when starting", async () => {
+    const wrapper = mountButton({ keepAudio: true });
+    await wrapper.find(".inline-dictation-btn").trigger("click");
+    expect(controller.start).toHaveBeenCalledWith({ keepAudio: true });
+  });
+
   it("should show the elapsed time and offer stop and cancel", async () => {
     const wrapper = mountButton();
     controller.isRecording.value = true;

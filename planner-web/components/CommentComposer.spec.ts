@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import CommentComposer from "./CommentComposer.vue";
+import InlineDictationButton from "./InlineDictationButton.vue";
 import { useDictationStore } from "../stores/dictation";
 import { useRecommendationStore } from "../stores/recommendation";
 import { useTasksStore } from "../stores/tasks";
@@ -129,6 +130,16 @@ function mountComposer(props: Record<string, unknown> = {}) {
   });
 }
 
+// The single microphone is the shared inline control: mount it for real so
+// the composer's recording integration (transcript + optional audio) runs.
+function mountComposerWithMic(props: Record<string, unknown> = {}) {
+  return mount(CommentComposer, {
+    props: { modelValue: "", ...props },
+    attachTo: document.body,
+    global: { components: { InlineDictationButton } },
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
   setActivePinia(createPinia());
@@ -149,19 +160,35 @@ beforeEach(() => {
 });
 
 async function startRecording(wrapper: ReturnType<typeof mountComposer>) {
-  await wrapper.find(".composer-voice-btn").trigger("click");
+  await wrapper.find(".inline-dictation-btn").trigger("click");
   await flushPromises();
 }
 
 async function stopRecording(wrapper: ReturnType<typeof mountComposer>) {
   await wrapper
-    .find('.composer-voice-status button[aria-label="Stop recording"]')
+    .find('.inline-dictation-action[aria-label="Stop recording"]')
     .trigger("click");
   await flushPromises();
   await flushPromises();
 }
 
-describe("CommentComposer voice message", () => {
+function audioUploadCalls() {
+  return (
+    tasksStore.uploadAttachment as unknown as {
+      mock: { calls: unknown[][] };
+    }
+  ).mock.calls;
+}
+
+function dictationUploadCalls() {
+  return (
+    dictationStore.uploadJob as unknown as {
+      mock: { calls: unknown[][] };
+    }
+  ).mock.calls;
+}
+
+describe("CommentComposer voice dictation", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
@@ -180,82 +207,81 @@ describe("CommentComposer voice message", () => {
     document.body.replaceChildren();
   });
 
-  it("should hide the voice button by default (allowVoice=false)", () => {
-    const wrapper = mountComposer({ taskId: "t1" });
-    expect(wrapper.find(".composer-voice-btn").exists()).toBe(false);
+  it("should show a single microphone and the attach-audio option", () => {
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
+    expect(wrapper.findAll(".inline-dictation-btn")).toHaveLength(1);
+    expect(wrapper.find(".composer-attach-audio").exists()).toBe(true);
+    expect(
+      (wrapper.find(".composer-attach-audio input").element as HTMLInputElement)
+        .checked,
+    ).toBe(false);
     wrapper.unmount();
   });
 
-  it("should hide the voice button without a task", () => {
-    const wrapper = mountComposer({ allowVoice: true });
-    expect(wrapper.find(".composer-voice-btn").exists()).toBe(false);
+  it("should hide the microphone and the option by default (allowVoice=false)", () => {
+    const wrapper = mountComposerWithMic({ taskId: "t1" });
+    expect(wrapper.find(".inline-dictation-btn").exists()).toBe(false);
+    expect(wrapper.find(".composer-attach-audio").exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("should hide the voice button when the server has no inline jobs", () => {
+  it("should hide the microphone and the option without a task", () => {
+    const wrapper = mountComposerWithMic({ allowVoice: true });
+    expect(wrapper.find(".inline-dictation-btn").exists()).toBe(false);
+    expect(wrapper.find(".composer-attach-audio").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("should hide the microphone and the option when the server has no inline jobs", () => {
     recommendationStore.config = appConfig({ inlineJobs: false }) as never;
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
-    expect(wrapper.find(".composer-voice-btn").exists()).toBe(false);
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
+    expect(wrapper.find(".inline-dictation-btn").exists()).toBe(false);
+    expect(wrapper.find(".composer-attach-audio").exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("should hide the voice button when the browser cannot record", () => {
+  it("should hide the microphone and the option when the browser cannot record", () => {
     vi.stubGlobal("MediaRecorder", undefined);
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
-    expect(wrapper.find(".composer-voice-btn").exists()).toBe(false);
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
+    expect(wrapper.find(".inline-dictation-btn").exists()).toBe(false);
+    expect(wrapper.find(".composer-attach-audio").exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("should hide the voice button while the composer is busy", () => {
-    const wrapper = mountComposer({
+  it("should hide the microphone and the option while the composer is busy", () => {
+    const wrapper = mountComposerWithMic({
       allowVoice: true,
       taskId: "t1",
       busy: true,
     });
-    expect(wrapper.find(".composer-voice-btn").exists()).toBe(false);
+    expect(wrapper.find(".inline-dictation-btn").exists()).toBe(false);
+    expect(wrapper.find(".composer-attach-audio").exists()).toBe(false);
     wrapper.unmount();
   });
 
   it("should show the recording state with elapsed time", async () => {
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
-    expect(wrapper.find(".composer-voice-btn").exists()).toBe(true);
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
 
     await startRecording(wrapper);
-    expect(wrapper.find(".composer-voice-status").exists()).toBe(true);
-    expect(wrapper.find(".composer-voice-btn").attributes("aria-pressed")).toBe(
+    expect(wrapper.find(".inline-dictation-status").exists()).toBe(true);
+    expect(wrapper.find(".inline-dictation-btn").attributes("aria-pressed")).toBe(
       "true",
     );
 
     await vi.advanceTimersByTimeAsync(2000);
-    expect(wrapper.find(".composer-voice-timer").text()).toBe("00:02");
+    expect(wrapper.find(".inline-dictation-timer").text()).toBe("00:02");
     wrapper.unmount();
   });
 
-  it("should keep the audio as an attachment and insert the transcript", async () => {
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
+  it("should transcribe without attaching the audio by default", async () => {
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
 
     await startRecording(wrapper);
     await stopRecording(wrapper);
 
-    // The audio is uploaded once, without a second background transcription
-    expect(tasksStore.uploadAttachment).toHaveBeenCalledTimes(1);
-    const [taskId, file, options] = (
-      tasksStore.uploadAttachment as unknown as {
-        mock: { calls: [string, File, Record<string, unknown>][] };
-      }
-    ).mock.calls[0]!;
-    expect(taskId).toBe("t1");
-    expect(file).toBeInstanceOf(File);
-    expect(file.name).toMatch(/^voice-message-\d{8}-\d{6}\.webm$/);
-    expect(options).toEqual({ language: "auto", transcribe: false });
-
-    // The same audio drives the inline dictation job
+    expect(tasksStore.uploadAttachment).not.toHaveBeenCalled();
     expect(dictationStore.uploadJob).toHaveBeenCalledTimes(1);
-    const [, mimeType, language, source] = (
-      dictationStore.uploadJob as unknown as {
-        mock: { calls: [Blob, string, string, string][] };
-      }
-    ).mock.calls[0]!;
+    const [, mimeType, language, source] = dictationUploadCalls()[0]!;
     expect(mimeType).toBe("audio/webm;codecs=opus");
     expect(language).toBe("auto");
     expect(source).toBe("inline");
@@ -275,8 +301,29 @@ describe("CommentComposer voice message", () => {
     wrapper.unmount();
   });
 
+  it("should attach the audio when the option is enabled", async () => {
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
+    await wrapper.find(".composer-attach-audio input").setValue(true);
+
+    await startRecording(wrapper);
+    await stopRecording(wrapper);
+
+    expect(tasksStore.uploadAttachment).toHaveBeenCalledTimes(1);
+    const [taskId, file] = audioUploadCalls()[0]!;
+    expect(taskId).toBe("t1");
+    expect(file).toBeInstanceOf(File);
+    expect((file as File).name).toMatch(
+      /^voice-message-\d{8}-\d{6}\.webm$/,
+    );
+    expect(dictationStore.uploadJob).toHaveBeenCalledTimes(1);
+    expect(
+      (wrapper.find("textarea").element as HTMLTextAreaElement).value,
+    ).toBe("Hello there.");
+    wrapper.unmount();
+  });
+
   it("should send the transcript edits in the single comment", async () => {
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
 
     await startRecording(wrapper);
     await stopRecording(wrapper);
@@ -296,7 +343,8 @@ describe("CommentComposer voice message", () => {
     (tasksStore.uploadAttachment as ReturnType<typeof vi.fn>).mockRejectedValue({
       response: { data: { error: "Attachment too large" } },
     });
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
+    await wrapper.find(".composer-attach-audio input").setValue(true);
 
     await startRecording(wrapper);
     await stopRecording(wrapper);
@@ -314,56 +362,47 @@ describe("CommentComposer voice message", () => {
     (dictationStore.uploadJob as ReturnType<typeof vi.fn>).mockResolvedValue({
       error: "The dictation engine is unavailable.",
     });
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
 
     await startRecording(wrapper);
     await stopRecording(wrapper);
 
-    const error = wrapper.find(".composer-voice-error");
+    const error = wrapper.find(".inline-dictation-error");
     expect(error.exists()).toBe(true);
     expect(error.text()).toContain("The dictation engine is unavailable.");
     wrapper.unmount();
   });
 
   it("should not upload anything on cancel", async () => {
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
+    await wrapper.find(".composer-attach-audio input").setValue(true);
 
     await startRecording(wrapper);
     await wrapper
-      .find('.composer-voice-status button[aria-label="Cancel recording"]')
+      .find('.inline-dictation-action[aria-label="Cancel recording"]')
       .trigger("click");
     await flushPromises();
 
     expect(tasksStore.uploadAttachment).not.toHaveBeenCalled();
     expect(dictationStore.uploadJob).not.toHaveBeenCalled();
-    expect(wrapper.find(".composer-voice-status").exists()).toBe(false);
+    expect(wrapper.find(".inline-dictation-status").exists()).toBe(false);
     wrapper.unmount();
   });
 
   it("should record with the dictation language from preferences", async () => {
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
     dictationStore.setLanguage("fr");
 
     await startRecording(wrapper);
-    expect(wrapper.find(".composer-voice-language").exists()).toBe(false);
-
     await stopRecording(wrapper);
-    expect(
-      (dictationStore.uploadJob as unknown as { mock: { calls: unknown[][] } })
-        .mock.calls[0]![2],
-    ).toBe("fr");
-    expect(
-      (
-        tasksStore.uploadAttachment as unknown as {
-          mock: { calls: [string, File, Record<string, unknown>][] };
-        }
-      ).mock.calls[0]![2],
-    ).toEqual({ language: "fr", transcribe: false });
+
+    expect(dictationUploadCalls()[0]![2]).toBe("fr");
     wrapper.unmount();
   });
 
   it("should upload the voice message once when the max duration auto-stops it", async () => {
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
+    await wrapper.find(".composer-attach-audio input").setValue(true);
 
     await startRecording(wrapper);
     await vi.advanceTimersByTimeAsync(120000);
@@ -372,26 +411,26 @@ describe("CommentComposer voice message", () => {
 
     expect(tasksStore.uploadAttachment).toHaveBeenCalledTimes(1);
     expect(dictationStore.uploadJob).toHaveBeenCalledTimes(1);
-    expect(wrapper.find(".composer-voice-status").exists()).toBe(false);
+    expect(wrapper.find(".inline-dictation-status").exists()).toBe(false);
     wrapper.unmount();
   });
 
   it("should show a permission error inline and recover", async () => {
     stubMedia(false);
-    const wrapper = mountComposer({ allowVoice: true, taskId: "t1" });
+    const wrapper = mountComposerWithMic({ allowVoice: true, taskId: "t1" });
 
     await startRecording(wrapper);
 
-    const error = wrapper.find(".composer-voice-error");
+    const error = wrapper.find(".inline-dictation-error");
     expect(error.exists()).toBe(true);
     expect(error.text()).toContain("Microphone access was denied");
 
     // A later successful start clears the error
     stubMedia(true);
     await startRecording(wrapper);
-    expect(wrapper.find(".composer-voice-error").exists()).toBe(false);
+    expect(wrapper.find(".inline-dictation-error").exists()).toBe(false);
     await wrapper
-      .find('.composer-voice-status button[aria-label="Cancel recording"]')
+      .find('.inline-dictation-action[aria-label="Cancel recording"]')
       .trigger("click");
     wrapper.unmount();
   });

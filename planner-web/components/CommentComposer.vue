@@ -1,65 +1,40 @@
 <template>
   <div class="comment-composer">
-    <div class="composer-tabs" role="tablist" aria-label="Comment editor mode">
-      <button
-        type="button"
-        role="tab"
-        class="composer-tab"
-        :class="{ active: mode === 'write' }"
-        :aria-selected="mode === 'write'"
-        @click="mode = 'write'"
+    <div class="composer-header">
+      <div class="composer-tabs" role="tablist" aria-label="Comment editor mode">
+        <button
+          type="button"
+          role="tab"
+          class="composer-tab"
+          :class="{ active: mode === 'write' }"
+          :aria-selected="mode === 'write'"
+          @click="mode = 'write'"
+        >
+          Write
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="composer-tab"
+          :class="{ active: mode === 'preview' }"
+          :aria-selected="mode === 'preview'"
+          @click="mode = 'preview'"
+        >
+          Preview
+        </button>
+      </div>
+      <label
+        v-if="showAttachOption"
+        class="composer-attach-audio"
+        title="Also keep the recording as an audio attachment"
       >
-        Write
-      </button>
-      <button
-        type="button"
-        role="tab"
-        class="composer-tab"
-        :class="{ active: mode === 'preview' }"
-        :aria-selected="mode === 'preview'"
-        @click="mode = 'preview'"
-      >
-        Preview
-      </button>
-      <button
-        v-if="showVoiceButton"
-        type="button"
-        class="composer-tab composer-voice-btn"
-        :class="{ recording: isRecording }"
-        :aria-pressed="isRecording"
-        :aria-label="
-          isRecording ? 'Stop recording' : 'Record a voice comment'
-        "
-        @click="isRecording ? stopVoiceRecording() : startVoiceMessage()"
-      >
-        <i class="bi" :class="isRecording ? 'bi-stop-circle' : 'bi-mic'" />
-      </button>
+        <input v-model="keepAudio" type="checkbox" :disabled="busy" />
+        <i class="bi bi-paperclip" aria-hidden="true" />
+        <span>Attach audio</span>
+      </label>
     </div>
-    <div
-      v-if="isRecording"
-      class="composer-voice-status"
-      aria-live="polite"
-    >
-      <span class="composer-voice-timer">{{ formattedVoiceElapsed }}</span>
-      <button
-        type="button"
-        class="composer-tab"
-        aria-label="Stop recording"
-        @click="stopVoiceRecording"
-      >
-        <i class="bi bi-stop-circle" /> Stop
-      </button>
-      <button
-        type="button"
-        class="composer-tab"
-        aria-label="Cancel recording"
-        @click="cancelVoiceRecording"
-      >
-        <i class="bi bi-x" /> Cancel
-      </button>
-    </div>
-    <p v-if="voiceError && !isRecording" class="composer-voice-error" role="alert">
-      {{ voiceError }}
+    <p v-if="voiceUploadError" class="composer-voice-error" role="alert">
+      {{ voiceUploadError }}
     </p>
     <div v-show="mode === 'write'" class="composer-input-row">
       <textarea
@@ -73,7 +48,8 @@
         :controller="inline"
         :target="textarea"
         :disabled="busy"
-        :show-button="!isVoiceMessageActive"
+        :keep-audio="keepAudio"
+        :show-button="showVoice"
         aria-label="Dictate comment"
       />
     </div>
@@ -104,104 +80,66 @@ const props = defineProps({
     default: "Add a comment... (Markdown supported)",
   },
   busy: { type: Boolean, default: false },
-  // Voice messages: offer the record button when the comment belongs to a
-  // task and the server supports the inline (no auto-comment) flow
+  // Voice dictation: offered when the comment belongs to a task and the
+  // server supports the inline (transcript-first) flow. One microphone
+  // transcribes into the text; the optional toggle also keeps the audio.
   allowVoice: { type: Boolean, default: false },
   taskId: { type: String, default: null },
 });
-const emit = defineEmits(["update:modelValue", "submit", "voice-busy"]);
+const emit = defineEmits(["update:modelValue", "submit"]);
 
 const recommendationStore = useRecommendationStore();
 const tasksStore = useTasksStore();
 
 const mode = ref("write");
+const keepAudio = ref(false);
 const { textarea, input, triggerResize } = useTextareaAutosize();
 
-// Dictation into the comment text and recorded voice messages share one
-// controller so they can never run at the same time.
+// Dictation into the comment text; when the user asked to attach the audio
+// the recording is also uploaded as a regular audio attachment.
 const inline = useInlineDictation({
   target: () => textarea.value,
   onKeepAudio: (recording) => uploadVoiceMessage(recording),
   onInserted: () => triggerResize(),
 });
 
-const {
-  phase,
-  recordingMode,
-  isRecording,
-  elapsedSeconds: voiceElapsedSeconds,
-  error: inlineError,
-  language: voiceLanguage,
-} = inline;
+const { isRecording } = inline;
 
 const voiceUploadError = ref("");
-const voiceError = computed(() => inlineError.value || voiceUploadError.value);
-
-const isVoiceMessageActive = computed(
-  () => recordingMode.value === "voice-message" && phase.value !== "idle",
-);
-const isInlineDictationActive = computed(
-  () => recordingMode.value === "dictation" && phase.value !== "idle",
-);
 
 // MediaRecorder APIs are probed once; SSR is disabled in this app
 const voiceSupported = isVoiceRecordingSupported();
-const showVoiceButton = computed(
+const showVoice = computed(
   () =>
     props.allowVoice &&
     !!props.taskId &&
     recommendationStore.dictationInlineJobs === true &&
-    voiceSupported &&
-    !props.busy &&
-    !isInlineDictationActive.value,
+    !props.busy,
+);
+const showAttachOption = computed(
+  () => showVoice.value && voiceSupported,
 );
 
-const formattedVoiceElapsed = computed(() => {
-  const minutes = String(Math.floor(voiceElapsedSeconds.value / 60)).padStart(2, "0");
-  const seconds = String(voiceElapsedSeconds.value % 60).padStart(2, "0");
-  return `${minutes}:${seconds}`;
-});
-
 /**
- * The audio is kept as a task attachment; the server skips its automatic
- * transcript comment so the composer posts the single, edited comment.
+ * The audio is kept as a task attachment; the inline dictation job handles
+ * the transcription and the composer posts the single, edited comment.
  */
 async function uploadVoiceMessage(recording) {
   if (!props.taskId || !recording?.blob) {
     return;
   }
   voiceUploadError.value = "";
-  emit("voice-busy", true);
   try {
     const file = new File(
       [recording.blob],
       voiceMessageFileName(recording.mimeType),
       { type: recording.mimeType },
     );
-    await tasksStore.uploadAttachment(props.taskId, file, {
-      language: voiceLanguage.value,
-      transcribe: false,
-    });
+    await tasksStore.uploadAttachment(props.taskId, file);
   } catch (e) {
     voiceUploadError.value =
       e?.response?.data?.error || "Failed to upload the voice message.";
-  } finally {
-    emit("voice-busy", false);
   }
-}
-
-async function startVoiceMessage() {
-  voiceUploadError.value = "";
-  mode.value = "write";
-  await inline.start({ keepAudio: true });
-}
-
-async function stopVoiceRecording() {
-  await inline.stop();
-}
-
-function cancelVoiceRecording() {
-  void inline.cancel();
 }
 
 // External value changes (draft restore, clear on send) flow into the
@@ -236,7 +174,7 @@ const previewHtml = computed(() => renderMarkdown(props.modelValue));
 function onKeydown(event) {
   if (event.key === "Escape" && isRecording.value) {
     event.stopPropagation();
-    cancelVoiceRecording();
+    void inline.cancel();
     return;
   }
   if (event.key === "Enter" && isRecording.value) {
@@ -261,6 +199,13 @@ function onKeydown(event) {
   grid-template-columns: 1fr;
   gap: var(--space-2xs);
   min-width: 0;
+}
+
+.composer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2xs);
 }
 
 .composer-tabs {
@@ -288,27 +233,18 @@ function onKeydown(event) {
   color: var(--color-text);
 }
 
-/* Voice record button, at the end of the Write/Preview tab row */
-.composer-voice-btn {
-  margin-left: auto;
-  font-size: var(--text-md);
-}
-
-.composer-voice-btn.recording {
-  color: var(--color-danger);
-}
-
-/* Recording state: elapsed time plus stop/cancel, one row */
-.composer-voice-status {
-  display: flex;
+/* Optional audio retention, aligned with the Write/Preview tabs */
+.composer-attach-audio {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-2xs);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
 }
 
-.composer-voice-timer {
-  font-variant-numeric: tabular-nums;
-  color: var(--color-danger);
-  font-size: var(--text-sm);
+.composer-attach-audio input {
+  margin: 0;
 }
 
 .composer-voice-error {

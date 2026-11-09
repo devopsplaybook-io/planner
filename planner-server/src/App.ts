@@ -36,7 +36,6 @@ import { DictationVocabularyRoutes } from "./dictation/DictationVocabularyRoutes
 import { DictationPhrasesRoutes } from "./dictation/DictationPhrasesRoutes";
 import { DictationTelemetryInit } from "./dictation/DictationTelemetry";
 import { SttWhisperCppGetStatus } from "./dictation/SttWhisperCpp";
-import { TaskVoiceCommentsInit } from "./tasks/TaskVoiceComments";
 import { NotificationsInit } from "./notifications/Notifications";
 import { NotificationsRoutes } from "./notifications/NotificationsRoutes";
 import { CleanupInit } from "./cleanup/CleanupScheduler";
@@ -104,7 +103,6 @@ Promise.resolve()
     await TaskImproveInit(config);
     DictationLongformInit(config);
     await DictationInit(config);
-    await TaskVoiceCommentsInit(config);
     await NotificationsInit(config);
     CleanupInit();
     LoginRateLimiterStartSweep();
@@ -216,7 +214,7 @@ Promise.resolve()
           defaultLanguage: config.DICTATION_LANGUAGE,
           languages: ["auto", ...config.DICTATION_LANGUAGES],
           // Capability flag: this server accepts source=inline on the
-          // dictation API and transcribe=0 on task attachment uploads.
+          // dictation API.
           inlineJobs: true,
           estimatedRtf:
             config.DICTATION_ESTIMATED_RTF > 0

@@ -16,7 +16,6 @@ import {
   DictationDataGetByClientId,
   DictationDataGetForUser,
   DictationDataGetInFlightForUser,
-  DictationDataGetLatestByAttachment,
   DictationDataListInbox,
   DictationDataListKeptAudio,
   DictationDataListRecent,
@@ -287,31 +286,6 @@ describe("DictationData (sqlite)", () => {
 
     const resumable = await DictationDataListResumable();
     expect(resumable.map((job) => job.id)).toEqual(["job-raw"]);
-  });
-
-  it("should return the latest job of an attachment", async () => {
-    await DictationDataCreate(
-      createInput({
-        id: "job-first",
-        source: "voice_comment",
-        attachmentId: "att-1",
-        status: "error",
-        stage: null,
-      }),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 3));
-    await DictationDataCreate(
-      createInput({
-        id: "job-second",
-        source: "voice_comment",
-        attachmentId: "att-1",
-      }),
-    );
-
-    expect(await DictationDataGetLatestByAttachment("att-1")).toMatchObject({
-      id: "job-second",
-    });
-    expect(await DictationDataGetLatestByAttachment("att-2")).toBeNull();
   });
 
   it("should reject a second processing job for the same attachment", async () => {
