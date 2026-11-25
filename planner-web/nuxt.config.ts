@@ -1,4 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { fileURLToPath } from "node:url";
+
 export default defineNuxtConfig({
   ssr: false,
   experimental: {
@@ -23,6 +25,27 @@ export default defineNuxtConfig({
     "~/assets/css/main.css",
   ],
   modules: ["@pinia/nuxt", "@vite-pwa/nuxt"],
+  // The package exports extensionless source paths; map the package to its
+  // installed directory so both Vite and the generated tsconfig resolve the
+  // raw .vue/.ts subpath imports.
+  alias: {
+    "@devopsplaybook.io/common-web": fileURLToPath(
+      new URL(
+        "./node_modules/@devopsplaybook.io/common-web",
+        import.meta.url,
+      ),
+    ),
+  },
+  // common-web is consumed as raw .vue/.ts sources (Planner does not use the
+  // Nuxt layer), so Vite must transpile it and leave it out of pre-bundling.
+  build: {
+    transpile: ["@devopsplaybook.io/common-web"],
+  },
+  vite: {
+    optimizeDeps: {
+      exclude: ["@devopsplaybook.io/common-web"],
+    },
+  },
   imports: {
     dirs: ["./stores"],
   },

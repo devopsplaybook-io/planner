@@ -15,6 +15,7 @@
 - **Calendar Feed** - Subscribable ICS feed of task due dates, works with Google, Apple and Outlook calendars
 - **Markdown Support** - Task, note, and project descriptions support markdown syntax
 - **User Management** - First user automatically set as admin, additional users can be added
+- **Login with a Code** - Sign in on a new device without typing your password: the new device shows a short rotating code and you approve it from a device that is already signed in (Settings → Profile → Authorize a device)
 - **PWA Support** - Installable progressive web application for mobile and desktop
 - **Responsive Design** - Optimized for all screen sizes with auto-collapsing navigation on mobile
 
@@ -212,6 +213,32 @@ Planner exposes a subscribable ICS calendar feed of your task due dates at `GET 
 - **Size limit**: the feed is bounded to the 1000 tasks with the nearest due dates, so accounts with very many due tasks receive a truncated (nearest-first) feed instead of an unbounded response.
 - **Events**: all-day events covering the due date, with a stable identity so clients update existing events in place; the title carries `Project path / Task title`.
 
+## Login with a Code
+
+Planner implements the cross-device "login with a code" standard from [common-utils](https://github.com/devopsplaybook-io/common-utils/blob/main/docs/login-with-code.md). A device without a session opens the login page, clicks **Use a code instead**, and shows an 8-character code that rotates every 30 seconds. On a device where the user is already signed in, they open Settings → Profile → **Authorize a device**, type the code, review the requesting device (parsed browser/OS label and user agent), and approve. The new device then polls the request, redeems the session exactly once and lands on the dashboard.
+
+- **Security**: codes and request tokens are stored only as HMAC hashes (keyed by `JWT_KEY`), never logged, and never included in audit events. A code is single-use, one approval wins, five code submissions exhaust a request, and only interactive JWT sessions can approve — API keys are rejected with `403`. The request table has no foreign key on the approver, so deleting a user cannot invalidate pending requests.
+- **Persistence**: state lives in the `users_login_codes` table (migration `init-0030`), so the flow works across replicas without Redis. A lazy cleanup removes rows older than 24 hours during request creation.
+- **Availability**: the feature is advertised per instance through `GET /api/users/login-codes/capabilities`; the UI hides the toggle when it is disabled or the table is missing, and first-time setup (creating the first admin) always uses the password form.
+- **Step-up**: set `LOGIN_CODE_APPROVE_REQUIRE_PASSWORD` to `true` to also require the approving account's password.
+
+| Variable                               | Description                                                            | Default |
+| -------------------------------------- | ---------------------------------------------------------------------- | ------- |
+| `LOGIN_CODE_ENABLED`                   | Enable login with a code                                               | `true`  |
+| `LOGIN_CODE_TTL_SECONDS`               | Request lifetime in seconds (clamped to 30–3600)                       | `300`   |
+| `LOGIN_CODE_ROTATION_SECONDS`          | Code rotation interval in seconds (clamped to 5–300)                   | `30`    |
+| `LOGIN_CODE_GRACE_SECONDS`             | How long the previous code stays valid after a rotation (0–600)        | `60`    |
+| `LOGIN_CODE_POLL_INTERVAL_MS`          | Poll interval advertised to the requesting device                      | `2000`  |
+| `LOGIN_CODE_MAX_ATTEMPTS`              | Code submissions a request may consume before it fails                 | `5`     |
+| `LOGIN_CODE_MAX_PENDING`               | Instance-wide cap on pending requests                                  | `100`   |
+| `LOGIN_CODE_APPROVE_REQUIRE_PASSWORD`  | Also require the approving account's password                          | `false` |
+| `LOGIN_CODE_RATE_LIMIT_CREATE_MAX`     | Create requests per IP per window                                      | `10`    |
+| `LOGIN_CODE_RATE_LIMIT_POLL_MAX`       | Poll requests per request token per window                             | `120`   |
+| `LOGIN_CODE_RATE_LIMIT_APPROVE_MAX`    | Preview/approve/cancel requests per IP per window                      | `10`    |
+| `LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS` | Rate-limit window in seconds                                           | `60`    |
+
+All settings are read from the config file or the matching environment variables; invalid numeric environment values keep the configured/default value. The login-code routes snapshot these settings when they are registered, so changing them requires a server restart.
+
 ## Development
 
 To start development on Planner:
@@ -266,6 +293,12 @@ Planner exposes a RESTful API under the `/api/` prefix:
 | GET /api/notifications/preferences | Read the notification preferences (`digest`, `dictation`) |
 | PUT /api/notifications/preferences | Update the notification preferences |
 | GET /api/users/calendar.ics | ICS calendar feed of the authenticated user's visible task due dates (API key required) |
+| GET /api/users/login-codes/capabilities | Login-code availability and timing settings (never cached) |
+| POST /api/users/login-codes | Start a login request; returns the request token and the current code |
+| POST /api/users/login-codes/poll | Poll a login request; an approved answer redeems the session once |
+| POST /api/users/login-codes/preview | Preview the requesting device before approving (JWT session only; API keys get 403) |
+| POST /api/users/login-codes/approve | Approve a login request (JWT session only; API keys get 403) |
+| POST /api/users/login-codes/cancel | Cancel a pending login request from the requesting device |
 
 Additional API endpoints for projects, tasks, notes, and users will be available as the implementation progresses.
 

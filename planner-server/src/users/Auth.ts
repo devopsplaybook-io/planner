@@ -2,7 +2,7 @@ import * as crypto from "crypto";
 import * as jwt from "jsonwebtoken";
 import { Config } from "../Config";
 import { User, UserRole } from "../model/User";
-import { UserSession } from "../model/UserSession";
+import { AuthCredentialType, UserSession } from "../model/UserSession";
 import { ApiKeysDataGetByKey } from "./ApiKeysData";
 import { UsersDataGet } from "./UsersData";
 
@@ -74,11 +74,26 @@ export async function AuthGenerateJWT(user: User): Promise<string> {
   );
 }
 
+/**
+ * A request's authenticated identity plus how it authenticated. The
+ * credential type distinguishes an interactive JWT session (safe to mint a
+ * new session) from a long-lived API key (not safe for that).
+ */
+export interface AuthCredentialSession {
+  userId: string;
+  userName: string;
+  role: UserRole;
+  credentialType: AuthCredentialType;
+}
+
 async function jwtDecodeCached(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   req: any,
 ): Promise<Record<string, unknown> | null> {
   if (req._jwtPayload !== undefined) {
+    if (req._jwtPayload) {
+      req._authCredentialType = "jwt";
+    }
     return req._jwtPayload;
   }
   let token: string | null = null;
@@ -107,6 +122,7 @@ async function jwtDecodeCached(
       role: user.role,
     };
     req._jwtPayload = payload;
+    req._authCredentialType = "jwt";
     return payload;
   } catch {
     return null;
@@ -118,6 +134,11 @@ async function apiKeyDecodeCached(
   req: any,
 ): Promise<Record<string, unknown> | null> {
   if (req._apiKeyPayload !== undefined) {
+    // A request carrying both a valid JWT and a key keeps the JWT type: the
+    // JWT wins in every caller, so the credential must be reported as such.
+    if (req._apiKeyPayload && req._authCredentialType !== "jwt") {
+      req._authCredentialType = "apiKey";
+    }
     return req._apiKeyPayload;
   }
   const apiKey = req.headers["x-api-key"] as string;
@@ -138,6 +159,9 @@ async function apiKeyDecodeCached(
     role: user.role,
   };
   req._apiKeyPayload = info;
+  if (req._authCredentialType !== "jwt") {
+    req._authCredentialType = "apiKey";
+  }
   return info;
 }
 
@@ -172,18 +196,63 @@ export async function AuthMustBeAdmin(
   }
 }
 
+/**
+ * Resolve the request identity and how it authenticated. JWT wins over an
+ * API key when a request carries both (the historical precedence).
+ */
+export async function AuthGetCredentialSession(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  req: any,
+): Promise<AuthCredentialSession | null> {
+  const jwtInfo = await jwtDecodeCached(req);
+  if (jwtInfo) {
+    return {
+      userId: jwtInfo.userId as string,
+      userName: jwtInfo.userName as string,
+      role: jwtInfo.role as UserRole,
+      credentialType: "jwt",
+    };
+  }
+  const apiKeyInfo = await apiKeyDecodeCached(req);
+  if (apiKeyInfo) {
+    return {
+      userId: apiKeyInfo.userId as string,
+      userName: apiKeyInfo.userName as string,
+      role: apiKeyInfo.role as UserRole,
+      credentialType: "apiKey",
+    };
+  }
+  return null;
+}
+
+/**
+ * Interactive session only: like {@link AuthGetCredentialSession} but returns
+ * `null` for API keys. Endpoints that mint a new session on the caller's
+ * behalf must use this so a leaked long-lived key cannot escalate into a
+ * fresh interactive token.
+ */
+export async function AuthGetInteractiveSession(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  req: any,
+): Promise<AuthCredentialSession | null> {
+  const session = await AuthGetCredentialSession(req);
+  if (!session || session.credentialType !== "jwt") {
+    return null;
+  }
+  return session;
+}
+
 export async function AuthGetUserSession(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   req: any,
 ): Promise<UserSession> {
   const userSession: UserSession = { isAuthenticated: false };
-  const jwtInfo = await jwtDecodeCached(req);
-  const apiKeyInfo = await apiKeyDecodeCached(req);
-  const info = jwtInfo || apiKeyInfo;
-  if (info) {
-    userSession.userId = info.userId as string;
-    userSession.userName = info.userName as string;
-    userSession.role = info.role as UserRole;
+  const credential = await AuthGetCredentialSession(req);
+  if (credential) {
+    userSession.userId = credential.userId;
+    userSession.userName = credential.userName;
+    userSession.role = credential.role;
+    userSession.credentialType = credential.credentialType;
     userSession.isAuthenticated = true;
   }
   return userSession;

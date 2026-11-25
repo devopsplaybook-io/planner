@@ -230,6 +230,16 @@
       </section>
 
       <section v-if="authStore.isAuthenticated">
+        <h2>Authorize a device</h2>
+        <p class="setting-hint">
+          <i class="bi bi-info-circle" />
+          Approve a sign-in started on another device by entering the code it
+          shows. Only approve a code you are expecting.
+        </p>
+        <AuthorizeDeviceCard :service="loginCodeService" />
+      </section>
+
+      <section v-if="authStore.isAuthenticated">
         <h2>API Key</h2>
         <p class="api-key-info">
           Use an API key to authenticate API calls. The key has the same
@@ -387,12 +397,15 @@
 import api from "../utils/api";
 import { buildCalendarFeedUrls } from "../utils/calendarFeed";
 import { getSettingsTabs, normalizeSettingsTab } from "../utils/settingsTabs";
+import AuthorizeDeviceCard from "@devopsplaybook.io/common-web/components/AuthorizeDeviceCard.vue";
+import { createPlannerLoginCodeService } from "../utils/loginCodes";
 
 const authStore = useAuthStore();
 const notificationsStore = useNotificationsStore();
 const recommendationStore = useRecommendationStore();
 const dictationStore = useDictationStore();
 const projectsStore = useProjectsStore();
+const loginCodeService = createPlannerLoginCodeService();
 const router = useRouter();
 const route = useRoute();
 const toggleTheme = inject("toggleTheme");
