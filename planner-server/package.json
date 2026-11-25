@@ -1,6 +1,6 @@
 {
   "name": "planner-server",
-  "version": "0.57.0",
+  "version": "0.58.0",
   "author": "",
   "license": "MIT",
   "scripts": {
@@ -16,7 +16,7 @@
     "bench:stt": "tsx src/dictation/bench/BenchStt.ts"
   },
   "dependencies": {
-    "@devopsplaybook.io/common-utils": "^2.9.2",
+    "@devopsplaybook.io/common-utils": "^2.12.0",
     "@devopsplaybook.io/otel-utils": "^1.14.2",
     "@devopsplaybook.io/otel-utils-fastify": "^1.11.2",
     "@fastify/compress": "^9.3.0",

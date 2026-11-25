@@ -9,7 +9,15 @@
         </hgroup>
       </header>
 
-      <form @submit.prevent="handleSubmit">
+      <LoginWithCodeCard
+        v-if="showCodeLogin && !isSetup"
+        :service="loginCodeService"
+        @approved="handleCodeApproved"
+        @use-password="showCodeLogin = false"
+        @cancel="showCodeLogin = false"
+      />
+
+      <form v-else @submit.prevent="handleSubmit">
         <div v-if="error" class="error-message">{{ error }}</div>
 
         <label>
@@ -49,6 +57,14 @@
           <button type="submit" :aria-busy="loading">
             {{ isSetup ? "Create Admin Account" : "Login" }}
           </button>
+          <button
+            v-if="canUseCodeLogin"
+            type="button"
+            class="login-code-toggle"
+            @click="showCodeLogin = true"
+          >
+            Use a code instead
+          </button>
         </footer>
       </form>
     </article>
@@ -57,8 +73,12 @@
 
 <script setup>
 import api from "../utils/api";
+import LoginWithCodeCard from "@devopsplaybook.io/common-web/components/LoginWithCodeCard.vue";
+import { createPlannerLoginCodeService } from "../utils/loginCodes";
+
 const authStore = useAuthStore();
 const router = useRouter();
+const loginCodeService = createPlannerLoginCodeService();
 
 const name = ref("");
 const password = ref("");
@@ -67,6 +87,11 @@ const loading = ref(false);
 const error = ref("");
 const isSetup = ref(false);
 const checkingInit = ref(true);
+const showCodeLogin = ref(false);
+const codeLoginAvailable = ref(false);
+const canUseCodeLogin = computed(
+  () => !checkingInit.value && !isSetup.value && codeLoginAvailable.value,
+);
 
 onMounted(async () => {
   if (authStore.isAuthenticated) {
@@ -81,7 +106,23 @@ onMounted(async () => {
     isSetup.value = false;
   }
   checkingInit.value = false;
+
+  // The login-code toggle is only offered when the server advertises the
+  // feature; setup mode (first admin) always uses the password form.
+  if (!isSetup.value) {
+    try {
+      const capabilities = await loginCodeService.capabilities();
+      codeLoginAvailable.value =
+        capabilities.enabled && capabilities.available;
+    } catch {
+      codeLoginAvailable.value = false;
+    }
+  }
 });
+
+function handleCodeApproved() {
+  router.push("/");
+}
 
 async function handleSubmit() {
   error.value = "";
@@ -130,5 +171,15 @@ footer {
   flex-direction: column;
   gap: var(--space-sm);
   align-items: center;
+}
+
+.login-code-toggle {
+  padding: 0;
+  color: var(--color-primary-text);
+  font-size: var(--text-sm);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
 }
 </style>

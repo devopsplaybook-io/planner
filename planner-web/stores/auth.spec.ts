@@ -100,3 +100,31 @@ describe("auth store session handling", () => {
     expect(store.initialized).toBe(true);
   });
 });
+
+describe("applySession", () => {
+  it("adopts a redeemed login-code session in memory and storage", () => {
+    const store = useAuthStore();
+    const user = { id: "u1", name: "Ann", role: "user" };
+
+    store.applySession(validToken(), user);
+
+    expect(store.token).toBe(validToken());
+    expect(store.user).toEqual(user);
+    expect(store.isAuthenticated).toBe(true);
+    expect(localStorage.getItem("token")).toBe(store.token);
+    expect(JSON.parse(localStorage.getItem("user") as string)).toEqual(user);
+  });
+
+  it("replaces any previous session and clears the user when none is given", () => {
+    localStorage.setItem("token", "old-token");
+    localStorage.setItem("user", JSON.stringify({ id: "old" }));
+    const store = useAuthStore();
+
+    store.applySession(validToken(), null);
+
+    expect(store.token).toBe(validToken());
+    expect(store.user).toBeNull();
+    expect(localStorage.getItem("token")).toBe(store.token);
+    expect(localStorage.getItem("user")).toBeNull();
+  });
+});

@@ -15,6 +15,8 @@ import {
   UsersRoutes,
 } from "./users/UsersRoutes";
 import { UsersDataList } from "./users/UsersData";
+import { LoginCodesRoutes } from "@devopsplaybook.io/common-utils/users/login-codes";
+import { LoginCodesBuildRoutesOptions } from "./users/LoginCodes";
 import { ProjectsRoutes } from "./projects/ProjectsRoutes";
 import { ProjectsDataAdd, ProjectsDataList } from "./projects/ProjectsData";
 import { Project } from "./model/Project";
@@ -266,6 +268,16 @@ Promise.resolve()
         await new UsersRoutes().getRoutes(instance);
       },
       { prefix: "/api/users" },
+    );
+
+    // Cross-device "login with a code": the host @fastify/rate-limit
+    // ({global:false}) is already registered, so the library uses per-route
+    // limits instead of re-registering the plugin.
+    await fastify.register(
+      async (instance) => {
+        await LoginCodesRoutes(instance, LoginCodesBuildRoutesOptions(config));
+      },
+      { prefix: "/api/users/login-codes" },
     );
 
     await fastify.register(

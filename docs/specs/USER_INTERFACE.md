@@ -24,6 +24,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] The Settings entry in the menu uses a gear icon, consistent with the other navigation icons
 - [x] Offline support (PWA configured with service worker, cache strategies)
 - [x] **Session**: the stored token is validated on app start and on every route change; an expired or invalid session redirects to the login page before an authenticated page renders, while a network failure keeps a locally valid session so the installed PWA still opens offline
+- [x] **Login with a code**: the login page offers "Use a code instead" only when the server advertises the feature (never during first-time setup); the shared code card shows the rotating 8-character code with refresh/expiry countdowns, copy and cancel actions, and an approved request installs the minted session and opens the dashboard. The card's "Use password instead" action returns to the password form.
 
 ### Command Palette
 
@@ -40,6 +41,7 @@ It is installable on mobile and desktop devices and works offline.
 - [x] The selected tab is reflected in the URL (`?tab=`) and restored on refresh and browser navigation; a deep link to an unknown or unauthorized tab (e.g. a non-admin opening `/settings?tab=users`) falls back to the Profile tab
 - [x] The former standalone `/admin` page redirects to `/settings` preserving the query parameters, so existing bookmarks and PWA-cached deep links keep working
 - [x] All settings tabs share a single full-width page layout: the header, tab bar and content are aligned identically for every tab (the legacy centered profile-only layout was removed)
+- [x] The Profile tab includes an **Authorize a device** section between Account and API Key: the shared `AuthorizeDeviceCard` previews the requesting device for a typed code, asks for the account password when the server requires step-up, approves the sign-in, and reports when the feature is unavailable
 - [x] On narrow screens the tab bar scrolls horizontally (tabs never wrap to two lines) while the page content itself never scrolls sideways
 
 ### Project Selection
@@ -84,4 +86,4 @@ It is installable on mobile and desktop devices and works offline.
 - [x] On the Tasks board, for non-Done statuses all tasks are shown
 - [x] On the Tasks board, the Done column shows only tasks whose last update is within the past 30 days (other views, such as Calendar and Project detail, keep showing all done tasks)
 
-_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-08_
+_Implementation: [x]=Done [~]=Partial [ ]=Not Started | Last spec review: 2026-11-25_

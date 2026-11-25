@@ -72,6 +72,18 @@ describe("Config", () => {
       expect(config.DICTATION_HOTWORDS_MAX).toBe(50);
       expect(config.DICTATION_VOCABULARY_MAX).toBe(200);
       expect(config.DICTATION_CONFIDENCE_THRESHOLD).toBe(0.6);
+      expect(config.LOGIN_CODE_ENABLED).toBe(true);
+      expect(config.LOGIN_CODE_TTL_SECONDS).toBe(300);
+      expect(config.LOGIN_CODE_ROTATION_SECONDS).toBe(30);
+      expect(config.LOGIN_CODE_GRACE_SECONDS).toBe(60);
+      expect(config.LOGIN_CODE_POLL_INTERVAL_MS).toBe(2000);
+      expect(config.LOGIN_CODE_MAX_ATTEMPTS).toBe(5);
+      expect(config.LOGIN_CODE_MAX_PENDING).toBe(100);
+      expect(config.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD).toBe(false);
+      expect(config.LOGIN_CODE_RATE_LIMIT_CREATE_MAX).toBe(10);
+      expect(config.LOGIN_CODE_RATE_LIMIT_POLL_MAX).toBe(120);
+      expect(config.LOGIN_CODE_RATE_LIMIT_APPROVE_MAX).toBe(10);
+      expect(config.LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS).toBe(60);
     });
 
     it("should respect environment variables in constructor", () => {
@@ -295,6 +307,86 @@ describe("Config", () => {
       process.env.DEV_MODE = "true";
       const config = await writeConfig({ JWT_KEY: "k" });
       expect(config.CORS_POLICY_ORIGIN).toBe("");
+    });
+
+    it("should read the login-code settings from the config file", async () => {
+      process.env.DEV_MODE = "true";
+      const defaults = await writeConfig({ JWT_KEY: "k" });
+      expect(defaults.LOGIN_CODE_ENABLED).toBe(true);
+      expect(defaults.LOGIN_CODE_TTL_SECONDS).toBe(300);
+      expect(defaults.LOGIN_CODE_POLL_INTERVAL_MS).toBe(2000);
+      expect(defaults.LOGIN_CODE_MAX_PENDING).toBe(100);
+      expect(defaults.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD).toBe(false);
+      expect(defaults.LOGIN_CODE_RATE_LIMIT_POLL_MAX).toBe(120);
+
+      const config = await writeConfig({
+        JWT_KEY: "k",
+        LOGIN_CODE_ENABLED: false,
+        LOGIN_CODE_TTL_SECONDS: 120,
+        LOGIN_CODE_ROTATION_SECONDS: 15,
+        LOGIN_CODE_GRACE_SECONDS: 45,
+        LOGIN_CODE_POLL_INTERVAL_MS: 1500,
+        LOGIN_CODE_MAX_ATTEMPTS: 4,
+        LOGIN_CODE_MAX_PENDING: 25,
+        LOGIN_CODE_APPROVE_REQUIRE_PASSWORD: true,
+        LOGIN_CODE_RATE_LIMIT_CREATE_MAX: 6,
+        LOGIN_CODE_RATE_LIMIT_POLL_MAX: 90,
+        LOGIN_CODE_RATE_LIMIT_APPROVE_MAX: 8,
+        LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS: 30,
+      });
+      expect(config.LOGIN_CODE_ENABLED).toBe(false);
+      expect(config.LOGIN_CODE_TTL_SECONDS).toBe(120);
+      expect(config.LOGIN_CODE_ROTATION_SECONDS).toBe(15);
+      expect(config.LOGIN_CODE_GRACE_SECONDS).toBe(45);
+      expect(config.LOGIN_CODE_POLL_INTERVAL_MS).toBe(1500);
+      expect(config.LOGIN_CODE_MAX_ATTEMPTS).toBe(4);
+      expect(config.LOGIN_CODE_MAX_PENDING).toBe(25);
+      expect(config.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD).toBe(true);
+      expect(config.LOGIN_CODE_RATE_LIMIT_CREATE_MAX).toBe(6);
+      expect(config.LOGIN_CODE_RATE_LIMIT_POLL_MAX).toBe(90);
+      expect(config.LOGIN_CODE_RATE_LIMIT_APPROVE_MAX).toBe(8);
+      expect(config.LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS).toBe(30);
+    });
+
+    it("should let env variables override the login-code settings", async () => {
+      process.env.DEV_MODE = "true";
+      process.env.LOGIN_CODE_ENABLED = "false";
+      process.env.LOGIN_CODE_TTL_SECONDS = "90";
+      process.env.LOGIN_CODE_ROTATION_SECONDS = "20";
+      process.env.LOGIN_CODE_GRACE_SECONDS = "10";
+      process.env.LOGIN_CODE_POLL_INTERVAL_MS = "500";
+      process.env.LOGIN_CODE_MAX_ATTEMPTS = "3";
+      process.env.LOGIN_CODE_MAX_PENDING = "7";
+      process.env.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD = "true";
+      process.env.LOGIN_CODE_RATE_LIMIT_CREATE_MAX = "2";
+      process.env.LOGIN_CODE_RATE_LIMIT_POLL_MAX = "40";
+      process.env.LOGIN_CODE_RATE_LIMIT_APPROVE_MAX = "4";
+      process.env.LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS = "15";
+      const config = await writeConfig({
+        JWT_KEY: "k",
+        LOGIN_CODE_TTL_SECONDS: 300,
+        LOGIN_CODE_ENABLED: true,
+      });
+      expect(config.LOGIN_CODE_ENABLED).toBe(false);
+      expect(config.LOGIN_CODE_TTL_SECONDS).toBe(90);
+      expect(config.LOGIN_CODE_ROTATION_SECONDS).toBe(20);
+      expect(config.LOGIN_CODE_GRACE_SECONDS).toBe(10);
+      expect(config.LOGIN_CODE_POLL_INTERVAL_MS).toBe(500);
+      expect(config.LOGIN_CODE_MAX_ATTEMPTS).toBe(3);
+      expect(config.LOGIN_CODE_MAX_PENDING).toBe(7);
+      expect(config.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD).toBe(true);
+      expect(config.LOGIN_CODE_RATE_LIMIT_CREATE_MAX).toBe(2);
+      expect(config.LOGIN_CODE_RATE_LIMIT_POLL_MAX).toBe(40);
+      expect(config.LOGIN_CODE_RATE_LIMIT_APPROVE_MAX).toBe(4);
+      expect(config.LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS).toBe(15);
+
+      // A non-numeric env value keeps the file/default value.
+      process.env.LOGIN_CODE_TTL_SECONDS = "not-a-number";
+      const fallback = await writeConfig({
+        JWT_KEY: "k",
+        LOGIN_CODE_TTL_SECONDS: 120,
+      });
+      expect(fallback.LOGIN_CODE_TTL_SECONDS).toBe(120);
     });
 
     it("should prefer a JWT_KEY from the environment over the file", async () => {

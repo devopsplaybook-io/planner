@@ -9,6 +9,8 @@ import {
   AuthMustBeAuthenticated,
   AuthMustBeAdmin,
   AuthGetUserSession,
+  AuthGetCredentialSession,
+  AuthGetInteractiveSession,
   AuthRateLimitKey,
 } from "../users/Auth";
 import { User } from "../model/User";
@@ -330,6 +332,127 @@ describe("Auth", () => {
       const session = await AuthGetUserSession({ headers: {} } as any);
       expect(session.isAuthenticated).toBe(false);
       expect(session.userId).toBeUndefined();
+      expect(session.credentialType).toBeUndefined();
+    });
+
+    it("should expose the credential type for JWT and API keys", async () => {
+      (mockJwt.verify as jest.Mock).mockReturnValueOnce({
+        userId: "user-1",
+        tv: 0,
+      });
+      mockUsersDataGet.mockResolvedValue(makeUser());
+      const jwtSession = await AuthGetUserSession({
+        headers: { authorization: "Bearer valid-token" },
+      } as any);
+      expect(jwtSession.credentialType).toBe("jwt");
+
+      mockApiKeysDataGetByKey.mockResolvedValue({ userId: "user-1" });
+      const keySession = await AuthGetUserSession({
+        headers: { "x-api-key": "pk_valid" },
+      } as any);
+      expect(keySession.isAuthenticated).toBe(true);
+      expect(keySession.credentialType).toBe("apiKey");
+    });
+  });
+
+  describe("AuthGetCredentialSession", () => {
+    it("should report a JWT credential and mark the request", async () => {
+      (mockJwt.verify as jest.Mock).mockReturnValueOnce({ userId: "user-1", tv: 0 });
+      mockUsersDataGet.mockResolvedValue(makeUser({ name: "Alice" }));
+
+      const req: any = { headers: { authorization: "Bearer token" } };
+      const session = await AuthGetCredentialSession(req);
+
+      expect(session).toEqual({
+        userId: "user-1",
+        userName: "Alice",
+        role: "user",
+        credentialType: "jwt",
+      });
+      expect(req._authCredentialType).toBe("jwt");
+    });
+
+    it("should report an API key credential and mark the request", async () => {
+      mockApiKeysDataGetByKey.mockResolvedValue({ userId: "user-1" });
+      mockUsersDataGet.mockResolvedValue(makeUser());
+
+      const req: any = { headers: { "x-api-key": "pk_valid" } };
+      const session = await AuthGetCredentialSession(req);
+
+      expect(session?.credentialType).toBe("apiKey");
+      expect(session?.userId).toBe("user-1");
+      expect(req._authCredentialType).toBe("apiKey");
+    });
+
+    it("should keep the credential type on the cached request path", async () => {
+      (mockJwt.verify as jest.Mock).mockReturnValue({ userId: "user-1", tv: 0 });
+      mockUsersDataGet.mockResolvedValue(makeUser());
+
+      const req: any = { headers: { authorization: "Bearer token" } };
+      await AuthGetCredentialSession(req);
+      const second = await AuthGetCredentialSession(req);
+
+      expect(second?.credentialType).toBe("jwt");
+      expect(mockJwt.verify).toHaveBeenCalledTimes(1);
+    });
+
+    it("should prefer the JWT when a request carries both credentials", async () => {
+      (mockJwt.verify as jest.Mock).mockReturnValueOnce({ userId: "user-1", tv: 0 });
+      mockUsersDataGet.mockResolvedValue(makeUser());
+      mockApiKeysDataGetByKey.mockResolvedValue({ userId: "user-1" });
+
+      const req: any = {
+        headers: { authorization: "Bearer token", "x-api-key": "pk_valid" },
+      };
+      const session = await AuthGetCredentialSession(req);
+
+      expect(session?.credentialType).toBe("jwt");
+      expect(mockApiKeysDataGetByKey).not.toHaveBeenCalled();
+    });
+
+    it("should return null without any credential", async () => {
+      expect(await AuthGetCredentialSession({ headers: {} } as any)).toBeNull();
+    });
+
+    it("should return null when the JWT user was deleted or revoked", async () => {
+      (mockJwt.verify as jest.Mock).mockReturnValueOnce({ userId: "gone", tv: 0 });
+      mockUsersDataGet.mockResolvedValue(null);
+      expect(
+        await AuthGetCredentialSession({ headers: { authorization: "Bearer t" } } as any),
+      ).toBeNull();
+
+      (mockJwt.verify as jest.Mock).mockReturnValueOnce({ userId: "user-1", tv: 0 });
+      mockUsersDataGet.mockResolvedValue(makeUser({ tokenVersion: 3 }));
+      expect(
+        await AuthGetCredentialSession({ headers: { authorization: "Bearer t" } } as any),
+      ).toBeNull();
+    });
+  });
+
+  describe("AuthGetInteractiveSession", () => {
+    it("should accept a JWT session", async () => {
+      (mockJwt.verify as jest.Mock).mockReturnValueOnce({ userId: "user-1", tv: 0 });
+      mockUsersDataGet.mockResolvedValue(makeUser());
+
+      const session = await AuthGetInteractiveSession({
+        headers: { authorization: "Bearer token" },
+      } as any);
+
+      expect(session?.credentialType).toBe("jwt");
+      expect(session?.userId).toBe("user-1");
+    });
+
+    it("should refuse an API key (no session minting from a long-lived key)", async () => {
+      mockApiKeysDataGetByKey.mockResolvedValue({ userId: "user-1" });
+      mockUsersDataGet.mockResolvedValue(makeUser());
+
+      expect(
+        await AuthGetInteractiveSession({ headers: { "x-api-key": "pk_valid" } } as any),
+      ).toBeNull();
+    });
+
+    it("should return null for an anonymous request", async () => {
+      expect(await AuthGetInteractiveSession({ headers: {} } as any)).toBeNull();
     });
   });
 

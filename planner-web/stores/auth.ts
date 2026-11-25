@@ -65,6 +65,19 @@ export const useAuthStore = defineStore("auth", {
       return res.data;
     },
 
+    /** Adopt a session minted elsewhere (e.g. redeemed login-with-a-code). */
+    applySession(token: string, user: unknown) {
+      this.token = token;
+      this.user =
+        (user as Record<string, unknown> | null | undefined) ?? null;
+      localStorage.setItem("token", token);
+      if (this.user) {
+        localStorage.setItem("user", JSON.stringify(this.user));
+      } else {
+        localStorage.removeItem("user");
+      }
+    },
+
     async changePassword(passwordOld: string, password: string) {
       await api.put("/users/password", { passwordOld, password });
     },

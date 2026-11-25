@@ -158,6 +158,20 @@ export class Config {
   public WEB_PUSH_VAPID_PUBLIC_KEY: string;
   public WEB_PUSH_VAPID_PRIVATE_KEY: string;
 
+  // Login with a code (cross-device sign-in)
+  public LOGIN_CODE_ENABLED: boolean;
+  public LOGIN_CODE_TTL_SECONDS: number;
+  public LOGIN_CODE_ROTATION_SECONDS: number;
+  public LOGIN_CODE_GRACE_SECONDS: number;
+  public LOGIN_CODE_POLL_INTERVAL_MS: number;
+  public LOGIN_CODE_MAX_ATTEMPTS: number;
+  public LOGIN_CODE_MAX_PENDING: number;
+  public LOGIN_CODE_APPROVE_REQUIRE_PASSWORD: boolean;
+  public LOGIN_CODE_RATE_LIMIT_CREATE_MAX: number;
+  public LOGIN_CODE_RATE_LIMIT_POLL_MAX: number;
+  public LOGIN_CODE_RATE_LIMIT_APPROVE_MAX: number;
+  public LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS: number;
+
   constructor() {
     this.DATA_DIR = process.env.DATA_DIR || "/data";
     this.TMP_DIR = process.env.TMP_DIR || "/tmp";
@@ -218,6 +232,20 @@ export class Config {
     this.WEB_PUSH_TIMEZONE = ""; // empty: use the server timezone
     this.WEB_PUSH_VAPID_PUBLIC_KEY = "";
     this.WEB_PUSH_VAPID_PRIVATE_KEY = "";
+    // Login with a code: enabled by default (single-user Planner app); the
+    // web UI hides itself when the capability reports it disabled.
+    this.LOGIN_CODE_ENABLED = true;
+    this.LOGIN_CODE_TTL_SECONDS = 300;
+    this.LOGIN_CODE_ROTATION_SECONDS = 30;
+    this.LOGIN_CODE_GRACE_SECONDS = 60;
+    this.LOGIN_CODE_POLL_INTERVAL_MS = 2000;
+    this.LOGIN_CODE_MAX_ATTEMPTS = 5;
+    this.LOGIN_CODE_MAX_PENDING = 100;
+    this.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD = false;
+    this.LOGIN_CODE_RATE_LIMIT_CREATE_MAX = 10;
+    this.LOGIN_CODE_RATE_LIMIT_POLL_MAX = 120;
+    this.LOGIN_CODE_RATE_LIMIT_APPROVE_MAX = 10;
+    this.LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS = 60;
   }
 
   /**
@@ -369,6 +397,25 @@ export class Config {
     this.WEB_PUSH_TIMEZONE = config.WEB_PUSH_TIMEZONE || "";
     this.WEB_PUSH_VAPID_PUBLIC_KEY = config.WEB_PUSH_VAPID_PUBLIC_KEY || "";
     this.WEB_PUSH_VAPID_PRIVATE_KEY = config.WEB_PUSH_VAPID_PRIVATE_KEY || "";
+    this.LOGIN_CODE_ENABLED = config.LOGIN_CODE_ENABLED ?? true;
+    this.LOGIN_CODE_TTL_SECONDS = config.LOGIN_CODE_TTL_SECONDS ?? 300;
+    this.LOGIN_CODE_ROTATION_SECONDS =
+      config.LOGIN_CODE_ROTATION_SECONDS ?? 30;
+    this.LOGIN_CODE_GRACE_SECONDS = config.LOGIN_CODE_GRACE_SECONDS ?? 60;
+    this.LOGIN_CODE_POLL_INTERVAL_MS =
+      config.LOGIN_CODE_POLL_INTERVAL_MS ?? 2000;
+    this.LOGIN_CODE_MAX_ATTEMPTS = config.LOGIN_CODE_MAX_ATTEMPTS ?? 5;
+    this.LOGIN_CODE_MAX_PENDING = config.LOGIN_CODE_MAX_PENDING ?? 100;
+    this.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD =
+      config.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD ?? false;
+    this.LOGIN_CODE_RATE_LIMIT_CREATE_MAX =
+      config.LOGIN_CODE_RATE_LIMIT_CREATE_MAX ?? 10;
+    this.LOGIN_CODE_RATE_LIMIT_POLL_MAX =
+      config.LOGIN_CODE_RATE_LIMIT_POLL_MAX ?? 120;
+    this.LOGIN_CODE_RATE_LIMIT_APPROVE_MAX =
+      config.LOGIN_CODE_RATE_LIMIT_APPROVE_MAX ?? 10;
+    this.LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS =
+      config.LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS ?? 60;
 
     if (process.env.APPLICATION_TITLE) {
       this.APPLICATION_TITLE = process.env.APPLICATION_TITLE;
@@ -625,6 +672,62 @@ export class Config {
     if (process.env.WEB_PUSH_VAPID_PRIVATE_KEY) {
       this.WEB_PUSH_VAPID_PRIVATE_KEY = process.env.WEB_PUSH_VAPID_PRIVATE_KEY;
     }
+
+    if (process.env.LOGIN_CODE_ENABLED) {
+      this.LOGIN_CODE_ENABLED = process.env.LOGIN_CODE_ENABLED === "true";
+    }
+    if (process.env.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD) {
+      this.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD =
+        process.env.LOGIN_CODE_APPROVE_REQUIRE_PASSWORD === "true";
+    }
+    const loginCodeEnvInt = (name: string, current: number): number => {
+      const raw = process.env[name];
+      if (!raw) {
+        return current;
+      }
+      const parsed = parseInt(raw);
+      return Number.isFinite(parsed) ? parsed : current;
+    };
+    this.LOGIN_CODE_TTL_SECONDS = loginCodeEnvInt(
+      "LOGIN_CODE_TTL_SECONDS",
+      this.LOGIN_CODE_TTL_SECONDS,
+    );
+    this.LOGIN_CODE_ROTATION_SECONDS = loginCodeEnvInt(
+      "LOGIN_CODE_ROTATION_SECONDS",
+      this.LOGIN_CODE_ROTATION_SECONDS,
+    );
+    this.LOGIN_CODE_GRACE_SECONDS = loginCodeEnvInt(
+      "LOGIN_CODE_GRACE_SECONDS",
+      this.LOGIN_CODE_GRACE_SECONDS,
+    );
+    this.LOGIN_CODE_POLL_INTERVAL_MS = loginCodeEnvInt(
+      "LOGIN_CODE_POLL_INTERVAL_MS",
+      this.LOGIN_CODE_POLL_INTERVAL_MS,
+    );
+    this.LOGIN_CODE_MAX_ATTEMPTS = loginCodeEnvInt(
+      "LOGIN_CODE_MAX_ATTEMPTS",
+      this.LOGIN_CODE_MAX_ATTEMPTS,
+    );
+    this.LOGIN_CODE_MAX_PENDING = loginCodeEnvInt(
+      "LOGIN_CODE_MAX_PENDING",
+      this.LOGIN_CODE_MAX_PENDING,
+    );
+    this.LOGIN_CODE_RATE_LIMIT_CREATE_MAX = loginCodeEnvInt(
+      "LOGIN_CODE_RATE_LIMIT_CREATE_MAX",
+      this.LOGIN_CODE_RATE_LIMIT_CREATE_MAX,
+    );
+    this.LOGIN_CODE_RATE_LIMIT_POLL_MAX = loginCodeEnvInt(
+      "LOGIN_CODE_RATE_LIMIT_POLL_MAX",
+      this.LOGIN_CODE_RATE_LIMIT_POLL_MAX,
+    );
+    this.LOGIN_CODE_RATE_LIMIT_APPROVE_MAX = loginCodeEnvInt(
+      "LOGIN_CODE_RATE_LIMIT_APPROVE_MAX",
+      this.LOGIN_CODE_RATE_LIMIT_APPROVE_MAX,
+    );
+    this.LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS = loginCodeEnvInt(
+      "LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS",
+      this.LOGIN_CODE_RATE_LIMIT_WINDOW_SECONDS,
+    );
 
     // Never sign tokens with an empty or publicly known JWT secret: such
     // tokens are invalid (empty) or forgeable by anyone ("dev"). Outside of
