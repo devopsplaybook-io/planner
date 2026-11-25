@@ -12,6 +12,8 @@
       <LoginWithCodeCard
         v-if="showCodeLogin && !isSetup"
         :service="loginCodeService"
+        variant="plain"
+        :heading-level="2"
         @approved="handleCodeApproved"
         @use-password="showCodeLogin = false"
         @cancel="showCodeLogin = false"

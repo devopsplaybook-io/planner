@@ -73,7 +73,11 @@ vi.stubGlobal("useRoute", () => route);
 
 const AuthorizeDeviceCardStub = defineComponent({
   name: "AuthorizeDeviceCard",
-  props: { service: { type: Object, default: null } },
+  props: {
+    service: { type: Object, default: null },
+    variant: { type: String, default: "card" },
+    headingLevel: { type: Number, default: 2 },
+  },
   render() {
     return h("div", { class: "authorize-device-stub" });
   },
@@ -114,6 +118,23 @@ describe("settings - authorize a device", () => {
     const card = wrapper.findComponent(AuthorizeDeviceCardStub);
     expect(card.exists()).toBe(true);
     expect(card.props("service")).toBe(fakeService);
+  });
+
+  it("embeds the card plainly under the section heading without nested chrome", async () => {
+    const wrapper = mountSettings();
+    await flushPromises();
+
+    const card = wrapper.findComponent(AuthorizeDeviceCardStub);
+    expect(card.props("variant")).toBe("plain");
+    expect(card.props("headingLevel")).toBe(3);
+
+    // The section's own <h2> is present and the hint paragraph is kept.
+    expect(
+      wrapper.findAll("h2").some((h) => h.text() === "Authorize a device"),
+    ).toBe(true);
+    expect(wrapper.text()).toContain(
+      "Approve a sign-in started on another device by entering the code it shows.",
+    );
   });
 
   it("places the section between Account and API Key", async () => {

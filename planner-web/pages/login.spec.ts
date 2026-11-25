@@ -23,7 +23,11 @@ vi.stubGlobal("useAuthStore", () => ({ isAuthenticated: false }));
 
 const CodeCardStub = defineComponent({
   name: "LoginWithCodeCard",
-  props: { service: { type: Object, default: null } },
+  props: {
+    service: { type: Object, default: null },
+    variant: { type: String, default: "card" },
+    headingLevel: { type: Number, default: 2 },
+  },
   emits: ["approved", "cancel", "use-password"],
   render() {
     return h("div", { class: "code-card-stub" });
@@ -75,6 +79,23 @@ describe("login page - login with a code", () => {
     expect(wrapper.find("form").exists()).toBe(false);
     const card = wrapper.findComponent(CodeCardStub);
     expect(card.props("service")).toBe(fakeService);
+  });
+
+  it("embeds the code card plainly inside the login card with a matching heading level", async () => {
+    const wrapper = mountLogin();
+    await flushPromises();
+    await codeToggle(wrapper)!.trigger("click");
+
+    const card = wrapper.findComponent(CodeCardStub);
+    expect(card.props("variant")).toBe("plain");
+    expect(card.props("headingLevel")).toBe(2);
+
+    // Rendered inside Planner's own card chrome (article.login-card) whose
+    // <h1> is "Planner" so the component's <h2> stays a section heading.
+    expect(wrapper.find("article.login-card .code-card-stub").exists()).toBe(
+      true,
+    );
+    expect(wrapper.find("article.login-card h1").text()).toBe("Planner");
   });
 
   it("hides the code option when the feature is unavailable", async () => {

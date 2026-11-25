@@ -57,6 +57,37 @@ beforeEach(() => {
 });
 
 describe("AuthorizeDeviceCard (real common-web component)", () => {
+  it("renders card chrome and an h2 title by default", async () => {
+    const service = makeService();
+    const wrapper = mountCard(service);
+    await flushPromises();
+
+    expect(wrapper.classes()).toContain("authorize-device-card--card");
+    const title = wrapper.find("h2.authorize-device-title");
+    expect(title.exists()).toBe(true);
+    expect(title.text()).toBe("Approve a sign-in");
+    expect(title.attributes("id")).toBe(
+      wrapper.attributes("aria-labelledby"),
+    );
+  });
+
+  it("drops the card chrome and uses an h3 in plain variant", async () => {
+    const service = makeService();
+    const wrapper = mount(AuthorizeDeviceCard, {
+      props: { service, variant: "plain", headingLevel: 3 },
+    });
+    await flushPromises();
+
+    expect(wrapper.classes()).toContain("authorize-device-card--plain");
+    expect(wrapper.classes()).not.toContain("authorize-device-card--card");
+    const title = wrapper.find("h3.authorize-device-title");
+    expect(title.exists()).toBe(true);
+    expect(title.text()).toBe("Approve a sign-in");
+    expect(title.attributes("id")).toBe(
+      wrapper.attributes("aria-labelledby"),
+    );
+  });
+
   it("disables approval when the server reports the feature unavailable", async () => {
     const service = makeService();
     (service.capabilities as ReturnType<typeof vi.fn>).mockResolvedValueOnce({

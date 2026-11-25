@@ -236,7 +236,11 @@
           Approve a sign-in started on another device by entering the code it
           shows. Only approve a code you are expecting.
         </p>
-        <AuthorizeDeviceCard :service="loginCodeService" />
+        <AuthorizeDeviceCard
+          :service="loginCodeService"
+          variant="plain"
+          :heading-level="3"
+        />
       </section>
 
       <section v-if="authStore.isAuthenticated">
@@ -678,7 +682,10 @@ function formatDate(dateStr) {
   border-bottom-color: var(--color-primary);
 }
 
-.profile-panel section {
+/* Direct children only: the login-code card is a child component whose root
+   is also a <section>, so an unscoped descendant selector would re-add the
+   card chrome that its "plain" variant removes. */
+.profile-panel > section {
   margin-bottom: var(--space-lg);
   padding: var(--space-md);
   border: 1px solid var(--color-border);
@@ -686,7 +693,7 @@ function formatDate(dateStr) {
   background: var(--color-surface);
 }
 
-.profile-panel section h2 {
+.profile-panel > section h2 {
   font-size: var(--text-default);
   margin-bottom: var(--space-sm);
   color: var(--color-text-muted);
