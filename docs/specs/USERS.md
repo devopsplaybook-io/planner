@@ -30,6 +30,7 @@
 - [x] Codes and request tokens are never stored or logged in plaintext: the database holds HMAC hashes keyed by `JWT_KEY` (rotating `JWT_KEY` invalidates outstanding requests), audit events contain only the request id, acting user, device label, reason and IP, and neither codes nor tokens appear in audit records or logs.
 - [x] Rate limits are configurable (`LOGIN_CODE_RATE_LIMIT_CREATE_MAX` 10/60 s per IP, `LOGIN_CODE_RATE_LIMIT_POLL_MAX` 120/60 s per request token, `LOGIN_CODE_RATE_LIMIT_APPROVE_MAX` 10/60 s per IP for preview/approve/cancel) and reject with 429 `RATE_LIMITED`; the feature can be disabled with `LOGIN_CODE_ENABLED=false`, which the capabilities endpoint and the UI reflect.
 - [x] The library store conformance suite (`registerLoginCodesStoreConformance`) runs against a real temporary SQLite database in `LoginCodesData.spec.ts`; `LoginCodesRoutes.spec.ts` pins the protocol behaviour (statuses, rotation grace, attempts, pending cap, rate limits, step-up, secret-free events).
+- [x] The login-code UI follows the application theme (a raised code/device surface, high-contrast code text, and callout-style warning/error states) in light, dark and system modes on desktop and mobile.
 
 ## Calendar feed (ICS)
 
