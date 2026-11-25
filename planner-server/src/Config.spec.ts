@@ -28,7 +28,14 @@ describe("Config", () => {
       expect(config.CORS_POLICY_ORIGIN).toBe("");
       expect(config.JWT_KEY).toBe("");
       expect(config.DATABASE_TYPE).toBe("sqlite");
+      // Literal effective value (30 days) from the session policy doc. This
+      // app has no absolute cap: Auth signs exp = now + validity and the
+      // config exposes no JWT_SESSION_MAX_DURATION.
       expect(config.JWT_VALIDITY_DURATION).toBe(2592000);
+      expect(
+        (config as unknown as Record<string, unknown>)
+          .JWT_SESSION_MAX_DURATION,
+      ).toBeUndefined();
       expect(config.ATTACHMENT_MAX_SIZE).toBe(10);
       expect(config.LLM_API_KEY).toBe("");
       expect(config.LLM_API_URL).toBe(
