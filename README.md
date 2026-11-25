@@ -76,6 +76,8 @@ Configuration can be provided via a JSON configuration file (e.g., using a Confi
 | JWT_VALIDITY_DURATION | JWT token validity duration in seconds               | `2592000` (30 days) | Config file or environment variable |
 | TZ                    | Server timezone (IANA name, e.g. `Europe/Paris`)     | `UTC`               | Environment variable                |
 
+Sessions follow the [session policy](https://github.com/devopsplaybook-io/common-utils/blob/main/docs/auth-session-policy.md) with one deviation: the token lives 30 days (`JWT_VALIDITY_DURATION` = `2592000`) and this app has **no absolute cap** — `Auth` signs `exp = now + validity` and the config exposes no `JWT_SESSION_MAX_DURATION`. The client reissues the token on startup through `POST /api/users/session`. `Config.spec.ts` pins the literal effective value.
+
 > **JWT_KEY is mandatory**: the server refuses to start when `JWT_KEY` is empty or set to the placeholder `"dev"` (unless `DEV_MODE=true`). Generate one with `openssl rand -hex 32` and provide it via a Secret / environment variable. To rotate it, change the value and restart the server: all user sessions are invalidated (API keys are unaffected).
 
 ## Timezone

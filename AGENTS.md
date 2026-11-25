@@ -101,6 +101,17 @@ planner/
 - Single container serves both API and static web files (`dist/App.js` serves the API and the generated `web/` directory)
 - The runtime runs as the non-root `node` user (UID/GID 1000); `/data` must be writable by that user (existing root-owned data needs `chown -R 1000:1000`)
 
+## Session policy
+
+`JWT_VALIDITY_DURATION` is 30 days (literal `2592000`) and there is **no
+absolute cap**: the custom `Auth` signs `exp = now + validity` and the config
+chain (constructor default, `config.json`, environment) never sets a
+`JWT_SESSION_MAX_DURATION`. The client reissues the session on startup through
+`POST /api/users/session`. Keep this deviation in sync with the
+[session policy](https://github.com/devopsplaybook-io/common-utils/blob/main/docs/auth-session-policy.md)
+and the literal assertion in `Config.spec.ts`. This server does not use
+`ConfigBase`, so the common-utils `addConfigField` pitfall does not apply.
+
 ## CI/CD
 
 GitHub Actions workflows are defined in `.github/workflows/`, reusing shared workflows from `devopsplaybook-io/common-utils`:
