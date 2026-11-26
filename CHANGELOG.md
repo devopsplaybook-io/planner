@@ -5,6 +5,14 @@ All notable changes to this project are documented here.
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.115.1] - 2026-11-26
+
+### Added
+
+- Documented the `planner-server` service in a new `planner-server/README.md`:
+  module layout, `config.json` keys and environment overrides, npm scripts and
+  the test/coverage layout. Documentation only, no code change.
+
 ## [0.115.0] - 2026-11-26
 
 ### Changed
