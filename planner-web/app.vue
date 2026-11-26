@@ -49,6 +49,8 @@
     />
     <!-- In-app notifications (also fed by service-worker push messages) -->
     <AppToast />
+    <!-- Shared PWA update prompt: a new build is applied only on user action -->
+    <AppUpdatePrompt />
   </div>
 </template>
 
