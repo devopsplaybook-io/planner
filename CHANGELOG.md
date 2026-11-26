@@ -5,6 +5,15 @@ All notable changes to this project are documented here.
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.115.0] - 2026-11-26
+
+### Changed
+
+- Refreshed the pinned `common-utils` PR Verify and Main Build workflows to
+  commit `7cdda8f`, which adds the shared registry Docker layer cache. No
+  application code change; the next builds import the cached layers instead of
+  recompiling whisper.cpp under emulated arm64.
+
 ## [0.114.0] - 2026-11-26
 
 ### Changed
