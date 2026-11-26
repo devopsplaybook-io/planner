@@ -50,7 +50,10 @@ export default defineNuxtConfig({
     dirs: ["./stores"],
   },
   pwa: {
-    registerType: "autoUpdate",
+    // Prompt mode keeps the old worker controlling until the user accepts the
+    // shared update banner (see components/AppUpdatePrompt.vue); a new build
+    // must never reload a tab with unsaved form input.
+    registerType: "prompt",
     workbox: {
       // Precache the built app shell (HTML/JS/CSS) so the SPA loads offline,
       // plus the app icons so notification icon/badge resolve offline too
@@ -59,8 +62,6 @@ export default defineNuxtConfig({
       // never navigation requests and stay excluded
       navigateFallback: "/",
       navigateFallbackDenylist: [/^\/api\//, /^\/share-target/],
-      skipWaiting: true,
-      clientsClaim: true,
       importScripts: ["sw-push.js"],
     },
     manifest: {
